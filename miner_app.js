@@ -10,7 +10,7 @@ import { ArweaveWallet } from './arweave_wallet.js';
 import { DataTransaction } from './arweave_transaction.js';
 import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from './arweave_randomx.js';
 import { PackedChunkStore } from './arweave_storage.js';
-import { PeerAccess, PeerDirectory, GatewayDirectory } from './arweave_peers.js';
+import { PeerAccess, PeerDirectory, GatewayDirectory, SourceTester } from './arweave_peers.js';
 import { VdfServerClient, VdfUpdate } from './arweave_vdf_client.js';
 import { SourceCitations } from './arweave_citations.js';
 
@@ -451,6 +451,54 @@ class BrowserNodeApp {
     }
   }
 
+  // ---- a person's own sources ----
+
+  static SEEDS_STORAGE_KEY = 'weave-tab-miner.seeds';
+
+  /** The typed seed list, remembered in this browser only; storage may be refused. */
+  restoreSeeds() {
+    try {
+      this.view.elements.seedInput.value = localStorage.getItem(BrowserNodeApp.SEEDS_STORAGE_KEY) ?? '';
+    } catch {
+      // Storage refused (private window, blocked site data): the seeds simply are not remembered.
+    }
+    this.applySeeds();
+  }
+
+  applySeeds() {
+    const seeds = SourceTester.parseList(this.view.elements.seedInput.value);
+    try {
+      localStorage.setItem(BrowserNodeApp.SEEDS_STORAGE_KEY, this.view.elements.seedInput.value);
+    } catch {
+      // Not remembered; still used for this visit.
+    }
+    this.gateway.preferFirst(seeds);
+    return seeds;
+  }
+
+  async testSources() {
+    const seeds = this.applySeeds();
+    const candidates = [...new Set([...seeds, ...this.gateway.gatewayUrls])];
+    this.view.setText('peerStatus', `Testing ${candidates.length} sources…`);
+    const results = await new SourceTester().testAll(candidates);
+    const list = this.view.elements.sourceResults;
+    list.replaceChildren(...results.map((result) => {
+      const item = document.createElement('li');
+      item.className = result.ok ? 'source-ok' : 'source-failed';
+      item.textContent = result.ok
+        ? `✓ ${result.url} — ${result.milliseconds} ms, height ${result.height.toLocaleString()}`
+        : `✗ ${result.url} — ${result.error}`;
+      return item;
+    }));
+    const working = results.filter((result) => result.ok).map((result) => result.url);
+    // Seeds that work keep their place at the front; then the fastest of the rest.
+    this.gateway.preferFirst([...seeds.filter((url) => working.includes(url)), ...working]);
+    this.view.setText('peerStatus', working.length
+      ? `${working.length} of ${results.length} sources answered; they are now tried fastest first.`
+      : 'Nothing answered from here. This network may block Arweave: try another network or a phone hotspot, or add a gateway you know works above. The sample block still works offline.');
+    this.view.log(`source test: ${working.length} of ${results.length} answered`, working.length ? 'good' : 'error');
+  }
+
   async loadLiveBlock() {
     this.view.setText('networkStatus', 'Fetching the current block…');
     try {
@@ -823,6 +871,8 @@ class BrowserNodeApp {
     onClick('keyfileButton', this.loadKeyfile);
     onClick('copyKeyfileButton', this.copyKeyfile);
     onClick('peersButton', this.findPeers);
+    onClick('testSourcesButton', this.testSources);
+    this.view.elements.seedInput.addEventListener('change', () => this.applySeeds());
     onClick('liveButton', this.loadLiveBlock);
     onClick('sampleButton', this.loadSampleBlock);
     onClick('holdButton', this.holdChunks);
@@ -839,6 +889,7 @@ class BrowserNodeApp {
   async run() {
     this.bind();
     new RunYourself(this.view).show();
+    this.restoreSeeds();
     const blocked = PeerAccess.blockedReason();
     this.view.setText('peerStatus', blocked
       ? `Gateways only: ${blocked}. "Find gateways and peers" still adds more gateways.`
