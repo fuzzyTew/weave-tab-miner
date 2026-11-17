@@ -64,8 +64,18 @@ class PageCheck {
     const saved = await this.waitForLog(page, 'saved 1 packed chunk\\b', 30000).then(() => true, () => false);
     this.check('packed chunks saved to browser storage', saved, await this.text(page, '#storageNote'));
 
+    // A typed seed is tested, listed with its result, and remembered across a reload.
+    const seed = 'https://seed.invalid';
+    await page.fill('#seedInput', seed);
+    started = Date.now();
+    await page.click('#testSourcesButton');
+    await this.waitForLog(page, 'source test:', 120000);
+    const sourceList = await this.text(page, '#sourceResults');
+    this.check('testing sources lists the seed with its result', sourceList.includes(`✗ ${seed}`), `${((Date.now() - started) / 1000).toFixed(0)} s: ${await this.text(page, '#peerStatus')}`);
+
     await page.reload();
     await this.waitForLog(page, 'ready:', 120000);
+    this.check('the seed list is remembered', (await page.inputValue('#seedInput')) === seed);
     await page.fill('#addressInput', address);
     await page.click('#addressButton');
     await page.waitForTimeout(1000);

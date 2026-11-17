@@ -27,6 +27,18 @@ class BundledResources {
     return text;
   }
 
+  /**
+   * Gateways and nodes that answered from GitHub's runners when the page was built
+   * (gather_sources.mjs), as { gatheredAt, gateways, nodes }; an empty list when missing.
+   */
+  static gatheredSources() {
+    try {
+      return JSON.parse(BundledResources.embeddedText('sourcesData'));
+    } catch {
+      return { gatheredAt: null, gateways: [], nodes: [] };
+    }
+  }
+
   static sampleBlock() {
     return JSON.parse(BundledResources.embeddedText('sampleBlockData'));
   }
@@ -476,11 +488,32 @@ class BrowserNodeApp {
     return seeds;
   }
 
+  // Stop once this many answer: enough to fall back on, without knocking on every host.
+  static ENOUGH_WORKING_SOURCES = 8;
+
+  /** Seeds first, then the gateways in use, then the gathered list (nodes only when reachable). */
+  sourceCandidates(seeds) {
+    const gathered = BundledResources.gatheredSources();
+    const nodeUrls = PeerAccess.blockedReason() ? [] : gathered.nodes.map((entry) => entry.url);
+    return [...new Set([...seeds, ...this.gateway.gatewayUrls, ...gathered.gateways.map((entry) => entry.url), ...nodeUrls])];
+  }
+
+  describeGatheredSources() {
+    const { gatheredAt, gateways, nodes } = BundledResources.gatheredSources();
+    if (!gatheredAt) return 'This copy has no gathered list; Test all sources tries your own and the 2 built in.';
+    const nodeNote = PeerAccess.blockedReason() ? ' (nodes only from a downloaded copy)' : '';
+    return `This copy carries ${gateways.length} gateways and ${nodes.length} nodes${nodeNote} that answered GitHub on ${gatheredAt.slice(0, 10)}. Test all sources tries them, a few at a time, until ${BrowserNodeApp.ENOUGH_WORKING_SOURCES} answer.`;
+  }
+
   async testSources() {
     const seeds = this.applySeeds();
-    const candidates = [...new Set([...seeds, ...this.gateway.gatewayUrls])];
-    this.view.setText('peerStatus', `Testing ${candidates.length} sources…`);
-    const results = await new SourceTester().testAll(candidates);
+    const candidates = this.sourceCandidates(seeds);
+    this.view.setText('peerStatus', `Testing up to ${candidates.length} sources…`);
+    const results = await new SourceTester().testAll(candidates, {
+      concurrency: 4,
+      enoughWorking: BrowserNodeApp.ENOUGH_WORKING_SOURCES,
+      onResult: (result, testedCount) => this.view.setText('peerStatus', `Tested ${testedCount} of ${candidates.length}…`),
+    });
     const list = this.view.elements.sourceResults;
     list.replaceChildren(...results.map((result) => {
       const item = document.createElement('li');
@@ -494,7 +527,7 @@ class BrowserNodeApp {
     // Seeds that work keep their place at the front; then the fastest of the rest.
     this.gateway.preferFirst([...seeds.filter((url) => working.includes(url)), ...working]);
     this.view.setText('peerStatus', working.length
-      ? `${working.length} of ${results.length} sources answered; they are now tried fastest first.`
+      ? `${working.length} of ${results.length} tested sources answered; they are now tried fastest first.`
       : 'Nothing answered from here. This network may block Arweave: try another network or a phone hotspot, or add a gateway you know works above. The sample block still works offline.');
     this.view.log(`source test: ${working.length} of ${results.length} answered`, working.length ? 'good' : 'error');
   }
@@ -890,10 +923,7 @@ class BrowserNodeApp {
     this.bind();
     new RunYourself(this.view).show();
     this.restoreSeeds();
-    const blocked = PeerAccess.blockedReason();
-    this.view.setText('peerStatus', blocked
-      ? `Gateways only: ${blocked}. "Find gateways and peers" still adds more gateways.`
-      : '2 gateways for now. "Find gateways and peers" adds gateways from ar.io and looks for nodes this page can reach directly.');
+    this.view.setText('peerStatus', this.describeGatheredSources());
     // Open in a working state: the sample block, mining for the address that won it.
     this.loadSampleBlock();
     this.view.elements.addressInput.value = this.block.reward_addr;
