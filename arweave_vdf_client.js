@@ -81,6 +81,10 @@ export class VdfServerClient {
   async fetchUpdate(baseUrl) {
     const response = await fetch(`${baseUrl}/vdf`, { signal: AbortSignal.timeout(this.timeoutMs) });
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${(await response.text()).slice(0, 120)}`);
+    // Some gateways answer unknown paths with their web app's HTML page and status 200
+    // (turbo-gateway.com did in the live check), which is not a VDF update.
+    const contentType = response.headers.get('content-type') ?? '';
+    if (/text\/html|application\/json/i.test(contentType)) throw new Error(`answered with ${contentType}, not a VDF update`);
     return VdfUpdate.parse(new Uint8Array(await response.arrayBuffer()));
   }
 

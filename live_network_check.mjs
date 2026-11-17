@@ -82,6 +82,7 @@ class LiveNetworkCheck {
       // Raw shape, so a parse failure can be diagnosed from the log.
       console.log(`      /vdf from ${url}: ${body.length} bytes, content-type ${response.headers.get('content-type')}, first 160 bytes ${Bytes.toHex(body.subarray(0, 160))}`);
       console.log(`      last 64 bytes ${Bytes.toHex(body.subarray(body.length - 64))}`);
+      if (/text\/html|application\/json/i.test(response.headers.get('content-type') ?? '')) throw new Error(`answered with ${response.headers.get('content-type')}, not a VDF update`);
       const update = VdfUpdate.parse(body);
       return `step ${update.stepNumber}, ${update.stepsNewestFirst.length} steps`;
     });
