@@ -12,6 +12,9 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+  # Daily, so the gateway and node list the page carries stays fresh.
+  schedule:
+    - cron: '17 9 * * *'
 
 permissions:
   contents: read
@@ -77,6 +80,12 @@ jobs:
       - name: Install test dependencies
         run: npm ci --ignore-scripts
 
+      - name: Gather gateways and nodes that answer from here
+        # A failed gathering keeps the committed sources.json, so the build still works.
+        continue-on-error: true
+        timeout-minutes: 5
+        run: node gather_sources.mjs sources.json
+
       - name: Build the single-file page
         run: node build_single_file.mjs
 
@@ -89,7 +98,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: weave-tab-miner
-          path: weave-tab-miner.html
+          path: |
+            weave-tab-miner.html
+            sources.json
 
       - name: Prepare the GitHub Pages site
         run: |
