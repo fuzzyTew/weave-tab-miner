@@ -396,6 +396,21 @@ export class Replica29Layout {
     );
   }
 
+  /**
+   * Weave bytes, one per sector, whose chunks all sit at the same bucket position as the
+   * chunk holding `firstByte`. Such chunks share all 32 of their entropies, so packing
+   * `count` of them costs the same 32 entropies as packing one (up to 1024 per partition).
+   */
+  static entropySharingBytes(firstByte, count, weaveUpperBound) {
+    const sectorSize = ConsensusConstants.entropySectorSize;
+    const partitionNumber = firstByte / ConsensusConstants.PARTITION_SIZE;
+    const partitionEnd = (partitionNumber + 1n) * ConsensusConstants.PARTITION_SIZE;
+    const limit = partitionEnd < weaveUpperBound ? partitionEnd : weaveUpperBound;
+    const bytes = [];
+    for (let byte = firstByte; byte < limit && bytes.length < count; byte += sectorSize) bytes.push(byte);
+    return bytes;
+  }
+
   /** The end offset of the 256 KiB bucket holding `weaveByte` (above the split threshold). */
   static bucketEndOffsetForByte(weaveByte) {
     const chunkSize = BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
@@ -407,29 +422,30 @@ export class Replica29Layout {
 
 export class StubEntropySource {
   /**
-   * STUB — not consensus-compatible. The real entropy is an 8 MiB block produced by
-   * Arweave's "RandomX squared" over 4 lanes (c_src/randomx/randomx_squared.cpp),
-   * deliberately slow so miners must store packed data rather than recompute it. This
-   * stand-in derives each 8 KiB slice with SHA-256 in counter mode, so it is fast and
-   * any slice can be made alone. Replace with a WebAssembly build of the real code;
-   * the interface is the same: (entropyKey, sliceIndex) -> 8192 bytes.
+   * STUB — not consensus-compatible; for browsers that cannot allocate the 512 MiB RandomX
+   * cache. Real entropy is RandomxSquaredEntropySource (arweave_randomx.js). This stand-in
+   * fills the 8 MiB entropy with SHA-256 in counter mode, so it is quick but worthless for
+   * real mining. Same interface: entropyKey -> Promise<8 MiB entropy>.
    */
   isStub = true;
 
-  entropySlice(entropyKey, sliceIndex) {
-    const slice = new Uint8Array(ConsensusConstants.SUB_CHUNK_SIZE);
-    for (let block = 0; block < slice.length / 32; block++) {
-      const counter = Bytes.fromBigInt(BigInt(sliceIndex) * 256n + BigInt(block), 8);
-      slice.set(Sha256.hash(entropyKey, counter), block * 32);
+  async entropy(entropyKey) {
+    const entropy = new Uint8Array(ConsensusConstants.REPLICA_2_9_ENTROPY_SIZE);
+    for (let block = 0; block < entropy.length / 32; block++) {
+      entropy.set(Sha256.hash(entropyKey, Bytes.fromBigInt(BigInt(block), 8)), block * 32);
     }
-    return slice;
+    return entropy;
   }
 }
 
 export class ChunkPacker {
   /**
    * Replica 2.9 packing (src/ar_packing_server.erl exor_replica_2_9_chunk): each 8 KiB
-   * sub-chunk is XORed with the slice of its own entropy. XOR again to unpack.
+   * sub-chunk is XORed with its slice of its own 8 MiB entropy. XOR again to unpack.
+   *
+   * One entropy serves the same sub-chunk position of the chunk at the same bucket in every
+   * one of a partition's 1024 sectors (ar_replica_2_9.erl), so packing a batch groups the
+   * chunks by entropy key and computes each entropy once.
    */
   constructor(identity, entropySource) {
     this.identity = identity;
@@ -437,44 +453,57 @@ export class ChunkPacker {
   }
 
   static padChunk(chunkBytes) {
-    if (chunkBytes.length === ConsensusConstants.DATA_CHUNK_SIZE) return chunkBytes;
+    if (chunkBytes.length === ConsensusConstants.DATA_CHUNK_SIZE) return chunkBytes.slice();
     const padded = new Uint8Array(ConsensusConstants.DATA_CHUNK_SIZE);
     padded.set(chunkBytes.subarray(0, ConsensusConstants.DATA_CHUNK_SIZE));
     return padded;
   }
 
-  packSubChunk(subChunk, absoluteEndOffset, subChunkIndex) {
-    const subChunkStartOffset = subChunkIndex * ConsensusConstants.SUB_CHUNK_SIZE;
-    const entropyKey = Replica29Layout.entropyKey(this.identity.addressBytes, absoluteEndOffset, subChunkStartOffset);
-    const mask = this.entropySource.entropySlice(entropyKey, Replica29Layout.sliceIndex(absoluteEndOffset));
-    const packed = new Uint8Array(subChunk.length);
-    for (let index = 0; index < subChunk.length; index++) packed[index] = subChunk[index] ^ mask[index];
+  /**
+   * Pack chunks given as [{ bytes, endOffset }]. Returns one 256 KiB packed buffer per
+   * chunk, in order. `onEntropy(done, total)` reports progress per entropy computed.
+   */
+  async packChunks(chunks, onEntropy = () => {}) {
+    const subChunkSize = ConsensusConstants.SUB_CHUNK_SIZE;
+    const packed = chunks.map(({ bytes }) => ChunkPacker.padChunk(bytes));
+
+    const jobsByKey = new Map(); // entropy key hex -> { key, uses: [[chunkIndex, subChunkIndex]] }
+    chunks.forEach(({ endOffset }, chunkIndex) => {
+      for (let subChunkIndex = 0; subChunkIndex < ConsensusConstants.SUB_CHUNK_COUNT; subChunkIndex++) {
+        const key = Replica29Layout.entropyKey(this.identity.addressBytes, endOffset, subChunkIndex * subChunkSize);
+        const keyHex = Bytes.toHex(key);
+        if (!jobsByKey.has(keyHex)) jobsByKey.set(keyHex, { key, uses: [] });
+        jobsByKey.get(keyHex).uses.push([chunkIndex, subChunkIndex]);
+      }
+    });
+
+    let done = 0;
+    for (const { key, uses } of jobsByKey.values()) {
+      const entropy = await this.entropySource.entropy(key);
+      for (const [chunkIndex, subChunkIndex] of uses) {
+        const sliceStart = Replica29Layout.sliceIndex(chunks[chunkIndex].endOffset) * subChunkSize;
+        const target = packed[chunkIndex].subarray(subChunkIndex * subChunkSize, (subChunkIndex + 1) * subChunkSize);
+        for (let index = 0; index < subChunkSize; index++) target[index] ^= entropy[sliceStart + index];
+      }
+      onEntropy(++done, jobsByKey.size);
+    }
     return packed;
   }
 
-  /** Pack a whole chunk (padded to 256 KiB); returns its 32 packed sub-chunks. */
-  packChunk(chunkBytes, absoluteEndOffset) {
-    const padded = ChunkPacker.padChunk(chunkBytes);
-    const subChunks = [];
-    for (let index = 0; index < ConsensusConstants.SUB_CHUNK_COUNT; index++) {
-      const start = index * ConsensusConstants.SUB_CHUNK_SIZE;
-      subChunks.push(this.packSubChunk(padded.subarray(start, start + ConsensusConstants.SUB_CHUNK_SIZE), absoluteEndOffset, index));
-    }
-    return subChunks;
+  async packChunk(chunkBytes, endOffset) {
+    return (await this.packChunks([{ bytes: chunkBytes, endOffset }]))[0];
   }
 }
 
 export class StubH0Hasher {
   /**
-   * STUB — not consensus-compatible. Real H0 is a RandomX hash using Arweave's fork
-   * built with RANDOMX_ARGON_MEMORY=524288 and RANDOMX_DATASET_BASE_SIZE=4294967296
-   * ("rx4096", apps/arweave/lib/Makefile), keyed with "default arweave 2.5 pack key".
-   * Light mode would need a 512 MiB cache in the browser. This stand-in hashes the
-   * same preimage with SHA-256 so everything after H0 runs on real rules.
+   * STUB — not consensus-compatible; for browsers that cannot allocate the 512 MiB RandomX
+   * cache. Real H0 is RandomxH0Hasher (arweave_randomx.js). Hashes the same preimage with
+   * SHA-256 so everything after H0 still runs on real rules.
    */
   isStub = true;
 
-  hash(preimage) {
+  async hash(preimage) {
     return Sha256.hash(preimage);
   }
 }
@@ -555,21 +584,23 @@ export class VdfSession {
 
 export class HeldStorage {
   /**
-   * The packed sub-chunks this node holds, keyed by bucket end offset. A real node keeps
-   * terabytes on disk; this one keeps a handful in memory.
+   * The packed chunks this node holds, keyed by bucket end offset, each one 256 KiB buffer
+   * of 32 packed sub-chunks. A real node keeps terabytes on disk; a tab keeps what its
+   * browser storage allows (see arweave_storage.js).
    */
   constructor() {
     this.packedChunks = new Map();
   }
 
-  add(bucketEndOffset, packedSubChunks) {
-    this.packedChunks.set(bucketEndOffset.toString(), packedSubChunks);
+  add(bucketEndOffset, packedChunk) {
+    this.packedChunks.set(bucketEndOffset.toString(), packedChunk);
   }
 
   subChunkForByte(weaveByte, subChunkIndex) {
-    const bucketEndOffset = Replica29Layout.bucketEndOffsetForByte(weaveByte);
-    const packed = this.packedChunks.get(bucketEndOffset.toString());
-    return packed ? packed[subChunkIndex] : null;
+    const packed = this.packedChunks.get(Replica29Layout.bucketEndOffsetForByte(weaveByte).toString());
+    if (!packed) return null;
+    const size = ConsensusConstants.SUB_CHUNK_SIZE;
+    return packed.subarray(subChunkIndex * size, (subChunkIndex + 1) * size);
   }
 
   get byteCount() {
@@ -592,6 +623,9 @@ export class Miner {
    * for every nonce whose data it holds computes H1 (and H2 if it also holds the
    * range-2 data), checking each against the network difficulty.
    *
+   * Each report carries a `trace`: the intermediate values of the step, for checking by
+   * hand against the node source (see arweave_citations.js).
+   *
    * testMode exists only to exercise the H1/H2 path, which real data reaches about
    * never: aimRange1AtHeldData moves range 1 onto held data, and difficultyEase
    * multiplies the pass probability. Results found with it are not solutions.
@@ -607,16 +641,21 @@ export class Miner {
     return hashFraction > 1 - probability;
   }
 
-  mineStep(session, stepNumber, vdfOutput) {
+  async mineStep(session, stepNumber, vdfOutput) {
     const packingDifficulty = ConsensusConstants.REPLICA_2_9_PACKING_DIFFICULTY;
-    const h0 = this.h0Hasher.hash(MiningMath.h0Preimage(vdfOutput, this.partitionNumber, session.seed, this.identity.addressBytes, packingDifficulty));
+    const h0Preimage = MiningMath.h0Preimage(vdfOutput, this.partitionNumber, session.seed, this.identity.addressBytes, packingDifficulty);
+    const h0 = await this.h0Hasher.hash(h0Preimage);
     let [range1Start, range2Start] = MiningMath.recallRangeStarts(h0, this.partitionNumber, session.partitionUpperBound);
     if (this.testMode.aimRange1AtHeldData) {
       const firstHeld = this.storage.packedChunks.keys().next().value;
       if (firstHeld) range1Start = BigInt(firstHeld) - BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
     }
 
-    const report = { stepNumber, h0, range1Start, range2Start, noncesTried: 0, h2Tried: 0, solution: null };
+    const trace = {
+      vdfOutput, partitionNumber: this.partitionNumber, seed: session.seed.subarray(0, 32), address: this.identity.addressBytes,
+      packingDifficulty, h0Preimage, h0, h0IsStub: this.h0Hasher.isStub, range1Start, range2Start, firstHeldNonce: null,
+    };
+    const report = { stepNumber, h0, range1Start, range2Start, noncesTried: 0, h2Tried: 0, solution: null, trace };
     for (let nonce = 0; nonce < ConsensusConstants.noncesPerRecallRange; nonce++) {
       const [recallByte1, subChunkIndex] = MiningMath.recallByteForNonce(range1Start, nonce);
       const subChunk1 = this.storage.subChunkForByte(recallByte1, subChunkIndex);
@@ -624,17 +663,18 @@ export class Miner {
 
       report.noncesTried++;
       const h1 = MiningMath.h1(h0, nonce, subChunk1);
+      const [recallByte2] = MiningMath.recallByteForNonce(range2Start, nonce);
+      const subChunk2 = this.storage.subChunkForByte(recallByte2, subChunkIndex);
+      const h2 = subChunk2 ? MiningMath.h2(h1.hash, subChunk2, h0) : null;
+      if (!trace.firstHeldNonce) trace.firstHeldNonce = { nonce, recallByte1, recallByte2, subChunkIndex, h1, h2 };
+
       if (this.easedPasses(h1.hash, true, session.networkDiff)) {
         report.solution = { kind: 'one-chunk (H1)', nonce, hash: h1.hash, recallByte1 };
         break;
       }
-
-      const [recallByte2] = MiningMath.recallByteForNonce(range2Start, nonce);
-      const subChunk2 = this.storage.subChunkForByte(recallByte2, subChunkIndex);
-      if (!subChunk2) continue;
+      if (!h2) continue;
 
       report.h2Tried++;
-      const h2 = MiningMath.h2(h1.hash, subChunk2, h0);
       if (this.easedPasses(h2.hash, false, session.networkDiff)) {
         report.solution = { kind: 'two-chunk (H2)', nonce, hash: h2.hash, recallByte1, recallByte2 };
         break;
@@ -646,25 +686,60 @@ export class Miner {
 
 export class SolutionOdds {
   /**
-   * Expected waiting time for a real solution with the storage held, from the same
-   * rules the miner applies. Each held nonce gives an H1 try, plus an H2 try when its
-   * range-2 location is also held.
+   * Expected waiting time for a real solution with the storage held, from the same rules
+   * the miner applies. Each held nonce gives an H1 try (100 times harder), plus an H2 try
+   * when its range-2 location is also held.
    */
-  static expectedSecondsPerSolution({ storage, partitionNumber, session, stepsPerSecond = 1 }) {
+  static NETWORK_STEPS_PER_SECOND = 1; // the VDF difficulty is retargeted toward one step a second
+
+  static rates({ storage, partitionNumber, session }) {
     const partitionWindow = Number(session.partitionUpperBound < ConsensusConstants.PARTITION_SIZE ? session.partitionUpperBound : ConsensusConstants.PARTITION_SIZE);
-    const heldFractionOfPartition = storage.bytesInPartition(partitionNumber) / partitionWindow;
-    const heldFractionOfWeave = storage.byteCount / Number(session.partitionUpperBound);
-    const h1Probability = Difficulty.passProbability(session.networkDiff, true);
-    const h2Probability = Difficulty.passProbability(session.networkDiff, false);
-    const solutionsPerStep = ConsensusConstants.noncesPerRecallRange * heldFractionOfPartition * (h1Probability + heldFractionOfWeave * h2Probability);
-    return solutionsPerStep > 0 ? 1 / (solutionsPerStep * stepsPerSecond) : Infinity;
+    return {
+      heldFractionOfPartition: storage.bytesInPartition(partitionNumber) / partitionWindow,
+      heldFractionOfWeave: storage.byteCount / Number(session.partitionUpperBound),
+      h1Probability: Difficulty.passProbability(session.networkDiff, true),
+      h2Probability: Difficulty.passProbability(session.networkDiff, false),
+    };
+  }
+
+  static solutionsPerStep({ heldFractionOfPartition, heldFractionOfWeave, h1Probability, h2Probability }) {
+    return ConsensusConstants.noncesPerRecallRange * heldFractionOfPartition * (h1Probability + heldFractionOfWeave * h2Probability);
+  }
+
+  static expectedSecondsPerSolution({ storage, partitionNumber, session, stepsPerSecond = SolutionOdds.NETWORK_STEPS_PER_SECOND }) {
+    const perStep = SolutionOdds.solutionsPerStep(SolutionOdds.rates({ storage, partitionNumber, session }));
+    return perStep > 0 ? 1 / (perStep * stepsPerSecond) : Infinity;
+  }
+
+  /**
+   * What stands between this node and a full-speed miner, largest first. Each factor says
+   * how many times faster solutions would come if only that limit were lifted:
+   * storage (holding the whole partition), coverage (holding the whole weave, so every
+   * range-2 lookup lands on held data), and VDF pace (one step a second).
+   */
+  static limitingFactors({ storage, partitionNumber, session, stepsPerSecond }) {
+    const rates = SolutionOdds.rates({ storage, partitionNumber, session });
+    const current = SolutionOdds.solutionsPerStep(rates);
+    const factors = [];
+    if (current === 0) {
+      return [{ name: 'storage', speedup: Infinity, explanation: `no data held in partition ${partitionNumber}: no nonce can be tried` }];
+    }
+    const fullPartition = SolutionOdds.solutionsPerStep({ ...rates, heldFractionOfPartition: 1 });
+    factors.push({ name: 'storage', speedup: fullPartition / current,
+      explanation: `holding ${(rates.heldFractionOfPartition * 100).toPrecision(2)}% of partition ${partitionNumber}; all of it would mean ${PrettyNumber.times(fullPartition / current)} more tries` });
+    const fullCoverage = SolutionOdds.solutionsPerStep({ ...rates, heldFractionOfWeave: 1 });
+    factors.push({ name: 'coverage', speedup: fullCoverage / current,
+      explanation: `range 2 lands on held data ${(rates.heldFractionOfWeave * 100).toPrecision(2)}% of the time; two-chunk tries are 100× likelier to pass than one-chunk ones` });
+    factors.push({ name: 'VDF pace', speedup: SolutionOdds.NETWORK_STEPS_PER_SECOND / stepsPerSecond,
+      explanation: `${stepsPerSecond >= 1 ? 'keeping up with' : `${(1 / stepsPerSecond).toFixed(1)} s per step against`} the network's one step a second` });
+    return factors.sort((left, right) => right.speedup - left.speedup);
   }
 
   /**
    * The same estimate for a group pooling `storedBytes` of distinct data under one
    * address, packed in whole partitions (the best case for the squared bonus).
    */
-  static forPooledStorage({ storedBytes, session, stepsPerSecond = 1 }) {
+  static forPooledStorage({ storedBytes, session, stepsPerSecond = SolutionOdds.NETWORK_STEPS_PER_SECOND }) {
     const partitionsCovered = storedBytes / Number(ConsensusConstants.PARTITION_SIZE);
     const weaveFraction = Math.min(1, storedBytes / Number(session.partitionUpperBound));
     const h1Probability = Difficulty.passProbability(session.networkDiff, true);
@@ -672,5 +747,15 @@ export class SolutionOdds {
     const solutionsPerSecond = partitionsCovered * ConsensusConstants.noncesPerRecallRange * (h1Probability + weaveFraction * h2Probability) * stepsPerSecond;
     const winstonPerSecond = solutionsPerSecond * Number(session.blockRewardWinston);
     return { secondsPerBlock: solutionsPerSecond > 0 ? 1 / solutionsPerSecond : Infinity, arPerDay: (winstonPerSecond * 86_400) / 1e12 };
+  }
+}
+
+export class PrettyNumber {
+  /**
+   * Short readable multipliers and durations for status text.
+   */
+  static times(value) {
+    if (!isFinite(value)) return 'infinitely';
+    return value < 1e6 ? `${Math.round(value).toLocaleString()}×` : `${value.toExponential(1).replace('e+', ' × 10^')}×`;
   }
 }

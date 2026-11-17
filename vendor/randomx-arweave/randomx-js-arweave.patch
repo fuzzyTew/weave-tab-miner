@@ -1,0 +1,562 @@
+diff --git a/Makefile b/Makefile
+index 3971673..1697456 100644
+--- a/Makefile
++++ b/Makefile
+@@ -151,3 +151,39 @@ endif
+ 
+ pkg-randomwow.js-shared/vm.wasm: pkg-randomwow.js/vm.wasm
+ 	cp $< $@
++
++# ---- Arweave H0 variant ("rx4096" in apps/arweave/lib/Makefile) ----
++# Arweave's fork uses the same 4-round AES generator keys as RandomWOW (aes4r_wow.c),
++# with its own configuration.toml for salt, cache, dataset sizes and instruction frequencies.
++pkg-randomx-arweave.js/dataset.wasm: $(DATASET_C_SOURCES) $(H_SOURCES)
++	clang -O3 $(CFLAGS) $(LDFLAGS) \
++		-Wl,--import-memory \
++		-o $@ $(DATASET_C_SOURCES) \
++		$(shell scripts/deflist.ts pkg-randomx-arweave.js/configuration.toml)
++
++	scripts/nogrowablepatch.ts $@ '\x03env\x06memory'
++	wasm-strip $@
++	wasm-opt -all -O4 -Oz $@ -o $@
++
++pkg-randomx-arweave.js/vm.wasm: $(VM_SINGLE_WOW_C_SOURCES) $(H_SOURCES)
++	clang -O3 $(CFLAGS) $(LDFLAGS) \
++		-Wl,--import-memory \
++		-o $@ $(VM_SINGLE_WOW_C_SOURCES) \
++		$(shell scripts/deflist.ts pkg-randomx-arweave.js/configuration.toml)
++
++	scripts/nogrowablepatch.ts $@ '\x03env\x06memory'
++	wasm-strip $@
++	wasm-opt -all -O4 -Oz $@ -o $@
++
++# Arweave replica 2.9 packing entropy ("RandomX squared", apps/arweave/c_src/randomx/randomx_squared.cpp)
++VM_RX2_C_SOURCES := $(sort $(VM_WOW_C_SOURCES) src/vm_rx2/vm.c)
++
++pkg-randomx-arweave.js/rx2vm.wasm: $(VM_RX2_C_SOURCES) $(H_SOURCES)
++	clang -O3 $(CFLAGS) $(LDFLAGS) \
++		-Wl,--import-memory \
++		-o $@ $(VM_RX2_C_SOURCES) \
++		$(shell scripts/deflist.ts pkg-randomx-arweave.js/configuration-squared.toml)
++
++	scripts/nogrowablepatch.ts $@ '\x03env\x06memory'
++	wasm-strip $@
++	wasm-opt -all -O4 -Oz $@ -o $@
+diff --git a/pkg-randomx-arweave.js/configuration-squared.toml b/pkg-randomx-arweave.js/configuration-squared.toml
+new file mode 100644
+index 0000000..7f508dd
+--- /dev/null
++++ b/pkg-randomx-arweave.js/configuration-squared.toml
+@@ -0,0 +1,50 @@
++# RandomX configuration
++RANDOMX_ARGON_MEMORY = 524288          # Arweave "rx4096" H0 build: 512 MiB cache (apps/arweave/lib/Makefile)
++RANDOMX_ARGON_ITERATIONS = 3           # Number of Argon2d iterations for Cache initialization
++RANDOMX_ARGON_LANES = 1                # Number of parallel lanes for Cache initialization
++RANDOMX_ARGON_SALT = "RandomX-Arweave\\x01" # ArweaveTeam/RandomX src/configuration.h
++RANDOMX_CACHE_ACCESSES = 8             # Number of random Cache accesses per Dataset item
++RANDOMX_SUPERSCALAR_LATENCY = 170      # Target latency for SuperscalarHash in CPU cycles
++RANDOMX_DATASET_BASE_SIZE = 2147483648 # Arweave "squared" build (apps/arweave/lib/Makefile)
++RANDOMX_DATASET_EXTRA_SIZE = 31563008  # ArweaveTeam/RandomX src/configuration.h
++RANDOMX_PROGRAM_SIZE = 256             # Number of instructions in a RandomX program
++RANDOMX_PROGRAM_ITERATIONS = 2048      # Number of iterations per program
++RANDOMX_PROGRAM_COUNT = 8              # Number of programs per hash
++RANDOMX_JUMP_BITS = 8                  # Jump condition mask size in bits
++RANDOMX_JUMP_OFFSET = 8                # Jump condition mask offset in bits
++RANDOMX_SCRATCHPAD_L3 = 2097152
++RANDOMX_SCRATCHPAD_L2 = 2097152        # squared build: L1 = L2 = L3
++RANDOMX_SCRATCHPAD_L1 = 2097152        # squared build: L1 = L2 = L3
++
++# Instruction frequencies (per 256 opcodes)
++# Total sum of frequencies must be 256
++RANDOMX_FREQ_IADD_RS = 25
++RANDOMX_FREQ_IADD_M = 7
++RANDOMX_FREQ_ISUB_R = 16
++RANDOMX_FREQ_ISUB_M = 7
++RANDOMX_FREQ_IMUL_R = 16
++RANDOMX_FREQ_IMUL_M = 4
++RANDOMX_FREQ_IMULH_R = 4
++RANDOMX_FREQ_IMULH_M = 1
++RANDOMX_FREQ_ISMULH_R = 4
++RANDOMX_FREQ_ISMULH_M = 1
++RANDOMX_FREQ_IMUL_RCP = 8
++RANDOMX_FREQ_INEG_R = 2
++RANDOMX_FREQ_IXOR_R = 15
++RANDOMX_FREQ_IXOR_M = 5
++RANDOMX_FREQ_IROR_R = 10
++RANDOMX_FREQ_IROL_R = 0
++RANDOMX_FREQ_ISWAP_R = 4
++RANDOMX_FREQ_FSWAP_R = 8
++RANDOMX_FREQ_FADD_R = 20
++RANDOMX_FREQ_FADD_M = 5
++RANDOMX_FREQ_FSUB_R = 20
++RANDOMX_FREQ_FSUB_M = 5
++RANDOMX_FREQ_FSCAL_R = 6
++RANDOMX_FREQ_FMUL_R = 20
++RANDOMX_FREQ_FDIV_M = 4
++RANDOMX_FREQ_FSQRT_R = 6
++RANDOMX_FREQ_CBRANCH = 16
++RANDOMX_FREQ_CFROUND = 1
++RANDOMX_FREQ_ISTORE = 16
++RANDOMX_FREQ_NOP = 0
+diff --git a/pkg-randomx-arweave.js/configuration.toml b/pkg-randomx-arweave.js/configuration.toml
+new file mode 100644
+index 0000000..e088757
+--- /dev/null
++++ b/pkg-randomx-arweave.js/configuration.toml
+@@ -0,0 +1,50 @@
++# RandomX configuration
++RANDOMX_ARGON_MEMORY = 524288          # Arweave "rx4096" H0 build: 512 MiB cache (apps/arweave/lib/Makefile)
++RANDOMX_ARGON_ITERATIONS = 3           # Number of Argon2d iterations for Cache initialization
++RANDOMX_ARGON_LANES = 1                # Number of parallel lanes for Cache initialization
++RANDOMX_ARGON_SALT = "RandomX-Arweave\\x01" # ArweaveTeam/RandomX src/configuration.h
++RANDOMX_CACHE_ACCESSES = 8             # Number of random Cache accesses per Dataset item
++RANDOMX_SUPERSCALAR_LATENCY = 170      # Target latency for SuperscalarHash in CPU cycles
++RANDOMX_DATASET_BASE_SIZE = 4294967296 # Arweave "rx4096" (apps/arweave/lib/Makefile)
++RANDOMX_DATASET_EXTRA_SIZE = 31563008  # ArweaveTeam/RandomX src/configuration.h
++RANDOMX_PROGRAM_SIZE = 256             # Number of instructions in a RandomX program
++RANDOMX_PROGRAM_ITERATIONS = 2048      # Number of iterations per program
++RANDOMX_PROGRAM_COUNT = 8              # Number of programs per hash
++RANDOMX_JUMP_BITS = 8                  # Jump condition mask size in bits
++RANDOMX_JUMP_OFFSET = 8                # Jump condition mask offset in bits
++RANDOMX_SCRATCHPAD_L3 = 2097152        # Scratchpad L3 size in bytes
++RANDOMX_SCRATCHPAD_L2 = 262144         # Scratchpad L2 size in bytes
++RANDOMX_SCRATCHPAD_L1 = 16384          # Scratchpad L1 size in bytes
++
++# Instruction frequencies (per 256 opcodes)
++# Total sum of frequencies must be 256
++RANDOMX_FREQ_IADD_RS = 25
++RANDOMX_FREQ_IADD_M = 7
++RANDOMX_FREQ_ISUB_R = 16
++RANDOMX_FREQ_ISUB_M = 7
++RANDOMX_FREQ_IMUL_R = 16
++RANDOMX_FREQ_IMUL_M = 4
++RANDOMX_FREQ_IMULH_R = 4
++RANDOMX_FREQ_IMULH_M = 1
++RANDOMX_FREQ_ISMULH_R = 4
++RANDOMX_FREQ_ISMULH_M = 1
++RANDOMX_FREQ_IMUL_RCP = 8
++RANDOMX_FREQ_INEG_R = 2
++RANDOMX_FREQ_IXOR_R = 15
++RANDOMX_FREQ_IXOR_M = 5
++RANDOMX_FREQ_IROR_R = 10
++RANDOMX_FREQ_IROL_R = 0
++RANDOMX_FREQ_ISWAP_R = 4
++RANDOMX_FREQ_FSWAP_R = 8
++RANDOMX_FREQ_FADD_R = 20
++RANDOMX_FREQ_FADD_M = 5
++RANDOMX_FREQ_FSUB_R = 20
++RANDOMX_FREQ_FSUB_M = 5
++RANDOMX_FREQ_FSCAL_R = 6
++RANDOMX_FREQ_FMUL_R = 20
++RANDOMX_FREQ_FDIV_M = 4
++RANDOMX_FREQ_FSQRT_R = 6
++RANDOMX_FREQ_CBRANCH = 16
++RANDOMX_FREQ_CFROUND = 1
++RANDOMX_FREQ_ISTORE = 16
++RANDOMX_FREQ_NOP = 0
+diff --git a/pkg-randomx-arweave.js/index.ts b/pkg-randomx-arweave.js/index.ts
+new file mode 100644
+index 0000000..c50acb3
+--- /dev/null
++++ b/pkg-randomx-arweave.js/index.ts
+@@ -0,0 +1,3 @@
++export * from '../src/vm_single/vm.ts'
++export * from '../src/dataset/dataset.ts'
++export * from '../src/vm_rx2/vm.ts'
+diff --git a/scripts/build.ts b/scripts/build.ts
+index f424063..cccecfe 100755
+--- a/scripts/build.ts
++++ b/scripts/build.ts
+@@ -29,6 +29,7 @@ const BASEPATHS = {
+ 	'pkg-randomwow.js': ['index.ts'],
+ 	'pkg-randomx.js-shared': ['index.ts'],
+ 	'pkg-randomwow.js-shared': ['index.ts'],
++	'pkg-randomx-arweave.js': ['index.ts'],
+ }
+ 
+ async function compile_for(PATH: string, INDICES: string[]) {
+diff --git a/src/jit/jit_vm.c b/src/jit/jit_vm.c
+index 2bffaa2..ba73380 100644
+--- a/src/jit/jit_vm.c
++++ b/src/jit/jit_vm.c
+@@ -325,7 +325,7 @@ uint32_t jit_vm_main(rx_vm_t *VM, rx_program_t *P, uint8_t *scratchpad, uint8_t
+ 			0x73,                   // i32.xor
+ 			0x41,                   // i32.const
+ 		});
+-		WASM_I64(CACHE_LINE_MASK); // CACHE_LINE_MASK
++		WASM_I64((int32_t)(CACHE_LINE_MASK)); // CACHE_LINE_MASK as a signed 32-bit immediate: i32.const takes s32, and a 4 GiB dataset mask (0xFFFFFFC0) exceeds INT32_MAX
+ 		WASM_U8_THUNK({
+ 			0x71,      // i32.and
+ 			0x21, $mx, // local.set $mx
+diff --git a/src/vm_rx2/vm.c b/src/vm_rx2/vm.c
+new file mode 100644
+index 0000000..d58cfaa
+--- /dev/null
++++ b/src/vm_rx2/vm.c
+@@ -0,0 +1,140 @@
++// Arweave "RandomX squared" (RX2) fused entropy, the replica 2.9 packing mask.
++//
++// Mirrors apps/arweave/c_src/randomx/randomx_squared.cpp (rsp_fused_entropy) in Arweave at
++// commit 18d402c. As in vm_single, JavaScript drives the loop: each P() call generates one
++// RandomX program and returns its JIT-compiled WebAssembly size; the JS side compiles and runs
++// it, then calls F() to fold the register file back into the lane's 64-byte hash.
++//
++// Build with the "squared" configuration: scratchpad L1 = L2 = L3 = 2 MiB, dataset base 2 GiB.
++
++#include "vm/vm.h"
++#include "aes/aes.h"
++#include "blake2b/blake2b.h"
++#include "freestanding.h"
++#include "jit/jit.h"
++#include "jit/jit_vm.h"
++
++#include <stdint.h>
++
++#define RX2_MAX_LANES 4 // REPLICA_2_9_RANDOMX_LANE_COUNT, include/ar_consensus.hrl
++
++static uint8_t jit_buffer[16 * 1024]; // also the JS <-> WASM byte exchange area
++
++alignas(16) static rx_program_t P;
++alignas(16) static rx_vm_t VM;
++
++// Two scratchpad sets, as the native code keeps 2 * laneCount VMs: the far mix copies one
++// set into the other, alternating each depth round.
++alignas(16) static uint8_t scratchpads[2 * RX2_MAX_LANES][RANDOMX_SCRATCHPAD_L3];
++alignas(16) static uint8_t lane_hashes[RX2_MAX_LANES][64]; // tempHash per lane
++
++static uint32_t crc32c_table[256];
++
++// CRC-32C (Castagnoli) single-word update with no pre/post inversion: the semantics of the
++// x86 _mm_crc32_u32 / ARM __crc32cw intrinsics that crc32.h maps crc32() to.
++static void crc32c_table_init(void) {
++	for (uint32_t index = 0; index < 256; index++) {
++		uint32_t value = index;
++		for (int bit = 0; bit < 8; bit++) {
++			value = (value & 1) ? (value >> 1) ^ 0x82F63B78u : value >> 1;
++		}
++		crc32c_table[index] = value;
++	}
++}
++
++static uint32_t crc32c_u32(uint32_t crc, uint32_t word) {
++	for (int byte = 0; byte < 4; byte++) {
++		crc = crc32c_table[(crc ^ (word >> (8 * byte))) & 0xff] ^ (crc >> 8);
++	}
++	return crc;
++}
++
++// called on startup; returns the exchange buffer
++WASM_EXPORT("i")
++void *init(uint8_t feature) {
++	jit_feature = feature;
++	crc32c_table_init();
++	return jit_buffer;
++}
++
++// Seed every lane: jit_buffer holds lane_count 32-byte lane seeds, each
++// SHA-256(key || lane_index + 1) computed by the caller.
++// tempHash = Blake2b-512(laneSeed); initScratchpad(tempHash) = fillAes1Rx4, which also
++// advances tempHash in place.
++WASM_EXPORT("S")
++void seed_lanes(uint32_t lane_count) {
++	for (uint32_t lane = 0; lane < lane_count; lane++) {
++		blake2b(lane_hashes[lane], 64, jit_buffer + 32 * lane, 32);
++		fillAes1Rx4(lane_hashes[lane], RANDOMX_SCRATCHPAD_L3, scratchpads[lane]);
++	}
++}
++
++// resetRoundingMode(): once per lane per depth round (_rsp_exec_inplace)
++WASM_EXPORT("Z")
++void reset_rounding_mode(void) {
++	VM.fprc = 0;
++}
++
++// machine->run(tempHash), part 1: generate the program from the lane hash and JIT it
++// against scratchpad set slot. Returns the JIT module size in jit_buffer.
++WASM_EXPORT("P")
++uint32_t begin_program(uint32_t lane, uint32_t slot) {
++	memset(&VM.r, 0, sizeof(VM.r));
++	fillAes4Rx4(lane_hashes[lane], sizeof(P), (void *)&P);
++	vm_program(&VM, &P);
++	return jit_vm(&VM, &P, scratchpads[slot], jit_buffer);
++}
++
++// after the JIT module ran: tempHash = Blake2b-512(RegisterFile)
++WASM_EXPORT("F")
++void finish_program(uint32_t lane) {
++	blake2b(lane_hashes[lane], 64, &VM, 256);
++}
++
++// _rsp_mix_entropy_near, in place on one scratchpad
++WASM_EXPORT("N")
++void mix_near(uint32_t slot) {
++	uint32_t *words = (uint32_t *)scratchpads[slot];
++	const uint32_t word_count = RANDOMX_SCRATCHPAD_L3 / 4;
++	uint32_t state = ~0u;
++	for (uint32_t index = 0; index < word_count; index += 2) {
++		state = ~crc32c_u32(state, words[index]);
++		words[index] ^= state;
++	}
++	for (uint32_t index = 1; index < word_count; index += 2) {
++		state = ~crc32c_u32(state, words[index]);
++		words[index] ^= state;
++	}
++}
++
++// _rsp_mix_entropy_far with jumpSize = scratchpadSize: interleave block_size-byte blocks
++// taken from each lane in turn, writing the lanes of the other scratchpad set in order.
++WASM_EXPORT("X")
++void mix_far(uint32_t from_base, uint32_t to_base, uint32_t lane_count, uint32_t block_size) {
++	const uint32_t scratchpad_size = RANDOMX_SCRATCHPAD_L3;
++	const uint32_t blocks_per_jump = scratchpad_size / block_size;
++	const uint32_t leftover = scratchpad_size % block_size;
++	uint32_t out_offset = 0;
++
++	for (uint32_t block = 0; block <= blocks_per_jump; block++) {
++		const uint32_t length = block < blocks_per_jump ? block_size : leftover;
++		if (length == 0) {
++			break;
++		}
++		for (uint32_t lane = 0; lane < lane_count; lane++) {
++			const uint8_t *source = scratchpads[from_base + lane] + block * block_size;
++			// the output may straddle two destination lanes
++			for (uint32_t byte = 0; byte < length; byte++) {
++				const uint32_t position = out_offset + byte;
++				scratchpads[to_base + position / scratchpad_size][position % scratchpad_size] = source[byte];
++			}
++			out_offset += length;
++		}
++	}
++}
++
++// pointer to one scratchpad, for the caller to read the finished entropy
++WASM_EXPORT("O")
++void *scratchpad_pointer(uint32_t slot) {
++	return scratchpads[slot];
++}
+diff --git a/src/vm_rx2/vm.ts b/src/vm_rx2/vm.ts
+new file mode 100644
+index 0000000..4e40dd9
+--- /dev/null
++++ b/src/vm_rx2/vm.ts
+@@ -0,0 +1,88 @@
++import type { RxCache, RxCacheHandle } from '../dataset/dataset'
++import { jit_detect, type JitFeature } from '../detect/detect'
++
++// @ts-ignore
++import rx2_wasm, { wasm_pages as rx2_wasm_pages } from 'rx2vm.wasm'
++
++const _feature: JitFeature = jit_detect()
++
++/**
++ * Parameters of Arweave's replica 2.9 entropy (include/ar_consensus.hrl,
++ * ar_mine_randomx.erl randomx_generate_replica_2_9_entropy, ar_rxsquared_nif.c).
++ */
++export const RX2_LANE_COUNT = 4 // REPLICA_2_9_RANDOMX_LANE_COUNT
++export const RX2_DEPTH = 3 // REPLICA_2_9_RANDOMX_DEPTH
++export const RX2_PROGRAM_COUNT = 6 // REPLICA_2_9_RANDOMX_PROGRAM_COUNT
++export const RX2_FAR_MIX_BLOCK_SIZE = 6 // literal 6 passed as blockSize in ar_rxsquared_nif.c
++export const RX2_SCRATCHPAD_SIZE = 2097152 // RANDOMX_SCRATCHPAD_SIZE
++
++type Rx2Module = {
++	memory: WebAssembly.Memory
++	i(feature: JitFeature): number
++	S(lane_count: number): void
++	Z(): void
++	P(lane: number, slot: number): number
++	F(lane: number): void
++	N(slot: number): void
++	X(from_base: number, to_base: number, lane_count: number, block_size: number): void
++	O(slot: number): number
++}
++
++/**
++ * An RX2 entropy generator sharing a RandomX cache made by randomx_init_cache with the
++ * Arweave packing key. The cache's superscalar hash computes dataset items on demand
++ * (light mode), which gives the same results as the node's fast mode.
++ */
++export function randomx_create_rx2(cache: RxCache | RxCacheHandle) {
++	const SCRATCH_SIZE = 16 * 1024
++	const memory = new WebAssembly.Memory({ initial: rx2_wasm_pages, maximum: rx2_wasm_pages })
++	const module = new WebAssembly.Module(rx2_wasm as any)
++	const exports = new WebAssembly.Instance(module, { env: { memory } }).exports as Rx2Module
++	const scratch_ptr = exports.i(_feature)
++
++	const superscalar = new WebAssembly.Instance(cache.thunk, { e: { m: cache.memory } }).exports as { d: unknown }
++	const jit_imports = { e: { m: memory, d: superscalar.d } } as Record<string, Record<string, any>>
++
++	function run_jit(size: number) {
++		const code = new Uint8Array(memory.buffer, scratch_ptr, size)
++		const instance = new WebAssembly.Instance(new WebAssembly.Module(code), jit_imports)
++		;(instance.exports as { d: () => void }).d()
++	}
++
++	// _rsp_exec_inplace: programCount programs on one lane's scratchpad, then the near mix
++	function exec_inplace(lane: number, slot: number) {
++		exports.Z()
++		for (let program = 0; program < RX2_PROGRAM_COUNT; program++) {
++			run_jit(exports.P(lane, slot))
++			exports.F(lane)
++		}
++		exports.N(slot)
++	}
++
++	return {
++		/**
++		 * rsp_fused_entropy for one entropy key. laneSeeds[i] must be
++		 * SHA-256(key || byte(i + 1)). Returns laneCount * 2 MiB = 8 MiB of entropy.
++		 */
++		fused_entropy(laneSeeds: Uint8Array[]): Uint8Array {
++			const lanes = laneSeeds.length
++			const exchange = new Uint8Array(memory.buffer, scratch_ptr, SCRATCH_SIZE)
++			laneSeeds.forEach((seed, lane) => exchange.set(seed, 32 * lane))
++			exports.S(lanes)
++
++			let current = 0 // scratchpad set holding the lanes' working state
++			for (let depth = 0; depth < RX2_DEPTH; depth++) {
++				const other = current === 0 ? lanes : 0
++				for (let lane = 0; lane < lanes; lane++) exec_inplace(lane, current + lane)
++				exports.X(current, other, lanes, RX2_FAR_MIX_BLOCK_SIZE)
++				current = other
++			}
++
++			const entropy = new Uint8Array(lanes * RX2_SCRATCHPAD_SIZE)
++			for (let lane = 0; lane < lanes; lane++) {
++				entropy.set(new Uint8Array(memory.buffer, exports.O(current + lane), RX2_SCRATCHPAD_SIZE), lane * RX2_SCRATCHPAD_SIZE)
++			}
++			return entropy
++		},
++	}
++}
+diff --git a/tests/arweave_h0_block.mjs b/tests/arweave_h0_block.mjs
+new file mode 100644
+index 0000000..2f01b32
+--- /dev/null
++++ b/tests/arweave_h0_block.mjs
+@@ -0,0 +1,63 @@
++// Tests the Arweave RandomX build against mainnet block 2,040,257: its solution hash must equal
++// SHA-256(H0 ‖ hash_preimage) (ar_block.erl compute_solution_h), where H0 is RandomX over the
++// mining preimage (ar_block.erl compute_h0). Run: node tests/arweave_h0_block.mjs <block.json>
++import { createHash } from 'node:crypto';
++import { readFileSync } from 'node:fs';
++import { randomx_init_cache, randomx_create_vm } from '../pkg-randomx-arweave.js/dist/esm/index.mjs';
++
++class ArweaveH0BlockTest {
++  static PACKING_KEY = 'default arweave 2.5 pack key'; // RANDOMX_PACKING_KEY, include/ar_consensus.hrl
++
++  constructor(blockPath) {
++    this.block = JSON.parse(readFileSync(blockPath, 'utf8'));
++  }
++
++  static fromBase64Url(text) {
++    return Buffer.from(text.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
++  }
++
++  static uint256(value) {
++    return Buffer.from(BigInt(value).toString(16).padStart(64, '0'), 'hex');
++  }
++
++  /** compute_h0's preimage; `seed` is the PREVIOUS block's nonce_limiter_info.seed. */
++  h0Preimage(seed) {
++    const info = this.block.nonce_limiter_info;
++    return Buffer.concat([
++      ArweaveH0BlockTest.fromBase64Url(info.output).subarray(0, 32),
++      ArweaveH0BlockTest.uint256(this.block.partition_number),
++      seed.subarray(0, 32),
++      ArweaveH0BlockTest.fromBase64Url(this.block.reward_addr),
++      Buffer.from([Number(this.block.packing_difficulty)]),
++    ]);
++  }
++
++  run() {
++    let started = performance.now();
++    const cache = randomx_init_cache(ArweaveH0BlockTest.PACKING_KEY);
++    const vm = randomx_create_vm(cache);
++    console.log(`cache ready in ${((performance.now() - started) / 1000).toFixed(1)} s`);
++
++    const expected = ArweaveH0BlockTest.fromBase64Url(this.block.hash);
++    const hashPreimage = ArweaveH0BlockTest.fromBase64Url(this.block.hash_preimage);
++    const info = this.block.nonce_limiter_info;
++    // Approximation: the previous block's seed is not in this block. Within one VDF session it
++    // equals this block's seed; across a reset it would be different, so both candidates are tried.
++    for (const [label, seedText] of [['this block seed', info.seed], ['this block next_seed', info.next_seed]]) {
++      started = performance.now();
++      const h0 = Buffer.from(vm.calculate_hash(this.h0Preimage(ArweaveH0BlockTest.fromBase64Url(seedText))));
++      const seconds = (performance.now() - started) / 1000;
++      const solution = createHash('sha256').update(Buffer.concat([h0, hashPreimage])).digest();
++      const matched = solution.equals(expected);
++      console.log(`${matched ? 'PASS' : 'no match'}  ${label}: H0 ${h0.toString('hex').slice(0, 16)}…  (${seconds.toFixed(3)} s)`);
++      if (matched) {
++        console.log('block solution hash reproduced exactly: the WebAssembly RandomX matches Arweave mainnet');
++        return;
++      }
++    }
++    console.log('FAIL: no candidate reproduced the block hash');
++    process.exitCode = 1;
++  }
++}
++
++new ArweaveH0BlockTest(process.argv[2]).run();
+diff --git a/tests/arweave_rx2_block.mjs b/tests/arweave_rx2_block.mjs
+new file mode 100644
+index 0000000..492bc18
+--- /dev/null
++++ b/tests/arweave_rx2_block.mjs
+@@ -0,0 +1,57 @@
++// Tests the WebAssembly RX2 entropy against mainnet block 2,040,257: the block carries each
++// recall chunk both packed (poa.chunk) and unpacked (poa.unpacked_chunk), so
++// packed XOR unpacked must equal the entropy slice for that sub-chunk.
++// Run: node tests/arweave_rx2_block.mjs <block.json> <path to browser-node directory>
++import { readFileSync } from 'node:fs';
++import { pathToFileURL } from 'node:url';
++import path from 'node:path';
++import { randomx_init_cache, randomx_create_rx2, RX2_LANE_COUNT } from '../pkg-randomx-arweave.js/dist/esm/index.mjs';
++
++class Rx2BlockTest {
++  static PACKING_KEY = 'default arweave 2.5 pack key';
++
++  constructor(blockPath, libraryDirectory) {
++    this.block = JSON.parse(readFileSync(blockPath, 'utf8'));
++    this.libraryUrl = pathToFileURL(path.join(libraryDirectory, 'arweave_miner.js')).href;
++  }
++
++  async run() {
++    const { Bytes, Sha256, Replica29Layout, ConsensusConstants } = await import(this.libraryUrl);
++    const subChunkSize = ConsensusConstants.SUB_CHUNK_SIZE;
++    const address = Bytes.fromBase64Url(this.block.reward_addr);
++
++    let started = performance.now();
++    const generator = randomx_create_rx2(randomx_init_cache(Rx2BlockTest.PACKING_KEY));
++    console.log(`cache and RX2 VM ready in ${((performance.now() - started) / 1000).toFixed(1)} s`);
++
++    let failures = 0;
++    for (const [field, byteField] of [['poa', 'recall_byte'], ['poa2', 'recall_byte2']]) {
++      const packed = Bytes.fromBase64Url(this.block[field].chunk);
++      const unpacked = Bytes.fromBase64Url(this.block[field].unpacked_chunk);
++      const endOffset = Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField]));
++      const sliceIndex = Replica29Layout.sliceIndex(endOffset);
++      console.log(`${field}: packed ${packed.length} bytes, unpacked ${unpacked.length} bytes, slice ${sliceIndex}`);
++
++      // poa.chunk holds only the one packed sub-chunk the nonce chose: nonce rem 32 (ar_block.erl get_recall_byte).
++      for (const subChunkIndex of [Number(Bytes.toBigInt(Bytes.fromBase64Url(this.block.nonce))) % ConsensusConstants.SUB_CHUNK_COUNT]) {
++        const key = Replica29Layout.entropyKey(address, endOffset, subChunkIndex * subChunkSize);
++        const laneSeeds = Array.from({ length: RX2_LANE_COUNT }, (_, lane) => Sha256.hash(key, new Uint8Array([lane + 1])));
++        started = performance.now();
++        const entropy = generator.fused_entropy(laneSeeds);
++        const seconds = (performance.now() - started) / 1000;
++        const slice = entropy.subarray(sliceIndex * subChunkSize, (sliceIndex + 1) * subChunkSize);
++
++        const start = subChunkIndex * subChunkSize;
++        const expectedMask = new Uint8Array(subChunkSize);
++        for (let index = 0; index < subChunkSize; index++) expectedMask[index] = packed[index] ^ unpacked[start + index];
++        const matched = Bytes.equal(slice, expectedMask);
++        if (!matched) failures++;
++        console.log(`${matched ? 'PASS' : 'FAIL'}  ${field} sub-chunk ${subChunkIndex}: entropy in ${seconds.toFixed(2)} s`);
++      }
++    }
++    console.log(failures === 0 ? 'packing reproduced exactly: WebAssembly RX2 matches Arweave mainnet' : `${failures} mismatch(es)`);
++    process.exitCode = failures === 0 ? 0 : 1;
++  }
++}
++
++new Rx2BlockTest(process.argv[2], process.argv[3]).run();

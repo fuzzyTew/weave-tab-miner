@@ -78,36 +78,36 @@ class BlockTests {
       `${unpacked.length} bytes`);
   }
 
-  testMiningPipeline() {
+  async testMiningPipeline() {
     const identity = MiningIdentity.fromAddress(this.block.reward_addr);
     const packer = new ChunkPacker(identity, new StubEntropySource());
     const storage = new HeldStorage();
     for (const [chunkField, byteField] of [['poa', 'recall_byte'], ['poa2', 'recall_byte2']]) {
       const endOffset = Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField]));
-      storage.add(endOffset, packer.packChunk(Bytes.fromBase64Url(this.block[chunkField].unpacked_chunk), endOffset));
+      storage.add(endOffset, await packer.packChunk(Bytes.fromBase64Url(this.block[chunkField].unpacked_chunk), endOffset));
     }
     const session = VdfSession.fromBlock(this.block);
     const [stepNumber, output] = session.steps().at(-1);
 
     const honestMiner = new Miner({ identity, partitionNumber: this.block.partition_number, storage, h0Hasher: new StubH0Hasher() });
-    const honestReport = honestMiner.mineStep(session, stepNumber, output);
+    const honestReport = await honestMiner.mineStep(session, stepNumber, output);
     this.check('honest step runs; ranges inside the weave', honestReport.range2Start < session.partitionUpperBound,
       `nonces tried ${honestReport.noncesTried}`);
 
     const testMiner = new Miner({ identity, partitionNumber: this.block.partition_number, storage, h0Hasher: new StubH0Hasher(),
       testMode: { aimRange1AtHeldData: true, difficultyEase: 1e8 } });
-    const testReport = testMiner.mineStep(session, stepNumber, output);
+    const testReport = await testMiner.mineStep(session, stepNumber, output);
     this.check('test mode reaches the H1 path on held data', testReport.noncesTried > 0, `nonces tried ${testReport.noncesTried}, solution: ${testReport.solution?.kind ?? 'none'}`);
 
     const seconds = SolutionOdds.expectedSecondsPerSolution({ storage, partitionNumber: this.block.partition_number, session });
     console.log(`      expected wait holding these ${storage.byteCount} bytes: ${(seconds / 31_557_600).toExponential(3)} years`);
   }
 
-  run() {
+  async run() {
     this.testSha256();
     this.testDifficulty();
     this.testLayout();
-    this.testMiningPipeline();
+    await this.testMiningPipeline();
     this.testVdfStep();
     console.log(this.failures === 0 ? 'all checks passed' : `${this.failures} check(s) failed`);
     process.exitCode = this.failures === 0 ? 0 : 1;

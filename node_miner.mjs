@@ -2,21 +2,25 @@
 //
 //   node node_miner.mjs --address <43-char address> [--partition 62] [--chunks 16]
 //                       [--vdf follow|local|replay] [--sample sample_block.json]
-//                       [--test-ease 1000000000] [--aim-at-held]
+//                       [--stub-randomx] [--test-ease 1000000000] [--aim-at-held]
 //
 // --sample uses a saved block (and its two chunks) instead of the network.
+// --stub-randomx swaps real RandomX for SHA-256 stand-ins (fast, but finds nothing real).
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   Bytes, ConsensusConstants, Replica29Layout, MiningIdentity, ChunkPacker, StubEntropySource,
   StubH0Hasher, HeldStorage, Miner, VdfSession, VdfChain, SolutionOdds,
 } from './arweave_miner.js';
 import { ArweaveGateway } from './arweave_gateway.js';
+import { RandomxBundle, RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from './arweave_randomx.js';
 
 class CommandLineOptions {
   /**
    * `--name value` pairs and bare `--flag`s, with defaults.
    */
-  static DEFAULTS = { partition: null, chunks: '8', vdf: 'follow', sample: null, testEase: '1', aimAtHeld: false, address: null };
+  static DEFAULTS = { partition: null, chunks: '8', vdf: 'follow', sample: null, testEase: '1', aimAtHeld: false, stubRandomx: false, address: null };
 
   static parse(argv) {
     const options = { ...CommandLineOptions.DEFAULTS };
@@ -44,6 +48,15 @@ class ServerMiner {
     this.identity = MiningIdentity.fromAddress(options.address);
     this.storage = new HeldStorage();
     this.lastMinedStep = -1;
+    if (options.stubRandomx) {
+      this.h0Hasher = new StubH0Hasher();
+      this.entropySource = new StubEntropySource();
+    } else {
+      const bundlePath = join(dirname(fileURLToPath(import.meta.url)), 'vendor/randomx-arweave/randomx-arweave.iife.js');
+      const host = new RandomxDirectHost(RandomxBundle.fromText(readFileSync(bundlePath, 'utf8')));
+      this.h0Hasher = new RandomxH0Hasher(host);
+      this.entropySource = new RandomxSquaredEntropySource(host);
+    }
   }
 
   async loadBlock() {
@@ -53,50 +66,55 @@ class ServerMiner {
   }
 
   async holdChunks() {
-    const packer = new ChunkPacker(this.identity, new StubEntropySource());
+    const packer = new ChunkPacker(this.identity, this.entropySource);
+    const progress = (done, total) => process.stdout.write(`\rpacking: entropy ${done}/${total}`);
+    const fetched = [];
     if (this.options.sample) {
-      for (const [chunkField, byteField] of [['poa', 'recall_byte'], ['poa2', 'recall_byte2']]) {
-        const endOffset = Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField]));
-        this.storage.add(endOffset, packer.packChunk(Bytes.fromBase64Url(this.block[chunkField].unpacked_chunk), endOffset));
+      for (const [proof, byteField] of [['poa', 'recall_byte'], ['poa2', 'recall_byte2']]) {
+        fetched.push({ bytes: Bytes.fromBase64Url(this.block[proof].unpacked_chunk), endOffset: Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField])) });
       }
-      return;
-    }
-    const partitionStart = BigInt(this.partitionNumber) * ConsensusConstants.PARTITION_SIZE;
-    const windowSize = Number(ConsensusConstants.PARTITION_SIZE);
-    for (let index = 0; index < Number(this.options.chunks); index++) {
-      const weaveByte = partitionStart + BigInt(Math.floor(Math.random() * windowSize));
-      try {
-        const chunk = Bytes.fromBase64Url((await this.gateway.chunkJson(weaveByte)).chunk);
-        const endOffset = Replica29Layout.bucketEndOffsetForByte(weaveByte);
-        this.storage.add(endOffset, packer.packChunk(chunk, endOffset));
-        console.log(`packed ${chunk.length} bytes at weave byte ${weaveByte}`);
-      } catch (error) {
-        console.error(`chunk at ${weaveByte} failed: ${error.message}`);
+    } else {
+      // Chunks at one bucket position across sectors share entropies: 32 entropies for all of them.
+      const partitionStart = BigInt(this.partitionNumber) * ConsensusConstants.PARTITION_SIZE;
+      const firstByte = partitionStart + BigInt(Math.floor(Math.random() * Number(ConsensusConstants.entropySectorSize)));
+      for (const weaveByte of Replica29Layout.entropySharingBytes(firstByte, Number(this.options.chunks), this.session.partitionUpperBound)) {
+        try {
+          const chunk = Bytes.fromBase64Url((await this.gateway.chunkJson(weaveByte)).chunk);
+          fetched.push({ bytes: chunk, endOffset: Replica29Layout.bucketEndOffsetForByte(weaveByte) });
+          console.log(`fetched ${chunk.length} bytes at weave byte ${weaveByte}`);
+        } catch (error) {
+          console.error(`chunk at ${weaveByte} failed: ${error.message}`);
+        }
       }
     }
+    const packed = await packer.packChunks(fetched, progress);
+    process.stdout.write('\n');
+    packed.forEach((packedChunk, index) => this.storage.add(fetched[index].endOffset, packedChunk));
   }
 
   makeMiner() {
     return new Miner({
-      identity: this.identity, partitionNumber: this.partitionNumber, storage: this.storage, h0Hasher: new StubH0Hasher(),
+      identity: this.identity, partitionNumber: this.partitionNumber, storage: this.storage, h0Hasher: this.h0Hasher,
       testMode: { aimRange1AtHeldData: this.options.aimAtHeld, difficultyEase: Number(this.options.testEase) },
     });
   }
 
   /** Returns true when a solution was found. */
-  mineStep(stepNumber, output) {
-    const report = this.makeMiner().mineStep(this.session, stepNumber, output);
+  async mineStep(stepNumber, output) {
+    const report = await this.makeMiner().mineStep(this.session, stepNumber, output);
     this.lastMinedStep = Math.max(this.lastMinedStep, stepNumber);
     console.log(`step ${stepNumber}  h0 ${Bytes.toHex(report.h0).slice(0, 12)}  range1 ${report.range1Start}  range2 ${report.range2Start}  h1 ${report.noncesTried}  h2 ${report.h2Tried}`);
     if (!report.solution) return false;
     console.log(`Solution found! ${report.solution.kind}, nonce ${report.solution.nonce}, hash ${Bytes.toHex(report.solution.hash)}`);
-    console.log('(H0 and packing are stand-ins, and test options may be on, so the network would reject it.)');
+    if (this.options.stubRandomx || Number(this.options.testEase) !== 1 || this.options.aimAtHeld) {
+      console.log('(stand-ins or test options were on, so the network would reject it.)');
+    }
     return true;
   }
 
   async mineFollowing() {
     for (;;) {
-      for (const [stepNumber, output] of this.session.steps(this.lastMinedStep)) if (this.mineStep(stepNumber, output)) return;
+      for (const [stepNumber, output] of this.session.steps(this.lastMinedStep)) if (await this.mineStep(stepNumber, output)) return;
       await new Promise((resolve) => setTimeout(resolve, ServerMiner.FOLLOW_POLL_INTERVAL_MS));
       try {
         await this.loadBlock();
@@ -106,7 +124,7 @@ class ServerMiner {
     }
   }
 
-  mineLocalVdf() {
+  async mineLocalVdf() {
     const chain = new VdfChain({ iterationsPerCheckpoint: this.session.vdfDifficulty });
     let stepNumber = this.session.latestStepNumber;
     let output = this.session.stepOutputsNewestFirst[0];
@@ -114,7 +132,7 @@ class ServerMiner {
       stepNumber += 1;
       // Assumption: reset steps mix in the session's next_seed (ar_nonce_limiter:maybe_add_entropy).
       output = chain.computeStep(stepNumber, output, this.session.nextSeed).at(-1);
-      if (this.mineStep(stepNumber, output)) return;
+      if (await this.mineStep(stepNumber, output)) return;
     }
   }
 
@@ -123,9 +141,9 @@ class ServerMiner {
     await this.holdChunks();
     const seconds = SolutionOdds.expectedSecondsPerSolution({ storage: this.storage, partitionNumber: this.partitionNumber, session: this.session });
     console.log(`block ${this.session.height}; holding ${this.storage.byteCount} bytes for ${this.identity.address}; expected wait ${(seconds / 31_557_600).toExponential(2)} years`);
-    if (this.options.vdf === 'local') this.mineLocalVdf();
+    if (this.options.vdf === 'local') await this.mineLocalVdf();
     else if (this.options.vdf === 'replay' || this.options.sample) {
-      for (const [stepNumber, output] of this.session.steps()) if (this.mineStep(stepNumber, output)) return;
+      for (const [stepNumber, output] of this.session.steps()) if (await this.mineStep(stepNumber, output)) return;
     } else await this.mineFollowing();
   }
 }
