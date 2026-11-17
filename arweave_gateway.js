@@ -6,10 +6,19 @@ export class ArweaveGateway {
    * Talks to gateways over HTTPS, trying each in turn. Every failure is kept with its
    * cause, so a network that blocks gateways shows up plainly instead of as a hang.
    */
-  constructor({ gatewayUrls = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'], timeoutMs = 20000, log = () => {} } = {}) {
+  static DEFAULT_GATEWAY_URLS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
+
+  constructor({ gatewayUrls = ArweaveGateway.DEFAULT_GATEWAY_URLS, timeoutMs = 20000, log = () => {} } = {}) {
+    this.fallbackUrls = gatewayUrls;
     this.gatewayUrls = gatewayUrls;
     this.timeoutMs = timeoutMs;
     this.log = log;
+    this.lastAnsweredBy = null;
+  }
+
+  /** Try these node URLs (see arweave_peers.js) before the gateways; [] goes back to gateways only. */
+  preferPeers(peerUrls) {
+    this.gatewayUrls = [...peerUrls, ...this.fallbackUrls];
   }
 
   async request(path, { method = 'GET', body = undefined, headers = {}, readAs = 'json', firstGatewayOnly = false } = {}) {
@@ -19,8 +28,10 @@ export class ArweaveGateway {
       const url = gatewayUrl + path;
       try {
         const response = await fetch(url, { method, body, headers, signal: AbortSignal.timeout(this.timeoutMs) });
+        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}: ${(await response.text()).slice(0, 300)}`);
+        this.lastAnsweredBy = gatewayUrl;
+        if (readAs === 'bytes') return new Uint8Array(await response.arrayBuffer());
         const text = await response.text();
-        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}: ${text.slice(0, 300)}`);
         return readAs === 'json' ? JSON.parse(text) : text;
       } catch (error) {
         const reason = `${method} ${url}: ${error.name}: ${error.message}`;
