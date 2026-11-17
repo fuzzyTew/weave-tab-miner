@@ -754,6 +754,16 @@ export class SolutionOdds {
     const winstonPerSecond = solutionsPerSecond * Number(session.blockRewardWinston);
     return { secondsPerBlock: solutionsPerSecond > 0 ? 1 / solutionsPerSecond : Infinity, arPerDay: (winstonPerSecond * 86_400) / 1e12 };
   }
+
+  /**
+   * Average days until a pool member's earnings, after the pool's fee, reach the pool's
+   * payout threshold. With PPLNS (pay per last N shares) this is the long-run average; the
+   * pool pays only when it finds a block, so real payouts come in lumps around it.
+   */
+  static daysToPayout({ memberArPerDay, feeFraction, thresholdAr }) {
+    const keptPerDay = memberArPerDay * (1 - feeFraction);
+    return keptPerDay > 0 ? thresholdAr / keptPerDay : Infinity;
+  }
 }
 
 export class PrettyNumber {

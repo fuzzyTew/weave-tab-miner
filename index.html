@@ -227,12 +227,16 @@
       <div class="row">
         <label for="poolTabsInput">Tabs<input id="poolTabsInput" type="number" min="1" step="1" value="10000"></label>
         <label for="poolSizeInput">GiB per tab<input id="poolSizeInput" type="number" min="0" step="1" value="20"></label>
+        <label for="poolFeeInput">Pool fee %<input id="poolFeeInput" type="number" min="0" max="100" step="0.5" value="4"></label>
+        <label for="poolThresholdInput">Payout at AR<input id="poolThresholdInput" type="number" min="0" step="0.1" value="0.5"></label>
       </div>
       <dl class="facts">
         <dt>Stored together</dt><dd id="poolStored">—</dd>
         <dt>A block about every</dt><dd id="poolWait">—</dd>
         <dt>Earnings at this block's reward</dt><dd id="poolEarnings">—</dd>
+        <dt>One tab's first payout</dt><dd id="poolPayout">—</dd>
       </dl>
+      <p class="stage-note">The defaults are VirdPool's (ar.virdpool.com): 4% fee, 0.5 AR threshold, PPLNS. This assumes the pool's members together answer every range-2 lookup; a tab alone, trying one-chunk solutions only, waits about 100 times longer.</p>
     </section>
 
     <section class="stage" aria-labelledby="walletHeading">

@@ -918,6 +918,12 @@ class BrowserNodeApp {
     this.view.setText('poolStored', `${PageView.formatBytes(storedBytes)} (${(storedBytes / Number(this.session.partitionUpperBound) * 100).toFixed(2)}% of the weave)`);
     this.view.setText('poolWait', PageView.formatDuration(secondsPerBlock));
     this.view.setText('poolEarnings', `${arPerDay.toPrecision(3)} AR a day in all; ${(arPerDay / tabCount).toPrecision(3)} AR per tab`);
+    const days = SolutionOdds.daysToPayout({
+      memberArPerDay: arPerDay / tabCount,
+      feeFraction: Number(this.view.elements.poolFeeInput.value || 0) / 100,
+      thresholdAr: Number(this.view.elements.poolThresholdInput.value || 0),
+    });
+    this.view.setText('poolPayout', `after about ${PageView.formatDuration(days * 86_400)} of holding ${gibPerTab} GiB`);
   }
 
   bind() {
@@ -938,7 +944,7 @@ class BrowserNodeApp {
     onClick('quoteButton', this.quoteRecord);
     onClick('sendButton', this.sendRecord);
     this.view.elements.partitionInput.addEventListener('change', () => this.refreshSummary());
-    for (const id of ['poolTabsInput', 'poolSizeInput']) this.view.elements[id].addEventListener('input', () => this.refreshPoolOdds());
+    for (const id of ['poolTabsInput', 'poolSizeInput', 'poolFeeInput', 'poolThresholdInput']) this.view.elements[id].addEventListener('input', () => this.refreshPoolOdds());
     this.view.elements.recordInput.addEventListener('input', () => this.view.setText('recordSize', `${this.recordBytes().length} bytes`));
   }
 
