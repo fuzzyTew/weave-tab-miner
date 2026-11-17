@@ -7,7 +7,7 @@ import {
 } from './arweave_miner.js';
 import { ArweaveGateway } from './arweave_gateway.js';
 import { GatewayDirectory, PeerDirectory } from './arweave_peers.js';
-import { VdfServerClient } from './arweave_vdf_client.js';
+import { VdfUpdate } from './arweave_vdf_client.js';
 
 class LiveNetworkCheck {
   /**
@@ -76,8 +76,13 @@ class LiveNetworkCheck {
     });
     await this.attempt(url, 'GET /peers', false, async () => `${(await gateway.request('/peers')).length} peers`);
     await this.attempt(url, 'GET /vdf (VDF server)', false, async () => {
-      const client = new VdfServerClient({ baseUrls: [url], timeoutMs: 15000 });
-      const update = await client.fetchUpdate(url);
+      const response = await fetch(`${url}/vdf`, { signal: AbortSignal.timeout(15000) });
+      const body = new Uint8Array(await response.arrayBuffer());
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      // Raw shape, so a parse failure can be diagnosed from the log.
+      console.log(`      /vdf from ${url}: ${body.length} bytes, content-type ${response.headers.get('content-type')}, first 160 bytes ${Bytes.toHex(body.subarray(0, 160))}`);
+      console.log(`      last 64 bytes ${Bytes.toHex(body.subarray(body.length - 64))}`);
+      const update = VdfUpdate.parse(body);
       return `step ${update.stepNumber}, ${update.stepsNewestFirst.length} steps`;
     });
   }

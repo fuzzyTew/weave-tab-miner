@@ -6,7 +6,8 @@ export class ArweaveGateway {
    * Talks to gateways over HTTPS, trying each in turn. Every failure is kept with its
    * cause, so a network that blocks gateways shows up plainly instead of as a hang.
    */
-  static DEFAULT_GATEWAY_URLS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
+  // ar-io.net and permagate.io were in this list until the live check found neither answering.
+  static DEFAULT_GATEWAY_URLS = ['https://arweave.net', 'https://turbo-gateway.com'];
 
   constructor({ gatewayUrls = ArweaveGateway.DEFAULT_GATEWAY_URLS, timeoutMs = 20000, log = () => {} } = {}) {
     this.fallbackUrls = gatewayUrls;

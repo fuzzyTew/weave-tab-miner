@@ -68,9 +68,9 @@ export class GatewayDirectory {
    * allow any website to read it (cors() in ar-io-node src/app.ts).
    *
    * Asked of known ar.io gateways only: arweave.net answers /ar-io/peers with 404, so it
-   * is not one, or does not expose that route.
+   * is not one, or does not expose that route. turbo-gateway.com answered in the live check.
    */
-  static AR_IO_GATEWAY_URLS = ['https://ar-io.net', 'https://permagate.io', 'https://turbo-gateway.com'];
+  static AR_IO_GATEWAY_URLS = ['https://turbo-gateway.com'];
 
   constructor({ arIoGatewayUrls = GatewayDirectory.AR_IO_GATEWAY_URLS, maxGateways = 20, timeoutMs = 20000, log = () => {} } = {}) {
     Object.assign(this, { maxGateways, log });

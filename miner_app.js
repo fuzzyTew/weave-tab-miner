@@ -41,7 +41,7 @@ class RunYourself {
    * Fills the "Run it yourself" panel: a download link when the page came from a web
    * server, and a link to its permanent Arweave copy once one exists (permaweb.json).
    */
-  static GATEWAYS_FOR_LINKS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
+  static GATEWAYS_FOR_LINKS = ['https://arweave.net', 'https://turbo-gateway.com'];
 
   constructor(view) {
     this.view = view;
@@ -842,7 +842,7 @@ class BrowserNodeApp {
     const blocked = PeerAccess.blockedReason();
     this.view.setText('peerStatus', blocked
       ? `Gateways only: ${blocked}. "Find gateways and peers" still adds more gateways.`
-      : '3 gateways for now. "Find gateways and peers" adds gateways from ar.io and looks for nodes this page can reach directly.');
+      : '2 gateways for now. "Find gateways and peers" adds gateways from ar.io and looks for nodes this page can reach directly.');
     // Open in a working state: the sample block, mining for the address that won it.
     this.loadSampleBlock();
     this.view.elements.addressInput.value = this.block.reward_addr;
