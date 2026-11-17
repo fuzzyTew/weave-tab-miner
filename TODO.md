@@ -43,6 +43,14 @@ or a peer list of other malicious nodes. Each item below says what to check and 
 - [ ] After sending a transaction, confirm it from a different source than the one it was
       sent to.
 - [ ] Check a transaction anchor (`/tx_anchor`) is a recent block or transaction we know of.
+- [ ] Compare a wallet's history across sources. GraphQL "received" for the same address
+      gave 0 on arweave.net and 2 on turbo-gateway.com: show both and say which is behind.
+
+### Reaching the network
+- [ ] Optional Tor transport, for networks that block Arweave hosts: tor-js (Arti compiled
+      to WebAssembly, `fetch()`-like) through Snowflake WebSocket bridges, or webtor-rs.
+      Off by default: it is several MB, slow to start, and bridges or gateways may block it
+      too. Plug it in as a `fetch` the gateway and peer classes take.
 
 ## Building blocks
 
