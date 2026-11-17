@@ -1,0 +1,279 @@
+<title>Weave Tab Miner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<style>
+  /* Layout: a single instrument column — readouts on top, the four setup stages as a grid, then the step table and log. */
+  :root {
+    --bg: #eef0ed;
+    --panel: #f8f9f7;
+    --ink: #1c2420;
+    --muted: #5d6a63;
+    --rule: #cfd6d1;
+    --accent: #0e6b5c;
+    --accent-ink: #ffffff;
+    --good: #23733f;
+    --warn: #9a5b00;
+    --bad: #a3322b;
+    --stub-bg: #f6e7c8;
+    --real-bg: #d8ece4;
+    --font-display: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+    --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-data: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121715; --panel: #19201d; --ink: #e2e8e4; --muted: #95a39b; --rule: #2c3631;
+      --accent: #4fb8a3; --accent-ink: #0d1412; --good: #6fcf8f; --warn: #e6a945; --bad: #f08a80;
+      --stub-bg: #3d3220; --real-bg: #1f3a31; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121715; --panel: #19201d; --ink: #e2e8e4; --muted: #95a39b; --rule: #2c3631;
+    --accent: #4fb8a3; --accent-ink: #0d1412; --good: #6fcf8f; --warn: #e6a945; --bad: #f08a80;
+    --stub-bg: #3d3220; --real-bg: #1f3a31; color-scheme: dark;
+  }
+
+  body {
+    background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px 48px;
+  }
+  .page { max-width: 1080px; margin: 0 auto; display: grid; gap: 20px; }
+  h1, h2 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; }
+  h1 { font-size: 2rem; letter-spacing: 0.01em; }
+  h2 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  p { margin: 0; max-width: 68ch; }
+  .lede { color: var(--muted); }
+  code, .data { font-family: var(--font-data); font-size: 0.86em; }
+
+  .readouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); border: 1px solid var(--rule); background: var(--panel); }
+  .readout { padding: 12px 14px; border-right: 1px solid var(--rule); min-width: 0; }
+  .readout:last-child { border-right: 0; }
+  .readout-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .readout-value { font-family: var(--font-data); font-size: 1.05rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .readout-wait .readout-value { color: var(--accent); }
+
+  .banner { border: 2px solid var(--good); background: var(--real-bg); padding: 14px 16px; display: grid; gap: 4px; }
+  .banner strong { font-family: var(--font-display); font-size: 1.4rem; color: var(--good); }
+
+  .stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .stage { background: var(--panel); border: 1px solid var(--rule); padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+  .stage-number { color: var(--accent); font-family: var(--font-data); margin-right: 6px; }
+  .stage-note { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  label { font-size: 0.85rem; color: var(--muted); display: grid; gap: 4px; }
+  textarea { font: 0.82rem var(--font-data); color: var(--ink); background: var(--bg); border: 1px solid var(--rule); padding: 6px 8px; width: 100%; min-width: 0; resize: vertical; box-sizing: border-box; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 0.85rem; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; font-family: var(--font-data); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; min-width: 0; }
+  .history { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem; }
+  .history ul { margin: 4px 0 0; padding-left: 16px; font-family: var(--font-data); overflow-wrap: anywhere; }
+  a { color: var(--accent); }
+  input[type="text"], input[type="number"], select {
+    font: 0.9rem var(--font-data); color: var(--ink); background: var(--bg);
+    border: 1px solid var(--rule); padding: 6px 8px; width: 100%; min-width: 0;
+  }
+  .choice { display: flex; gap: 8px; align-items: center; color: var(--ink); font-size: 0.9rem; }
+  button {
+    font: 600 0.88rem var(--font-body); padding: 7px 12px; border: 1px solid var(--accent);
+    background: transparent; color: var(--accent); cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .address { font-family: var(--font-data); font-size: 0.8rem; overflow-wrap: anywhere; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule); background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; font-family: var(--font-data); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  th { font-family: var(--font-body); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .row-solution td { background: var(--real-bg); color: var(--good); font-weight: 500; }
+
+  .log { list-style: none; margin: 0; padding: 10px 12px; max-height: 220px; overflow: auto; background: var(--panel); border: 1px solid var(--rule); font-family: var(--font-data); font-size: 0.78rem; }
+  .log-line { overflow-wrap: anywhere; }
+  .tone-good { color: var(--good); } .tone-warn { color: var(--warn); } .tone-error { color: var(--bad); }
+
+  .ledger { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .ledger ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .chip { display: inline-block; font: 600 0.68rem var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; }
+  .chip-real { background: var(--real-bg); color: var(--good); }
+  .chip-stub { background: var(--stub-bg); color: var(--warn); }
+  section { display: grid; gap: 10px; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: no-preference) { button { transition: background 120ms; } }
+</style>
+
+<main class="page">
+  <header style="display:grid; gap:6px">
+    <h1>Weave Tab Miner</h1>
+    <p class="lede">An Arweave mining node that runs in this tab: it takes a mining address, packs chunks of the live weave to it, follows the VDF, and checks every nonce it can against the network difficulty. Given long enough, it would say "Solution found!"</p>
+  </header>
+
+  <div class="readouts" aria-live="polite">
+    <div class="readout"><div class="readout-label">Block height</div><div class="readout-value" id="networkHeight">—</div></div>
+    <div class="readout"><div class="readout-label">Latest VDF step</div><div class="readout-value" id="networkStep">—</div></div>
+    <div class="readout"><div class="readout-label">Data held, packed</div><div class="readout-value"><span id="heldBytes">0 B</span> · <span id="heldChunks">0 chunks</span></div></div>
+    <div class="readout"><div class="readout-label">Steps mined</div><div class="readout-value" id="stepsMined">0</div></div>
+    <div class="readout readout-wait"><div class="readout-label">Expected wait for a real solution</div><div class="readout-value" id="expectedWait">—</div></div>
+  </div>
+
+  <div class="banner" id="solutionBanner" hidden>
+    <strong id="solutionTitle">Solution found!</strong>
+    <span id="solutionDetail"></span>
+  </div>
+
+  <div class="stages">
+    <section class="stage" aria-labelledby="identityHeading">
+      <h2 id="identityHeading"><span class="stage-number">1</span>Identity</h2>
+      <div class="row"><button id="generateButton" type="button">Generate a key</button></div>
+      <label for="addressInput">or use a mining address
+        <input id="addressInput" type="text" spellcheck="false" autocomplete="off" placeholder="43-character address">
+      </label>
+      <div class="row"><button id="addressButton" type="button">Use this address</button></div>
+      <label for="keyfileInput">or paste a keyfile (JWK JSON); it stays in this tab
+        <textarea id="keyfileInput" rows="2" spellcheck="false" autocomplete="off" placeholder='{"kty":"RSA", …}'></textarea>
+      </label>
+      <div class="row">
+        <button id="keyfileButton" type="button">Load keyfile</button>
+        <button id="copyKeyfileButton" type="button">Copy keyfile backup</button>
+      </div>
+      <div class="address" id="identityAddress">—</div>
+      <p class="stage-note" id="identityStatus">Packing and H0 are both bound to this address.</p>
+    </section>
+
+    <section class="stage" aria-labelledby="networkHeading">
+      <h2 id="networkHeading"><span class="stage-number">2</span>Network</h2>
+      <div class="row">
+        <button id="liveButton" type="button">Load live block</button>
+        <button id="sampleButton" type="button">Use sample block</button>
+      </div>
+      <p class="stage-note" id="networkStatus">Loading the sample block…</p>
+      <p class="stage-note">The sample is mainnet block 2,040,257, bundled with this page so it works where gateways are blocked.</p>
+      <p class="stage-note">This viewer blocks requests to other sites, so the live block, wallet lookup and sending only work in a downloaded copy of this page, served from any web server.</p>
+    </section>
+
+    <section class="stage" aria-labelledby="holdHeading">
+      <h2 id="holdHeading"><span class="stage-number">3</span>Hold data</h2>
+      <label for="partitionInput">Partition (3.6 TB each)
+        <input id="partitionInput" type="number" min="0" step="1">
+      </label>
+      <label for="chunkCountInput">Chunks to fetch (256 KiB each)
+        <input id="chunkCountInput" type="number" min="1" max="64" step="1" value="4">
+      </label>
+      <div class="row"><button id="holdButton" type="button">Fetch and pack</button></div>
+      <p class="stage-note">With the sample block this packs the two real chunks that block's miner used. With a live block it fetches random chunks from your partition.</p>
+    </section>
+
+    <section class="stage" aria-labelledby="mineHeading">
+      <h2 id="mineHeading"><span class="stage-number">4</span>Mine</h2>
+      <label class="choice" for="vdfModeReplay"><input id="vdfModeReplay" name="vdfMode" type="radio" checked> Replay the block's VDF steps, one per second</label>
+      <label class="choice" for="vdfModeFollow"><input id="vdfModeFollow" name="vdfMode" type="radio"> Follow the network: new steps from each new block</label>
+      <label class="choice" for="vdfModeLocal"><input id="vdfModeLocal" name="vdfMode" type="radio"> Compute new VDF steps in this tab</label>
+      <label class="choice" for="aimCheckbox"><input id="aimCheckbox" type="checkbox"> Test: aim range 1 at held data</label>
+      <label for="easeSelect">Test: make each hash this many times likelier to pass
+        <select id="easeSelect">
+          <option value="1" selected>1 (real difficulty)</option>
+          <option value="1000000">1,000,000</option>
+          <option value="1000000000">1,000,000,000</option>
+        </select>
+      </label>
+      <div class="row">
+        <button id="startButton" class="primary" type="button">Start mining</button>
+        <button id="stopButton" type="button" disabled>Stop</button>
+      </div>
+      <p class="stage-note" id="vdfStatus">Each VDF step is 25 checkpoints of chained SHA-256.</p>
+    </section>
+  </div>
+
+  <div class="stages">
+    <section class="stage" aria-labelledby="poolHeading">
+      <h2 id="poolHeading">Pool odds</h2>
+      <p class="stage-note">If many tabs held distinct data under one address, as a pool would, in whole partitions:</p>
+      <div class="row">
+        <label for="poolTabsInput">Tabs<input id="poolTabsInput" type="number" min="1" step="1" value="10000"></label>
+        <label for="poolSizeInput">GiB per tab<input id="poolSizeInput" type="number" min="0" step="1" value="20"></label>
+      </div>
+      <dl class="facts">
+        <dt>Stored together</dt><dd id="poolStored">—</dd>
+        <dt>A block about every</dt><dd id="poolWait">—</dd>
+        <dt>Earnings at this block's reward</dt><dd id="poolEarnings">—</dd>
+      </dl>
+    </section>
+
+    <section class="stage" aria-labelledby="walletHeading">
+      <h2 id="walletHeading">Wallet</h2>
+      <label for="walletAddressInput">Address to check
+        <input id="walletAddressInput" type="text" spellcheck="false" autocomplete="off">
+      </label>
+      <div class="row"><button id="walletButton" type="button">Check balance and history</button></div>
+      <dl class="facts">
+        <dt>Balance</dt><dd id="walletBalance">—</dd>
+        <dt>Mining rewards still locked</dt><dd id="walletReserved">—</dd>
+      </dl>
+      <div class="history">
+        <div><span class="readout-label">Sent</span><ul id="walletSent"></ul></div>
+        <div><span class="readout-label">Received</span><ul id="walletReceived"></ul></div>
+      </div>
+      <p class="stage-note" id="walletStatus">Mining rewards are paid into the balance directly, not as transactions, so a miner's withdrawals show under Sent.</p>
+    </section>
+
+    <section class="stage" aria-labelledby="recordHeading">
+      <h2 id="recordHeading">Store a record</h2>
+      <label for="recordInput">Text to store permanently, signed by your key
+        <textarea id="recordInput" rows="4">A small permanent record, sent from a browser tab.</textarea>
+      </label>
+      <p class="stage-note" id="recordSize">49 bytes</p>
+      <div class="row">
+        <button id="quoteButton" type="button">Get price</button>
+        <button id="sendButton" class="primary" type="button">Sign and send</button>
+      </div>
+      <p class="stage-note" id="recordStatus">Sent straight to a gateway as a normal Arweave transaction, paid in AR from your key. No bundler involved. Up to 256 KiB.</p>
+      <a id="recordLink" href="https://arweave.net" target="_blank" rel="noopener" class="address"></a>
+    </section>
+  </div>
+
+  <section aria-labelledby="stepsHeading">
+    <h2 id="stepsHeading">Steps</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Step</th><th>VDF from</th><th>H0</th><th>Range 1 start</th><th>Range 2 start</th><th>H1 tries</th><th>H2 tries</th><th>Result</th></tr></thead>
+        <tbody id="stepRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="logHeading">
+    <h2 id="logHeading">Activity</h2>
+    <ul class="log" id="activityLog"></ul>
+  </section>
+
+  <section aria-labelledby="ledgerHeading">
+    <h2 id="ledgerHeading">What is real here</h2>
+    <div class="ledger">
+      <div class="stage">
+        <span class="chip chip-real">From the node source, tested</span>
+        <ul>
+          <li>VDF: recomputes mainnet step 119,924,183 to the exact output in the sample block.</li>
+          <li>Difficulty: the sample block's solution hash passes the same check the node uses.</li>
+          <li>Recall ranges, nonce-to-sub-chunk mapping, H1 and H2.</li>
+          <li>Packing layout: which entropy and which 8 KiB slice each sub-chunk uses, and the XOR.</li>
+          <li>Chunk data, block data and VDF outputs from mainnet.</li>
+          <li>Transactions: data root, signature and id match arweave-js, and arweave-js verifies transactions signed here.</li>
+        </ul>
+      </div>
+      <div class="stage">
+        <span class="chip chip-stub">Stand-ins</span>
+        <ul>
+          <li>H0 uses SHA-256 in place of Arweave's RandomX (the "rx4096" build with a 512 MiB cache).</li>
+          <li>Packing entropy uses SHA-256 in place of the slow "RandomX squared" generator.</li>
+          <li>Both sit behind their own classes, so a WebAssembly build of the real code can be dropped in. Until then the network would reject any solution found here.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="./miner_app.js"></script>
