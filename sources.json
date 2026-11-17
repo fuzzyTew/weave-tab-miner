@@ -1,0 +1,8 @@
+{
+ "gatheredAt": null,
+ "gateways": [
+  { "url": "https://arweave.net" },
+  { "url": "https://turbo-gateway.com" }
+ ],
+ "nodes": []
+}

@@ -129,9 +129,72 @@ export class SourceTester {
     }
   }
 
-  /** Tests all at once; working sources first, fastest first. */
-  async testAll(urls) {
-    const results = await Promise.all(urls.map((url) => this.test(url)));
+  /**
+   * Tests in the order given, `concurrency` at a time, and stops starting new tests once
+   * `enoughWorking` have answered (so a long seed list does not knock on hundreds of hosts).
+   * Returns the tested ones, working first, fastest first; untested ones are left out.
+   */
+  async testAll(urls, { concurrency = 6, enoughWorking = Infinity, onResult = () => {} } = {}) {
+    const results = [];
+    let nextIndex = 0;
+    const workingCount = () => results.filter((result) => result.ok).length;
+    const testNextUntilEnough = async () => {
+      while (nextIndex < urls.length && workingCount() < enoughWorking) {
+        const result = await this.test(urls[nextIndex++]);
+        results.push(result);
+        onResult(result, results.length);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, urls.length) }, testNextUntilEnough));
     return results.sort((left, right) => (right.ok - left.ok) || ((left.milliseconds ?? 0) - (right.milliseconds ?? 0)));
+  }
+}
+
+export class SourceGatherer {
+  /**
+   * Builds a seed list on a machine with open internet (GitHub's runners), for pages opened
+   * where many Arweave hosts are blocked: every ar.io gateway and Arweave node it can learn
+   * of, each tested with GET /info, the ones that answered kept fastest first.
+   *
+   * Speeds are as seen from the gathering machine, so they only order the list; the page
+   * tests again from where it is. Nodes that answer here may still refuse other networks.
+   */
+  constructor({ arIoGatewayUrls = GatewayDirectory.AR_IO_GATEWAY_URLS, nodeListSourceUrls = ['https://arweave.net'], tester = new SourceTester({ timeoutMs: 6000 }), log = () => {} } = {}) {
+    Object.assign(this, { arIoGatewayUrls, nodeListSourceUrls, tester, log });
+  }
+
+  async gatherCandidates() {
+    let gatewayUrls = [...ArweaveGateway.DEFAULT_GATEWAY_URLS];
+    let nodeUrls = [];
+    try {
+      const found = await new GatewayDirectory({ arIoGatewayUrls: this.arIoGatewayUrls, maxGateways: Infinity, log: this.log }).discover();
+      gatewayUrls.push(...found.gatewayUrls);
+      nodeUrls.push(...found.nodeUrls);
+      this.log(`ar.io registry: ${found.gatewayUrls.length} gateways, ${found.nodeUrls.length} nodes`);
+    } catch (error) {
+      this.log(`ar.io registry failed: ${error.message.split('\n')[0]}`);
+    }
+    for (const sourceUrl of this.nodeListSourceUrls) {
+      try {
+        const peers = await new ArweaveGateway({ gatewayUrls: [sourceUrl], log: this.log }).request('/peers');
+        nodeUrls.push(...peers.map((peer) => `http://${peer}`));
+        this.log(`${sourceUrl}/peers: ${peers.length} nodes`);
+      } catch (error) {
+        this.log(`${sourceUrl}/peers failed: ${error.message.split('\n')[0]}`);
+      }
+    }
+    return { gatewayUrls: [...new Set(gatewayUrls)], nodeUrls: [...new Set(nodeUrls)] };
+  }
+
+  /** Returns { gatheredAt, gateways, nodes }; each entry { url, milliseconds, height }. */
+  async gather({ keepGateways = 150, keepNodes = 150 } = {}) {
+    const { gatewayUrls, nodeUrls } = await this.gatherCandidates();
+    const working = async (urls, keep) => (await this.tester.testAll(urls, { concurrency: 24 }))
+      .filter((result) => result.ok).slice(0, keep)
+      .map(({ url, milliseconds, height }) => ({ url, milliseconds, height }));
+    const gateways = await working(gatewayUrls, keepGateways);
+    const nodes = await working(nodeUrls, keepNodes);
+    this.log(`answered: ${gateways.length} of ${gatewayUrls.length} gateways, ${nodes.length} of ${nodeUrls.length} nodes`);
+    return { gatheredAt: new Date().toISOString(), gateways, nodes };
   }
 }
