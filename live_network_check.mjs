@@ -6,8 +6,8 @@ import {
   Bytes, ConsensusConstants, Difficulty, Replica29Layout, VdfChain, VdfSession,
 } from './arweave_miner.js';
 import { ArweaveGateway } from './arweave_gateway.js';
-import { GatewayDirectory, PeerDirectory } from './arweave_peers.js';
-import { VdfUpdate } from './arweave_vdf_client.js';
+import { GatewayDirectory, PeerDirectory, SolanaGatewayRegistry } from './arweave_peers.js';
+import { VdfServerClient, VdfUpdate } from './arweave_vdf_client.js';
 
 class LiveNetworkCheck {
   /**
@@ -88,7 +88,20 @@ class LiveNetworkCheck {
     });
   }
 
+  async checkPublicVdfServers() {
+    for (const url of VdfServerClient.PUBLIC_SERVER_URLS) {
+      await this.attempt(url, 'GET /vdf (public VDF server)', false, async () => {
+        const update = await new VdfServerClient({ baseUrls: [url], timeoutMs: 15000 }).fetchUpdate(url);
+        return `step ${update.stepNumber}, ${update.stepsNewestFirst.length} steps`;
+      });
+    }
+  }
+
   async checkRegistryAndNodes() {
+    await this.attempt('Solana registry', 'getProgramAccounts for ar.io gateways', false, async () => {
+      const urls = await new SolanaGatewayRegistry().gatewayUrls();
+      return `${urls.length} joined gateways, e.g. ${urls.slice(0, 3).join(', ')}`;
+    });
     let nodeUrls = [];
     await this.attempt('ar.io registry', 'GET /ar-io/peers', false, async () => {
       const found = await new GatewayDirectory({ maxGateways: 1000 }).discover();
@@ -107,6 +120,7 @@ class LiveNetworkCheck {
 
   async run() {
     for (const url of [...new Set([...ArweaveGateway.DEFAULT_GATEWAY_URLS, ...GatewayDirectory.AR_IO_GATEWAY_URLS])]) await this.checkGateway(url);
+    await this.checkPublicVdfServers();
     await this.checkRegistryAndNodes();
 
     const required = [...new Set(this.results.filter((result) => result.required).map((result) => result.name))];

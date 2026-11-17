@@ -4,5 +4,6 @@
   { "url": "https://arweave.net" },
   { "url": "https://turbo-gateway.com" }
  ],
- "nodes": []
+ "nodes": [],
+ "vdfServers": []
 }

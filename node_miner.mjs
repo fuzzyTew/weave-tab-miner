@@ -113,7 +113,7 @@ class ServerMiner {
 
   /** Steps from a public VDF server, if any peer or gateway answers GET /vdf. */
   async mineFromVdfServer() {
-    const client = new VdfServerClient({ baseUrls: ArweaveGateway.DEFAULT_GATEWAY_URLS, log: (message) => console.error(`warn: ${message}`) });
+    const client = new VdfServerClient({ baseUrls: [...VdfServerClient.PUBLIC_SERVER_URLS, ...ArweaveGateway.DEFAULT_GATEWAY_URLS], log: (message) => console.error(`warn: ${message}`) });
     if (!(await client.findServer())) throw new Error('no VDF server answered; use --vdf local (slower) instead');
     console.log(`VDF steps from ${client.serverUrl}`);
     for (;;) {

@@ -5,6 +5,7 @@
 // and browsers block a page loaded over https from calling plain-http addresses ("mixed
 // content"). So peers work from the downloaded single file, not from an https copy.
 import { ArweaveGateway } from './arweave_gateway.js';
+import { VdfServerClient } from './arweave_vdf_client.js';
 
 export class PeerAccess {
   /**
@@ -72,12 +73,27 @@ export class GatewayDirectory {
    */
   static AR_IO_GATEWAY_URLS = ['https://turbo-gateway.com'];
 
-  constructor({ arIoGatewayUrls = GatewayDirectory.AR_IO_GATEWAY_URLS, maxGateways = 20, timeoutMs = 20000, log = () => {} } = {}) {
-    Object.assign(this, { maxGateways, log });
+  constructor({ arIoGatewayUrls = GatewayDirectory.AR_IO_GATEWAY_URLS, maxGateways = 20, timeoutMs = 20000, solanaRegistry = new SolanaGatewayRegistry({ timeoutMs }), log = () => {} } = {}) {
+    Object.assign(this, { maxGateways, solanaRegistry, log });
     this.registrySource = new ArweaveGateway({ gatewayUrls: arIoGatewayUrls, timeoutMs, log });
   }
 
+  /**
+   * Asks an ar.io gateway first (it also lists Arweave nodes). When none answers, as on
+   * networks that block ar.io gateways but not Solana, reads the registry itself from Solana
+   * (gateways only).
+   */
   async discover() {
+    try {
+      return await this.discoverFromGateway();
+    } catch (gatewayError) {
+      this.log(`ar.io gateways did not list peers (${gatewayError.message.split('\n')[0]}); reading the registry from Solana`);
+      const gatewayUrls = await this.solanaRegistry.gatewayUrls();
+      return { gatewayUrls: PeerDirectory.shuffled(gatewayUrls).slice(0, this.maxGateways), nodeUrls: [] };
+    }
+  }
+
+  async discoverFromGateway() {
     const reply = await this.registrySource.request('/ar-io/peers');
     const gatewayUrls = Object.values(reply.gateways ?? {})
       .filter((entry) => typeof entry.url === 'string' && (entry.status ?? 'joined') === 'joined')
@@ -111,10 +127,26 @@ export class SourceTester {
     return [...new Set(text.split(/[\s,]+/).map(SourceTester.normalized).filter(Boolean))];
   }
 
-  async test(url) {
+  /**
+   * Tests GET /info, and with `checkVdf` also GET /vdf: the result then carries `vdf` (true
+   * when it served a VDF update) and `vdfError`. A VDF server need not answer /info, so a
+   * source can be `ok: false` and still `vdf: true`.
+   */
+  async test(url, { checkVdf = false } = {}) {
     if (url.startsWith('http:') && PeerAccess.blockedReason(this.pageLocation)) {
       return { url, ok: false, error: 'plain http, which this https page may not call' };
     }
+    const result = await this.testInfo(url);
+    if (!checkVdf) return result;
+    try {
+      await new VdfServerClient({ baseUrls: [url], timeoutMs: this.timeoutMs }).fetchUpdate(url);
+      return { ...result, vdf: true };
+    } catch (error) {
+      return { ...result, vdf: false, vdfError: error.name === 'TimeoutError' ? `no answer in ${this.timeoutMs / 1000} s` : error.message };
+    }
+  }
+
+  async testInfo(url) {
     const started = performance.now();
     try {
       const response = await fetch(`${url}/info`, { signal: AbortSignal.timeout(this.timeoutMs) });
@@ -134,13 +166,13 @@ export class SourceTester {
    * `enoughWorking` have answered (so a long seed list does not knock on hundreds of hosts).
    * Returns the tested ones, working first, fastest first; untested ones are left out.
    */
-  async testAll(urls, { concurrency = 6, enoughWorking = Infinity, onResult = () => {} } = {}) {
+  async testAll(urls, { concurrency = 6, enoughWorking = Infinity, checkVdf = false, onResult = () => {} } = {}) {
     const results = [];
     let nextIndex = 0;
     const workingCount = () => results.filter((result) => result.ok).length;
     const testNextUntilEnough = async () => {
       while (nextIndex < urls.length && workingCount() < enoughWorking) {
-        const result = await this.test(urls[nextIndex++]);
+        const result = await this.test(urls[nextIndex++], { checkVdf });
         results.push(result);
         onResult(result, results.length);
       }
@@ -174,6 +206,13 @@ export class SourceGatherer {
     } catch (error) {
       this.log(`ar.io registry failed: ${error.message.split('\n')[0]}`);
     }
+    try {
+      const fromSolana = await new SolanaGatewayRegistry().gatewayUrls();
+      gatewayUrls.push(...fromSolana);
+      this.log(`Solana registry: ${fromSolana.length} gateways`);
+    } catch (error) {
+      this.log(`Solana registry failed: ${error.message.split('\n')[0]}`);
+    }
     for (const sourceUrl of this.nodeListSourceUrls) {
       try {
         const peers = await new ArweaveGateway({ gatewayUrls: [sourceUrl], log: this.log }).request('/peers');
@@ -186,15 +225,111 @@ export class SourceGatherer {
     return { gatewayUrls: [...new Set(gatewayUrls)], nodeUrls: [...new Set(nodeUrls)] };
   }
 
-  /** Returns { gatheredAt, gateways, nodes }; each entry { url, milliseconds, height }. */
+  /**
+   * Returns { gatheredAt, gateways, nodes, vdfServers }; each entry { url, milliseconds,
+   * height }. Every candidate, and the known public VDF servers, are also asked for /vdf.
+   */
   async gather({ keepGateways = 150, keepNodes = 150 } = {}) {
     const { gatewayUrls, nodeUrls } = await this.gatherCandidates();
-    const working = async (urls, keep) => (await this.tester.testAll(urls, { concurrency: 24 }))
-      .filter((result) => result.ok).slice(0, keep)
-      .map(({ url, milliseconds, height }) => ({ url, milliseconds, height }));
-    const gateways = await working(gatewayUrls, keepGateways);
-    const nodes = await working(nodeUrls, keepNodes);
-    this.log(`answered: ${gateways.length} of ${gatewayUrls.length} gateways, ${nodes.length} of ${nodeUrls.length} nodes`);
-    return { gatheredAt: new Date().toISOString(), gateways, nodes };
+    const tested = async (urls) => this.tester.testAll(urls, { concurrency: 24, checkVdf: true });
+    const entry = ({ url, milliseconds, height }) => ({ url, milliseconds, height });
+    const gatewayResults = await tested(gatewayUrls);
+    const nodeResults = await tested(nodeUrls);
+    const publicVdfResults = await tested(VdfServerClient.PUBLIC_SERVER_URLS);
+    const gateways = gatewayResults.filter((result) => result.ok).slice(0, keepGateways).map(entry);
+    const nodes = nodeResults.filter((result) => result.ok).slice(0, keepNodes).map(entry);
+    const vdfServers = [...publicVdfResults, ...gatewayResults, ...nodeResults].filter((result) => result.vdf).map(entry);
+    for (const result of publicVdfResults) this.log(`${result.url}: /info ${result.ok ? 'ok' : result.error}; /vdf ${result.vdf ? 'ok' : result.vdfError}`);
+    this.log(`answered: ${gateways.length} of ${gatewayUrls.length} gateways, ${nodes.length} of ${nodeUrls.length} nodes; ${vdfServers.length} served the VDF`);
+    return { gatheredAt: new Date().toISOString(), gateways, nodes, vdfServers };
+  }
+}
+
+export class SolanaGatewayRegistry {
+  /**
+   * Reads ar.io's Gateway Address Registry straight from Solana, where ar.io moved it from
+   * AO in 2026 (ar-io-node release 80), with one JSON-RPC getProgramAccounts call. A
+   * fallback that needs no ar.io gateway: only a Solana RPC server, a different host that
+   * a filter blocking Arweave sites may let through.
+   *
+   * Layout from @ar.io/solana-contracts 4.x (lib/gar/accounts/gateway.js), Borsh-encoded:
+   * discriminator(8) operator(32) label(u32 length + UTF-8) fqdn(same) port(u16 LE)
+   * protocol(u8: 0 http, 1 https) properties(string) note(string) operatorStake(u64)
+   * totalDelegatedStake(u64) status(u8: 0 joined, 1 leaving, 2 gone) ...
+   */
+  static GAR_PROGRAM_ID = '89fNiiwgpFSPHKuqfNUkgYTYjtAJAhyqHjXmgXeppGpf';
+  static GATEWAY_DISCRIMINATOR = [210, 132, 162, 254, 10, 224, 45, 86];
+  static RPC_URLS = ['https://api.mainnet-beta.solana.com'];
+  static STATUS_NAMES = ['joined', 'leaving', 'gone'];
+
+  constructor({ rpcUrls = SolanaGatewayRegistry.RPC_URLS, timeoutMs = 30000 } = {}) {
+    Object.assign(this, { rpcUrls, timeoutMs });
+  }
+
+  /**
+   * Decodes the fields up to status; null when the bytes are not a gateway account or end
+   * early. Strings longer than the account are treated as corrupt.
+   */
+  static decodeGateway(bytes) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const discriminator = SolanaGatewayRegistry.GATEWAY_DISCRIMINATOR;
+    if (bytes.length < 40 || discriminator.some((value, index) => bytes[index] !== value)) return null;
+    let offset = 40;
+    const readString = () => {
+      const length = view.getUint32(offset, true);
+      if (offset + 4 + length > bytes.length) throw new RangeError('string runs past the account');
+      const text = new TextDecoder().decode(bytes.subarray(offset + 4, offset + 4 + length));
+      offset += 4 + length;
+      return text;
+    };
+    try {
+      const label = readString();
+      const fqdn = readString();
+      const port = view.getUint16(offset, true);
+      const protocol = bytes[offset + 2] === 1 ? 'https' : 'http';
+      offset += 3;
+      readString(); // properties
+      readString(); // note
+      offset += 16; // operatorStake, totalDelegatedStake
+      const status = SolanaGatewayRegistry.STATUS_NAMES[view.getUint8(offset)] ?? 'unknown';
+      return { label, fqdn, port, protocol, status };
+    } catch {
+      return null;
+    }
+  }
+
+  static urlFor({ fqdn, port, protocol }) {
+    const defaultPort = protocol === 'https' ? 443 : 80;
+    return `${protocol}://${fqdn}${port === defaultPort ? '' : `:${port}`}`;
+  }
+
+  async accounts() {
+    const base64Discriminator = btoa(String.fromCharCode(...SolanaGatewayRegistry.GATEWAY_DISCRIMINATOR));
+    const body = JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'getProgramAccounts',
+      params: [SolanaGatewayRegistry.GAR_PROGRAM_ID, {
+        encoding: 'base64', commitment: 'confirmed',
+        filters: [{ memcmp: { offset: 0, bytes: base64Discriminator, encoding: 'base64' } }],
+      }],
+    });
+    const failures = [];
+    for (const rpcUrl of this.rpcUrls) {
+      try {
+        const response = await fetch(rpcUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body, signal: AbortSignal.timeout(this.timeoutMs) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${(await response.text()).slice(0, 160)}`);
+        const reply = await response.json();
+        if (reply.error) throw new Error(`RPC error ${reply.error.code}: ${reply.error.message}`);
+        return reply.result.map((entry) => Uint8Array.from(atob(entry.account.data[0]), (character) => character.charCodeAt(0)));
+      } catch (error) {
+        failures.push(`${rpcUrl}: ${error.message}`);
+      }
+    }
+    throw new Error(`no Solana RPC answered (${failures.join('; ')})`);
+  }
+
+  /** Base URLs of joined gateways, as registered. */
+  async gatewayUrls() {
+    const gateways = (await this.accounts()).map(SolanaGatewayRegistry.decodeGateway).filter(Boolean);
+    return [...new Set(gateways.filter((gateway) => gateway.status === 'joined' && gateway.fqdn).map(SolanaGatewayRegistry.urlFor))];
   }
 }

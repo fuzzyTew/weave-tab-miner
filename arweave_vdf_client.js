@@ -73,6 +73,16 @@ export class VdfServerClient {
    */
   static POLL_INTERVAL_MS = 500;
 
+  /**
+   * The Arweave team's public VDF servers named in the mining docs (vdf-server-5 was retired
+   * in release N.2.9.7). Nodes answer plain http on port 1984; https is tried first in case
+   * one is served there, since only https works from an https page.
+   */
+  static PUBLIC_SERVER_URLS = [
+    'https://vdf-server-3.arweave.xyz', 'https://vdf-server-4.arweave.xyz',
+    'http://vdf-server-3.arweave.xyz:1984', 'http://vdf-server-4.arweave.xyz:1984',
+  ];
+
   constructor({ baseUrls, timeoutMs = 5000, log = () => {} }) {
     Object.assign(this, { baseUrls, timeoutMs, log });
     this.serverUrl = null;

@@ -47,6 +47,9 @@ jobs:
       - name: Check the VDF server reply parser
         run: node test_vdf_update.mjs
 
+      - name: Check the Solana gateway registry decoder against ar.io's encoder
+        run: node test_solana_registry.mjs
+
       - name: Check transactions against arweave-js
         run: node cross_check_transactions.mjs .
 

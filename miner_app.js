@@ -35,7 +35,7 @@ class BundledResources {
     try {
       return JSON.parse(BundledResources.embeddedText('sourcesData'));
     } catch {
-      return { gatheredAt: null, gateways: [], nodes: [] };
+      return { gatheredAt: null, gateways: [], nodes: [], vdfServers: [] };
     }
   }
 
@@ -498,9 +498,23 @@ class BrowserNodeApp {
     return [...new Set([...seeds, ...this.gateway.gatewayUrls, ...gathered.gateways.map((entry) => entry.url), ...nodeUrls])];
   }
 
+  /**
+   * Where to ask for VDF steps, best first: sources this page saw serve it, ones GitHub saw
+   * serve it, the Arweave team's public servers, then every gateway in use. Plain-http ones
+   * are dropped on an https page, which may not call them.
+   */
+  vdfServerCandidates() {
+    const gathered = BundledResources.gatheredSources().vdfServers ?? [];
+    const all = [...new Set([...(this.testedVdfServerUrls ?? []), ...gathered.map((entry) => entry.url), ...VdfServerClient.PUBLIC_SERVER_URLS, ...this.gateway.gatewayUrls])];
+    if (!PeerAccess.blockedReason()) return all;
+    const reachable = all.filter((url) => !url.startsWith('http:'));
+    if (reachable.length < all.length) this.view.log(`skipping ${all.length - reachable.length} plain-http VDF servers: an https page may not call them; a downloaded copy can`, 'warn');
+    return reachable;
+  }
+
   describeGatheredSources() {
     const { gatheredAt, gateways, nodes } = BundledResources.gatheredSources();
-    if (!gatheredAt) return 'This copy has no gathered list; Test all sources tries your own and the 2 built in.';
+    if (!gatheredAt) return 'This copy has no gathered list; Test all sources tries your own and the 2 built in. If ar.io gateways are blocked, Find gateways reads their registry from Solana.';
     const nodeNote = PeerAccess.blockedReason() ? ' (nodes only from a downloaded copy)' : '';
     return `This copy carries ${gateways.length} gateways and ${nodes.length} nodes${nodeNote} that answered GitHub on ${gatheredAt.slice(0, 10)}. Test all sources tries them, a few at a time, until ${BrowserNodeApp.ENOUGH_WORKING_SOURCES} answer.`;
   }
@@ -511,6 +525,7 @@ class BrowserNodeApp {
     this.view.setText('peerStatus', `Testing up to ${candidates.length} sources…`);
     const results = await new SourceTester().testAll(candidates, {
       concurrency: 4,
+      checkVdf: true,
       enoughWorking: BrowserNodeApp.ENOUGH_WORKING_SOURCES,
       onResult: (result, testedCount) => this.view.setText('peerStatus', `Tested ${testedCount} of ${candidates.length}…`),
     });
@@ -518,18 +533,20 @@ class BrowserNodeApp {
     list.replaceChildren(...results.map((result) => {
       const item = document.createElement('li');
       item.className = result.ok ? 'source-ok' : 'source-failed';
+      const vdfNote = result.vdf ? ', serves VDF' : '';
       item.textContent = result.ok
-        ? `✓ ${result.url} — ${result.milliseconds} ms, height ${result.height.toLocaleString()}`
-        : `✗ ${result.url} — ${result.error}`;
+        ? `✓ ${result.url} — ${result.milliseconds} ms, height ${result.height.toLocaleString()}${vdfNote}`
+        : `✗ ${result.url} — ${result.error}${vdfNote}`;
       return item;
     }));
+    this.testedVdfServerUrls = results.filter((result) => result.vdf).map((result) => result.url);
     const working = results.filter((result) => result.ok).map((result) => result.url);
     // Seeds that work keep their place at the front; then the fastest of the rest.
     this.gateway.preferFirst([...seeds.filter((url) => working.includes(url)), ...working]);
     this.view.setText('peerStatus', working.length
       ? `${working.length} of ${results.length} tested sources answered; they are now tried fastest first.`
       : 'Nothing answered from here. This network may block Arweave: try another network or a phone hotspot, or add a gateway you know works above. The sample block still works offline.');
-    this.view.log(`source test: ${working.length} of ${results.length} answered`, working.length ? 'good' : 'error');
+    this.view.log(`source test: ${working.length} of ${results.length} answered, ${this.testedVdfServerUrls.length} served the VDF`, working.length ? 'good' : 'error');
   }
 
   async loadLiveBlock() {
@@ -617,14 +634,18 @@ class BrowserNodeApp {
     // Chunks at one bucket position in successive sectors share all 32 entropies.
     const firstByte = partitionStart + BigInt(Math.floor(Math.random() * Number(ConsensusConstants.entropySectorSize)));
     const chunks = [];
-    for (const weaveByte of Replica29Layout.entropySharingBytes(firstByte, wanted, this.session.partitionUpperBound)) {
-      this.view.setText('holdStatus', `Fetching chunk ${chunks.length + 1} of ${wanted}…`);
+    // Twice as many positions as wanted, so chunks no source has can be skipped.
+    let skipped = 0;
+    for (const weaveByte of Replica29Layout.entropySharingBytes(firstByte, wanted * 2, this.session.partitionUpperBound)) {
+      if (chunks.length >= wanted) break;
+      this.view.setText('holdStatus', `Fetching chunk ${chunks.length + 1} of ${wanted} (byte ${weaveByte.toLocaleString()})${skipped ? `; skipped ${skipped} that no source had` : ''}…`);
       try {
         // Approximation: the chunk is filed under the 256 KiB bucket holding the byte asked
         // for. Exact would place it by its own end offset from its data_path.
         chunks.push({ bytes: Bytes.fromBase64Url((await this.gateway.chunkJson(weaveByte)).chunk), endOffset: Replica29Layout.bucketEndOffsetForByte(weaveByte) });
       } catch (error) {
-        this.view.log(`chunk at byte ${weaveByte} failed: ${error.message.split('\n')[0]}`, 'error');
+        skipped++;
+        this.view.log(`skipping the chunk at byte ${weaveByte}: no source had it (${error.message.split('\n')[1] ?? error.message})`, 'warn');
       }
     }
     if (chunks.length) await this.packAndHold(chunks);
@@ -742,10 +763,12 @@ class BrowserNodeApp {
    * computing the VDF here. Falls back to telling the person when none answers.
    */
   async runVdfServer() {
-    this.view.setText('vdfStatus', 'Looking for a VDF server among peers and gateways…');
-    const client = new VdfServerClient({ baseUrls: this.gateway.gatewayUrls, log: (message) => this.view.log(message, 'warn') });
+    const candidates = this.vdfServerCandidates();
+    this.view.setText('vdfStatus', `Looking for a VDF server among ${candidates.length} candidates…`);
+    const client = new VdfServerClient({ baseUrls: candidates, log: (message) => this.view.log(message, 'warn') });
     if (!(await client.findServer())) {
-      this.view.setText('vdfStatus', 'No peer or gateway serves the VDF to this page. Use "compute VDF steps in this tab" instead; it is slower but needs no server.');
+      const downloadHint = PeerAccess.blockedReason() ? ' The public VDF servers use plain http, which a downloaded copy opened from disk can reach.' : '';
+      this.view.setText('vdfStatus', `No VDF server answered this page.${downloadHint} "Compute VDF steps in this tab" works without one, but uses a whole CPU core.`);
       this.stop();
       return;
     }
