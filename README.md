@@ -66,6 +66,6 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
     node check_page.cjs                             # the built page, opened from disk
                                                     # (PLAYWRIGHT_CHANNEL=chrome to use an installed Chrome)
 
-Not yet tested against the live network: gateway, peer and VDF-server requests (the
-build machine could not reach Arweave). A found solution is not yet turned into a
-signed block.
+`live_network_check.mjs` tries every live request the page makes against real gateways and
+nodes; the GitHub workflow runs it on each push (it reports without blocking the build). A
+found solution is not yet turned into a signed block.
