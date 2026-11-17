@@ -43,13 +43,18 @@ export class ArweaveGateway {
     this.reorder();
   }
 
-  async request(path, { method = 'GET', body = undefined, headers = {}, readAs = 'json', firstGatewayOnly = false } = {}) {
+  /**
+   * Tries each source in order until one answers. `maxSources` caps how many are asked, for
+   * requests a source may simply not have (a chunk it never stored answers 404), so one
+   * missing item cannot wait on every source's timeout in turn.
+   */
+  async request(path, { method = 'GET', body = undefined, headers = {}, readAs = 'json', firstGatewayOnly = false, maxSources = Infinity, timeoutMs = this.timeoutMs } = {}) {
     const failures = [];
-    const gatewayUrls = firstGatewayOnly ? this.gatewayUrls.slice(0, 1) : this.gatewayUrls;
+    const gatewayUrls = this.gatewayUrls.slice(0, firstGatewayOnly ? 1 : maxSources);
     for (const gatewayUrl of gatewayUrls) {
       const url = gatewayUrl + path;
       try {
-        const response = await fetch(url, { method, body, headers, signal: AbortSignal.timeout(this.timeoutMs) });
+        const response = await fetch(url, { method, body, headers, signal: AbortSignal.timeout(timeoutMs) });
         if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}: ${(await response.text()).slice(0, 300)}`);
         this.lastAnsweredBy = gatewayUrl;
         if (readAs === 'bytes') return new Uint8Array(await response.arrayBuffer());
@@ -70,9 +75,14 @@ export class ArweaveGateway {
     return this.request('/block/current');
   }
 
+  // A chunk is often missing from a source (never synced, or withheld from that gateway),
+  // so only a few are asked, each briefly, before the caller moves on to another chunk.
+  static CHUNK_MAX_SOURCES = 4;
+  static CHUNK_TIMEOUT_MS = 10000;
+
   /** The unpacked chunk covering a weave byte, as raw base64url text plus proofs. */
   async chunkJson(weaveByte) {
-    return this.request(`/chunk/${weaveByte.toString()}`);
+    return this.request(`/chunk/${weaveByte.toString()}`, { maxSources: ArweaveGateway.CHUNK_MAX_SOURCES, timeoutMs: ArweaveGateway.CHUNK_TIMEOUT_MS });
   }
 
   // ---- wallets ----
