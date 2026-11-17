@@ -1,5 +1,6 @@
-// miner_app.js — the page's controller. Mining, wallet, network and transaction logic live in
-// the arweave_*.js library modules; this file only wires the page's controls and displays to them.
+// miner_app.js — the page's controller. Mining, RandomX, storage, network, wallet and
+// transaction logic live in the arweave_*.js library modules; this file only wires the
+// page's controls and displays to them.
 import {
   Bytes, ConsensusConstants, Replica29Layout, MiningIdentity, ChunkPacker, StubEntropySource,
   StubH0Hasher, HeldStorage, Miner, VdfSession, SolutionOdds,
@@ -7,30 +8,31 @@ import {
 import { ArweaveGateway } from './arweave_gateway.js';
 import { ArweaveWallet } from './arweave_wallet.js';
 import { DataTransaction } from './arweave_transaction.js';
+import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from './arweave_randomx.js';
+import { PackedChunkStore } from './arweave_storage.js';
+import { PeerAccess, PeerDirectory } from './arweave_peers.js';
+import { VdfServerClient, VdfUpdate } from './arweave_vdf_client.js';
+import { SourceCitations } from './arweave_citations.js';
 
 class BundledResources {
   /**
-   * The sample block and the VDF worker come either embedded in the page (the single-file
-   * build, which opens from disk with no web server) or as separate files next to it.
-   * Browsers refuse to fetch neighbouring files for a page opened from file://, hence both.
+   * The sample block and the workers' source texts are embedded in the page by
+   * build_single_file.mjs, so it opens from disk with no web server. Workers are made from
+   * blob: URLs and run as classic scripts: Chromium refuses module workers from blob: URLs
+   * on pages opened from file://.
    */
   static embeddedText(elementId) {
-    return document.getElementById(elementId)?.textContent ?? null;
+    const text = document.getElementById(elementId)?.textContent;
+    if (!text) throw new Error(`the page is missing its embedded ${elementId}; open the built weave-tab-miner.html`);
+    return text;
   }
 
-  static async sampleBlock() {
-    const embedded = BundledResources.embeddedText('sampleBlockData');
-    if (embedded) return JSON.parse(embedded);
-    const response = await fetch('./sample_block.json');
-    return response.json();
+  static sampleBlock() {
+    return JSON.parse(BundledResources.embeddedText('sampleBlockData'));
   }
 
-  static vdfWorker() {
-    const embedded = BundledResources.embeddedText('vdfWorkerSource');
-    // The embedded worker has its imports already inlined, so it runs as a classic script:
-    // Chromium refuses module workers from blob: URLs on pages opened from file://.
-    if (embedded) return new Worker(URL.createObjectURL(new Blob([embedded], { type: 'text/javascript' })));
-    return new Worker(new URL('./vdf_worker.js', import.meta.url), { type: 'module' });
+  static worker(elementId) {
+    return new Worker(URL.createObjectURL(new Blob([BundledResources.embeddedText(elementId)], { type: 'text/javascript' })));
   }
 }
 
@@ -83,7 +85,7 @@ class PageView {
     return `${whole}${fraction ? '.' + fraction : ''} AR`;
   }
 
-  addStepRow(report, source) {
+  addStepRow(report, source, onSelect) {
     const row = document.createElement('tr');
     const result = report.solution ? `found: ${report.solution.kind}` : report.noncesTried ? 'no pass' : 'no data held in range';
     const cells = [
@@ -96,6 +98,10 @@ class PageView {
       cell.textContent = text;
       row.append(cell);
     }
+    row.tabIndex = 0;
+    row.title = 'Show this step in the explorer';
+    row.addEventListener('click', onSelect);
+    row.addEventListener('keydown', (event) => { if (event.key === 'Enter') onSelect(); });
     if (report.solution) row.className = 'row-solution';
     const body = this.elements.stepRows;
     body.prepend(row);
@@ -124,41 +130,175 @@ class PageView {
       list.append(item);
     }
   }
+
+  fillLimits(factors) {
+    const list = this.elements.limitList;
+    list.replaceChildren();
+    for (const factor of factors) {
+      const item = document.createElement('li');
+      const name = document.createElement('strong');
+      name.textContent = factor.name;
+      item.append(name, ` — ${factor.explanation}`);
+      if (factor.speedup <= 1.0001) item.className = 'limit-met';
+      list.append(item);
+    }
+  }
+}
+
+class StepExplorer {
+  /**
+   * Shows one mining step's intermediate values, each with a link to the node source rule
+   * that produces it, so a person can redo the step by hand.
+   */
+  constructor(view) {
+    this.view = view;
+  }
+
+  static row(label, value, ruleName) {
+    const row = document.createElement('tr');
+    const labelCell = document.createElement('th');
+    labelCell.scope = 'row';
+    labelCell.textContent = label;
+    const valueCell = document.createElement('td');
+    valueCell.className = 'explorer-value';
+    valueCell.textContent = value;
+    const sourceCell = document.createElement('td');
+    if (ruleName) {
+      const link = document.createElement('a');
+      link.href = SourceCitations.url(ruleName);
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = SourceCitations.label(ruleName);
+      link.title = SourceCitations.RULES[ruleName].what;
+      sourceCell.append(link);
+    }
+    row.append(labelCell, valueCell, sourceCell);
+    return row;
+  }
+
+  show(report) {
+    const trace = report.trace;
+    const hex = (bytes) => Bytes.toHex(bytes);
+    const rows = [
+      ['VDF output, step ' + report.stepNumber.toLocaleString(), hex(trace.vdfOutput), 'vdfStep'],
+      ['Partition number', String(trace.partitionNumber), 'h0'],
+      ['Seed (first 32 bytes)', hex(trace.seed), 'h0Seed'],
+      ['Mining address', hex(trace.address), 'h0'],
+      ['Packing difficulty', String(trace.packingDifficulty), 'h0'],
+      ['H0 preimage', hex(trace.h0Preimage), 'h0'],
+      [trace.h0IsStub ? 'H0 (SHA-256 stand-in)' : 'H0 = RandomX(preimage)', hex(trace.h0), trace.h0IsStub ? null : 'h0RandomxState'],
+      ['Recall range 1 start', trace.range1Start.toLocaleString(), 'recallRange'],
+      ['Recall range 2 start', trace.range2Start.toLocaleString(), 'recallRange'],
+      ['Nonces per range', `${ConsensusConstants.noncesPerRecallRange} (${ConsensusConstants.recallRangeSize.toLocaleString()} bytes ÷ 8 KiB)`, 'recallRangeSize'],
+    ];
+    const tried = trace.firstHeldNonce;
+    if (tried) {
+      rows.push(
+        ['First nonce on held data', String(tried.nonce), 'recallByte'],
+        ['→ recall byte 1, sub-chunk', `${tried.recallByte1.toLocaleString()}, sub-chunk ${tried.subChunkIndex}`, 'recallByte'],
+        ['H1 preimage', hex(tried.h1.preimage), 'h1'],
+        ['H1', hex(tried.h1.hash), 'h1'],
+        ['→ recall byte 2', `${tried.recallByte2.toLocaleString()}${tried.h2 ? '' : ' (not held, so no H2)'}`, 'recallByte'],
+      );
+      if (tried.h2) rows.push(['H2 preimage', hex(tried.h2.preimage), 'h2'], ['H2', hex(tried.h2.hash), 'solutionHash']);
+    } else {
+      rows.push(['Nonces on held data', 'none this step: neither recall range touched a held chunk', 'recallRange']);
+    }
+    rows.push(['Pass rule', 'hash, as a big-endian number, must exceed the scaled difficulty', 'diffCheck']);
+    if (report.solution) rows.push(['Result', `${report.solution.kind} at nonce ${report.solution.nonce}: ${hex(report.solution.hash)}`, 'diffCheck']);
+
+    const body = this.view.elements.explorerRows;
+    body.replaceChildren(...rows.map(([label, value, rule]) => StepExplorer.row(label, value, rule)));
+    this.view.setText('explorerTitle', `Step ${report.stepNumber.toLocaleString()}`);
+  }
+}
+
+class StepPace {
+  /**
+   * Measures how many VDF steps a second actually reach the miner, over the last minute.
+   */
+  constructor() {
+    this.arrivals = [];
+  }
+
+  record() {
+    const now = performance.now();
+    this.arrivals.push(now);
+    while (this.arrivals.length && now - this.arrivals[0] > 60_000) this.arrivals.shift();
+  }
+
+  reset() {
+    this.arrivals = [];
+  }
+
+  stepsPerSecond(fallback) {
+    if (this.arrivals.length < 3) return fallback;
+    const spanSeconds = (this.arrivals.at(-1) - this.arrivals[0]) / 1000;
+    return spanSeconds > 0 ? (this.arrivals.length - 1) / spanSeconds : fallback;
+  }
 }
 
 class BrowserNodeApp {
   /**
-   * The in-browser node: picks an identity, holds a few packed chunks, follows the VDF
-   * and mines each step; it can also look up a wallet and send a data transaction.
-   * State lives in memory only; closing the tab forgets it, keys included.
+   * The in-browser node: picks an identity, holds packed chunks (kept in browser storage),
+   * follows the VDF and mines each step with real RandomX; it can also look up a wallet
+   * and send a data transaction. Keys live in memory only.
    */
   static REPLAY_STEP_INTERVAL_MS = 1000; // the network's VDF pace, about one step per second
   static FOLLOW_POLL_INTERVAL_MS = 60_000; // blocks come about every two minutes
 
   constructor() {
     this.view = new PageView();
+    this.explorer = new StepExplorer(this.view);
     this.gateway = new ArweaveGateway({ log: (message) => this.view.log(message, 'warn') });
+    this.store = new PackedChunkStore({ log: (message) => this.view.log(message, 'warn') });
+    this.pace = new StepPace();
     this.identity = null;
     this.session = null;
     this.storage = new HeldStorage();
-    this.entropySource = new StubEntropySource();
     this.h0Hasher = new StubH0Hasher();
+    this.entropySource = new StubEntropySource();
+    this.randomxReady = this.startRandomx();
     this.running = false;
     this.stepsMined = 0;
     this.lastMinedStep = -1;
-    this.worker = null;
+    this.vdfWorker = null;
+    this.peerUrls = [];
+  }
+
+  // ---- RandomX ----
+
+  async startRandomx() {
+    this.view.setText('randomxStatus', 'building the 512 MiB cache…');
+    try {
+      const host = new RandomxWorkerHost(() => BundledResources.worker('randomxWorkerSource'));
+      await host.ready();
+      this.h0Hasher = new RandomxH0Hasher(host);
+      this.entropySource = new RandomxSquaredEntropySource(host);
+      this.view.setText('randomxStatus', 'real (Arweave\'s RandomX in WebAssembly)');
+      this.view.log('RandomX ready: H0 and packing are real', 'good');
+      return true;
+    } catch (error) {
+      this.view.setText('randomxStatus', 'unavailable: using SHA-256 stand-ins');
+      this.view.log(`RandomX unavailable, so H0 and packing fall back to stand-ins that find nothing real: ${error.message}`, 'error');
+      return false;
+    }
+  }
+
+  get usingRealRandomx() {
+    return !this.h0Hasher.isStub;
   }
 
   // ---- identity ----
 
   async generateIdentity() {
     this.view.setText('identityStatus', 'Generating a 4096-bit key…');
-    this.setIdentity(MiningIdentity.fromWallet(await ArweaveWallet.generate()), 'new key made in this tab and never saved; it can sign transactions');
+    await this.setIdentity(MiningIdentity.fromWallet(await ArweaveWallet.generate()), 'new key made in this tab and never saved; it can sign transactions');
   }
 
-  useAddress() {
+  async useAddress() {
     try {
-      this.setIdentity(MiningIdentity.fromAddress(this.view.elements.addressInput.value), 'address only: enough to mine and look up, not to sign');
+      await this.setIdentity(MiningIdentity.fromAddress(this.view.elements.addressInput.value), 'address only: enough to mine and look up, not to sign');
     } catch (error) {
       this.view.setText('identityStatus', `That address did not work: ${error.message}. It should be 43 characters.`);
     }
@@ -168,7 +308,7 @@ class BrowserNodeApp {
     try {
       const wallet = await ArweaveWallet.fromJwk(JSON.parse(this.view.elements.keyfileInput.value));
       this.view.elements.keyfileInput.value = '';
-      this.setIdentity(MiningIdentity.fromWallet(wallet), 'keyfile loaded into this tab only; it can sign transactions');
+      await this.setIdentity(MiningIdentity.fromWallet(wallet), 'keyfile loaded into this tab only; it can sign transactions');
     } catch (error) {
       this.view.setText('identityStatus', `That keyfile did not load: ${error.message}`);
     }
@@ -190,17 +330,68 @@ class BrowserNodeApp {
     }
   }
 
-  setIdentity(identity, note) {
+  async setIdentity(identity, note) {
     this.identity = identity;
-    this.storage = new HeldStorage(); // packing is per address, so old packed data no longer counts
+    this.storage = new HeldStorage(); // packing is per address, so another address's chunks do not count
     this.view.setText('identityAddress', identity.address);
     this.view.setText('identityStatus', note);
     this.view.elements.walletAddressInput.value = identity.address;
+    this.view.setText('holdStatus', 'No data held for this address yet.');
     this.view.log(`identity set: ${identity.address}`);
+    await this.restoreStoredChunks();
     this.refreshSummary();
   }
 
+  // ---- browser storage ----
+
+  async restoreStoredChunks() {
+    // Stand-in packing is never saved, so anything stored is real packing.
+    const entries = await this.store.load(this.identity.address);
+    for (const [bucketEndOffset, packedChunk] of entries) this.storage.add(bucketEndOffset, packedChunk);
+    if (entries.length) {
+      this.view.log(`restored ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} from browser storage`, 'good');
+      this.view.setText('holdStatus', `Holding ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} saved in this browser earlier.`);
+    }
+    await this.refreshStorageNote();
+  }
+
+  async saveChunks(entries) {
+    if (!this.usingRealRandomx) return;
+    if (await this.store.save(this.identity.address, entries)) {
+      const persistent = await PackedChunkStore.requestPersistence();
+      this.view.log(`saved ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} to browser storage${persistent ? '' : ' (the browser may clear it if disk runs low)'}`);
+    }
+    await this.refreshStorageNote();
+  }
+
+  async refreshStorageNote() {
+    const estimate = await PackedChunkStore.estimate();
+    this.view.setText('storageNote', estimate
+      ? `This site uses ${PageView.formatBytes(estimate.usage ?? 0)} of browser storage, of ${PageView.formatBytes(estimate.quota ?? 0)} allowed.`
+      : 'This browser does not report its storage limits.');
+  }
+
   // ---- network ----
+
+  async findPeers() {
+    const blocked = PeerAccess.blockedReason();
+    if (blocked) {
+      this.view.setText('peerStatus', `Gateways only: ${blocked}. Open the downloaded file instead to reach nodes directly.`);
+      this.view.log(`peers unavailable, using gateways: ${blocked}`, 'warn');
+      return;
+    }
+    this.view.setText('peerStatus', 'Asking a gateway for peers and probing them…');
+    try {
+      this.peerUrls = await new PeerDirectory({ gateway: this.gateway, log: (message) => this.view.log(message, 'warn') }).discover();
+      this.gateway.preferPeers(this.peerUrls);
+      this.view.setText('peerStatus', this.peerUrls.length
+        ? `${this.peerUrls.length} peers answered and are tried first: ${this.peerUrls.join(', ')}. Gateways remain the fallback.`
+        : 'No peer answered, so requests go to gateways.');
+    } catch (error) {
+      this.view.setText('peerStatus', 'Could not get a peer list; using gateways.');
+      this.view.log(error.message.split('\n')[0], 'error');
+    }
+  }
 
   async loadLiveBlock() {
     this.view.setText('networkStatus', 'Fetching the current block…');
@@ -208,14 +399,14 @@ class BrowserNodeApp {
       this.useBlock(await this.gateway.currentBlock(), 'live');
       return true;
     } catch (error) {
-      this.view.setText('networkStatus', 'No gateway answered. The network here may block them; the sample block still works.');
+      this.view.setText('networkStatus', 'Nothing answered. The network here may block Arweave; the sample block still works.');
       this.view.log(error.message, 'error');
       return false;
     }
   }
 
-  async loadSampleBlock() {
-    this.useBlock(await BundledResources.sampleBlock(), 'sample');
+  loadSampleBlock() {
+    this.useBlock(BundledResources.sampleBlock(), 'sample');
   }
 
   useBlock(block, origin) {
@@ -226,16 +417,21 @@ class BrowserNodeApp {
     if (!partitionInput.value) partitionInput.value = String(block.partition_number ?? 0);
     this.view.setText('networkHeight', this.session.height.toLocaleString());
     this.view.setText('networkStep', this.session.latestStepNumber.toLocaleString());
-    this.view.setText('networkStatus', `${origin === 'live' ? 'Live' : 'Sample'} block ${this.session.height}; ${this.session.stepOutputsNewestFirst.length} VDF steps; weave ${PageView.formatBytes(Number(this.session.partitionUpperBound))}`);
+    const source = this.gateway.lastAnsweredBy && origin === 'live' ? ` from ${this.gateway.lastAnsweredBy}` : '';
+    this.view.setText('networkStatus', `${origin === 'live' ? 'Live' : 'Sample'} block ${this.session.height}${source}; ${this.session.stepOutputsNewestFirst.length} VDF steps; weave ${PageView.formatBytes(Number(this.session.partitionUpperBound))}`);
     this.view.log(`using ${origin} block at height ${this.session.height}`);
     this.refreshSummary();
     this.refreshPoolOdds();
   }
 
-  // ---- storage ----
+  // ---- holding data ----
 
   get partitionNumber() {
     return Number(this.view.elements.partitionInput.value || 0);
+  }
+
+  packingProgress(done, total) {
+    this.view.setText('holdStatus', `Packing: entropy ${done} of ${total} (about a second each)…`);
   }
 
   async holdChunks() {
@@ -243,41 +439,67 @@ class BrowserNodeApp {
       this.view.log('pick an identity and load a block first', 'warn');
       return;
     }
-    const packer = new ChunkPacker(this.identity, this.entropySource);
+    await this.randomxReady;
+    if (this.blockOrigin === 'sample') await this.holdSampleChunks();
+    else await this.holdLiveChunks();
+    this.refreshSummary();
+  }
 
-    if (this.blockOrigin === 'sample') {
-      // Offline: the sample block carries the two real chunks its miner proved access to.
-      for (const [chunkField, byteField] of [['poa', 'recall_byte'], ['poa2', 'recall_byte2']]) {
-        const endOffset = Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField]));
-        this.storage.add(endOffset, packer.packChunk(Bytes.fromBase64Url(this.block[chunkField].unpacked_chunk), endOffset));
-        this.view.log(`packed sample chunk ending at byte ${endOffset} for ${this.identity.address.slice(0, 8)}…`, 'good');
+  async holdSampleChunks() {
+    const proofs = [['poa', 'recall_byte'], ['poa2', 'recall_byte2']];
+    if (this.identity.address === this.block.reward_addr) {
+      // The block carries the packed sub-chunk its own miner used, for its own address:
+      // real packed data with no packing work, though only that one sub-chunk of each chunk.
+      const subChunkIndex = Number(Bytes.toBigInt(Bytes.fromBase64Url(this.block.nonce))) % ConsensusConstants.SUB_CHUNK_COUNT;
+      for (const [proof, byteField] of proofs) {
+        const packedChunk = new Uint8Array(ConsensusConstants.DATA_CHUNK_SIZE);
+        packedChunk.set(Bytes.fromBase64Url(this.block[proof].chunk), subChunkIndex * ConsensusConstants.SUB_CHUNK_SIZE);
+        this.storage.add(Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField])), packedChunk);
       }
-      this.refreshSummary();
+      this.view.setText('holdStatus', `Holding the block's own packed sub-chunk ${subChunkIndex} of each recall chunk, exactly as its miner held them.`);
       return;
     }
+    const chunks = proofs.map(([proof, byteField]) => ({
+      bytes: Bytes.fromBase64Url(this.block[proof].unpacked_chunk),
+      endOffset: Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField])),
+    }));
+    await this.packAndHold(chunks);
+  }
 
+  async holdLiveChunks() {
     const wanted = Number(this.view.elements.chunkCountInput.value || 4);
     const partitionStart = BigInt(this.partitionNumber) * ConsensusConstants.PARTITION_SIZE;
-    const partitionEnd = partitionStart + ConsensusConstants.PARTITION_SIZE;
-    const windowEnd = partitionEnd < this.session.partitionUpperBound ? partitionEnd : this.session.partitionUpperBound;
-    if (windowEnd <= partitionStart) {
+    if (partitionStart >= this.session.partitionUpperBound) {
       this.view.log(`partition ${this.partitionNumber} is past the end of the weave`, 'error');
       return;
     }
-    for (let index = 0; index < wanted; index++) {
-      const weaveByte = partitionStart + BigInt(Math.floor(Math.random() * Number(windowEnd - partitionStart)));
+    // Chunks at one bucket position in successive sectors share all 32 entropies.
+    const firstByte = partitionStart + BigInt(Math.floor(Math.random() * Number(ConsensusConstants.entropySectorSize)));
+    const chunks = [];
+    for (const weaveByte of Replica29Layout.entropySharingBytes(firstByte, wanted, this.session.partitionUpperBound)) {
+      this.view.setText('holdStatus', `Fetching chunk ${chunks.length + 1} of ${wanted}…`);
       try {
-        const chunk = Bytes.fromBase64Url((await this.gateway.chunkJson(weaveByte)).chunk);
         // Approximation: the chunk is filed under the 256 KiB bucket holding the byte asked
         // for. Exact would place it by its own end offset from its data_path.
-        const endOffset = Replica29Layout.bucketEndOffsetForByte(weaveByte);
-        this.storage.add(endOffset, packer.packChunk(chunk, endOffset));
-        this.view.log(`fetched and packed ${PageView.formatBytes(chunk.length)} at byte ${weaveByte}`, 'good');
+        chunks.push({ bytes: Bytes.fromBase64Url((await this.gateway.chunkJson(weaveByte)).chunk), endOffset: Replica29Layout.bucketEndOffsetForByte(weaveByte) });
       } catch (error) {
         this.view.log(`chunk at byte ${weaveByte} failed: ${error.message.split('\n')[0]}`, 'error');
       }
-      this.refreshSummary();
     }
+    if (chunks.length) await this.packAndHold(chunks);
+    else this.view.setText('holdStatus', 'No chunks could be fetched.');
+  }
+
+  async packAndHold(chunks) {
+    const started = performance.now();
+    const packer = new ChunkPacker(this.identity, this.entropySource);
+    const packed = await packer.packChunks(chunks, (done, total) => this.packingProgress(done, total));
+    const entries = packed.map((packedChunk, index) => [chunks[index].endOffset, packedChunk]);
+    for (const [endOffset, packedChunk] of entries) this.storage.add(endOffset, packedChunk);
+    const seconds = (performance.now() - started) / 1000;
+    this.view.setText('holdStatus', `Packed ${chunks.length} chunk${chunks.length === 1 ? '' : 's'} in ${seconds.toFixed(0)} s${this.usingRealRandomx ? '' : ' with stand-in packing, which is not saved'}.`);
+    this.view.log(`packed ${chunks.length} chunks for ${this.identity.address.slice(0, 8)}…`, 'good');
+    await this.saveChunks(entries);
   }
 
   // ---- mining ----
@@ -293,34 +515,56 @@ class BrowserNodeApp {
     });
   }
 
-  mineOne(stepNumber, output, source) {
-    const report = this.makeMiner().mineStep(this.session, stepNumber, output);
+  async mineOne(stepNumber, output, source) {
+    const report = await this.makeMiner().mineStep(this.session, stepNumber, output);
     this.stepsMined++;
+    this.pace.record();
     this.lastMinedStep = Math.max(this.lastMinedStep, stepNumber);
     this.view.setText('stepsMined', this.stepsMined.toLocaleString());
-    this.view.addStepRow(report, source);
-    if (report.solution) this.announceSolution(report);
+    this.view.addStepRow(report, source, () => this.explorer.show(report));
+    if (report.noncesTried || !this.explorerShown) {
+      this.explorer.show(report);
+      this.explorerShown = true;
+    }
+    this.refreshSummary();
+    if (report.solution) this.announceSolution(report, source);
   }
 
-  announceSolution(report) {
+  announceSolution(report, source) {
+    const isSampleReplay = this.blockOrigin === 'sample' && source === 'block' && Bytes.equal(report.solution.hash, Bytes.fromBase64Url(this.block.hash));
+    let title = 'Solution found!';
+    let detail;
+    if (this.isTestMode) {
+      title = 'Solution found! (test mode)';
+      detail = 'Test mode eased the rules, so the network would reject this.';
+    } else if (!this.usingRealRandomx) {
+      detail = 'RandomX is not available here, so H0 and packing are stand-ins and the network would reject it.';
+    } else if (isSampleReplay) {
+      detail = `This is block ${this.session.height.toLocaleString()}'s own solution, found again from scratch with real RandomX: the same hash its miner found. It is already on chain, so it earns nothing now.`;
+    } else {
+      detail = 'Real rules throughout. Turning this into a block also needs a signed block built around it, which this page does not do yet.';
+    }
     this.view.elements.solutionBanner.hidden = false;
-    this.view.setText('solutionTitle', this.isTestMode ? 'Solution found! (test mode)' : 'Solution found!');
-    this.view.setText('solutionDetail', `${report.solution.kind} at step ${report.stepNumber}, nonce ${report.solution.nonce}, hash ${PageView.shortHex(report.solution.hash, 24)}. ` +
-      (this.isTestMode ? 'Test mode eased the rules, so the network would reject this.' : 'H0 and packing are stand-ins here, so the network would still reject it.'));
+    this.view.setText('solutionTitle', title);
+    this.view.setText('solutionDetail', `${report.solution.kind} at step ${report.stepNumber.toLocaleString()}, nonce ${report.solution.nonce}, hash ${PageView.shortHex(report.solution.hash, 24)}. ${detail}`);
     this.view.log(`solution found at step ${report.stepNumber}`, 'good');
+    this.explorer.show(report);
     this.stop();
   }
 
-  start() {
+  async start() {
     if (!this.identity || !this.session) {
       this.view.log('pick an identity and load a block first', 'warn');
       return;
     }
+    await this.randomxReady;
     this.running = true;
+    this.pace.reset();
     this.view.elements.solutionBanner.hidden = true;
     this.view.elements.startButton.disabled = true;
     this.view.elements.stopButton.disabled = false;
     if (this.view.elements.vdfModeLocal.checked) this.runLocalVdf();
+    else if (this.view.elements.vdfModeServer.checked) this.runVdfServer();
     else if (this.view.elements.vdfModeFollow.checked) this.runFollow();
     else this.runReplay();
   }
@@ -329,14 +573,18 @@ class BrowserNodeApp {
     this.running = false;
     clearTimeout(this.replayTimer);
     clearTimeout(this.followTimer);
+    clearTimeout(this.serverTimer);
     this.view.elements.startButton.disabled = false;
     this.view.elements.stopButton.disabled = true;
   }
 
+  /** The block's last REPLAY_STEP_COUNT steps, ending on the step it was mined at, one a second. */
+  static REPLAY_STEP_COUNT = 15;
+
   runReplay() {
-    const steps = this.session.steps();
+    const steps = this.session.steps().slice(-BrowserNodeApp.REPLAY_STEP_COUNT);
     let index = 0;
-    const next = () => {
+    const next = async () => {
       if (!this.running) return;
       if (index >= steps.length) {
         this.view.log('replayed every step in this block; choose another VDF source to keep going', 'warn');
@@ -344,39 +592,68 @@ class BrowserNodeApp {
         return;
       }
       const [stepNumber, output] = steps[index++];
-      this.mineOne(stepNumber, output, 'block');
-      this.replayTimer = setTimeout(next, BrowserNodeApp.REPLAY_STEP_INTERVAL_MS);
+      await this.mineOne(stepNumber, output, 'block');
+      if (this.running) this.replayTimer = setTimeout(next, BrowserNodeApp.REPLAY_STEP_INTERVAL_MS);
     };
     next();
   }
 
   /**
+   * Steps from a public VDF server: the only way to keep the network's pace without
+   * computing the VDF here. Falls back to telling the person when none answers.
+   */
+  async runVdfServer() {
+    this.view.setText('vdfStatus', 'Looking for a VDF server among peers and gateways…');
+    const client = new VdfServerClient({ baseUrls: [...this.peerUrls, ...ArweaveGateway.DEFAULT_GATEWAY_URLS], log: (message) => this.view.log(message, 'warn') });
+    if (!(await client.findServer())) {
+      this.view.setText('vdfStatus', 'No peer or gateway serves the VDF to this page. Use "Compute new VDF steps in this tab" (slower) or "Follow the network".');
+      this.stop();
+      return;
+    }
+    this.view.setText('vdfStatus', `Getting VDF steps from ${client.serverUrl}.`);
+    const poll = async () => {
+      if (!this.running) return;
+      try {
+        const update = await client.latest();
+        for (const [stepNumber, output] of VdfUpdate.steps(update, this.lastMinedStep)) {
+          if (!this.running) return;
+          await this.mineOne(stepNumber, output, 'VDF server');
+        }
+      } catch (error) {
+        this.view.log(`VDF server: ${error.message}`, 'warn');
+      }
+      if (this.running) this.serverTimer = setTimeout(poll, VdfServerClient.POLL_INTERVAL_MS);
+    };
+    poll();
+  }
+
+  /**
    * Poll the network for new blocks and mine every step each one adds. Approximation:
-   * steps arrive minutes late, so a real solution found this way could already be stale;
-   * a real node gets steps each second from a VDF server or computes them itself.
+   * steps arrive minutes late, after a newer block may already exist, so a solution found
+   * this way is usually stale. It is still the real VDF, checked by the network.
    */
   runFollow() {
     const poll = async () => {
       if (!this.running) return;
       if (await this.loadLiveBlock()) {
         const fresh = this.session.steps(this.lastMinedStep);
-        this.view.setText('vdfStatus', `following the network: ${fresh.length} new steps in block ${this.session.height}`);
+        this.view.setText('vdfStatus', `Following the network: ${fresh.length} new steps in block ${this.session.height}. These arrive minutes late, so solutions are usually stale.`);
         for (const [stepNumber, output] of fresh) {
           if (!this.running) return;
-          this.mineOne(stepNumber, output, 'network');
+          await this.mineOne(stepNumber, output, 'network');
         }
       } else {
-        this.view.setText('vdfStatus', 'could not reach a gateway; trying again in a minute');
+        this.view.setText('vdfStatus', 'Could not reach the network; trying again in a minute.');
       }
-      this.followTimer = setTimeout(poll, BrowserNodeApp.FOLLOW_POLL_INTERVAL_MS);
+      if (this.running) this.followTimer = setTimeout(poll, BrowserNodeApp.FOLLOW_POLL_INTERVAL_MS);
     };
     poll();
   }
 
   runLocalVdf() {
-    if (!this.worker) {
-      this.worker = BundledResources.vdfWorker();
-      this.worker.onerror = (event) => {
+    if (!this.vdfWorker) {
+      this.vdfWorker = BundledResources.worker('vdfWorkerSource');
+      this.vdfWorker.onerror = (event) => {
         this.view.log(`VDF worker could not run: ${event.message || 'the browser gave no reason'}`, 'error');
         this.stop();
       };
@@ -389,9 +666,9 @@ class BrowserNodeApp {
       const pace = lastStepSeconds === null ? '' : ` The last took ${lastStepSeconds.toFixed(1)} s here; the network does one per second.`;
       this.view.setText('vdfStatus', `Computing step ${(stepNumber + 1).toLocaleString()}…${pace}`);
       // Assumption: on reset steps the session's next_seed is mixed in (ar_nonce_limiter:maybe_add_entropy).
-      this.worker.postMessage({ stepNumber: stepNumber + 1, previousOutput, iterationsPerCheckpoint: this.session.vdfDifficulty, resetSeed: this.session.nextSeed });
+      this.vdfWorker.postMessage({ stepNumber: stepNumber + 1, previousOutput, iterationsPerCheckpoint: this.session.vdfDifficulty, resetSeed: this.session.nextSeed });
     };
-    this.worker.onmessage = ({ data }) => {
+    this.vdfWorker.onmessage = async ({ data }) => {
       if (data.error) {
         this.view.log(`VDF worker failed: ${data.error}`, 'error');
         this.stop();
@@ -402,8 +679,8 @@ class BrowserNodeApp {
       this.localStepNumber = stepNumber;
       this.localOutput = previousOutput;
       lastStepSeconds = data.seconds;
-      if (this.running) this.mineOne(stepNumber, previousOutput, 'this tab');
-      requestNext();
+      requestNext(); // start the next step while this one is mined
+      if (this.running) await this.mineOne(stepNumber, previousOutput, 'this tab');
     };
     requestNext();
   }
@@ -425,7 +702,7 @@ class BrowserNodeApp {
       }
       const failed = [balance, reserved, history].filter((result) => result.status === 'rejected');
       for (const result of failed) this.view.log(result.reason.message.split('\n')[0], 'error');
-      this.view.setText('walletStatus', failed.length === 3 ? 'No gateway answered.' : `Checked at ${new Date().toLocaleTimeString()}.`);
+      this.view.setText('walletStatus', failed.length === 3 ? 'Nothing answered.' : `Checked at ${new Date().toLocaleTimeString()}.`);
     } catch (error) {
       this.view.setText('walletStatus', `Lookup failed: ${error.message}`);
     }
@@ -444,7 +721,7 @@ class BrowserNodeApp {
       this.view.setText('recordStatus', `${byteCount} bytes would cost ${PageView.formatAr(winston)} right now.`);
       return winston;
     } catch (error) {
-      this.view.setText('recordStatus', 'Could not get a price; no gateway answered.');
+      this.view.setText('recordStatus', 'Could not get a price; nothing answered.');
       this.view.log(error.message.split('\n')[0], 'error');
       return null;
     }
@@ -466,7 +743,7 @@ class BrowserNodeApp {
       }).sign(wallet);
       this.view.setText('recordStatus', `Signed ${transaction.id}. Sending…`);
       const reply = await this.gateway.postTransaction(transaction.toJson());
-      this.view.setText('recordStatus', `Sent. The network replied "${reply.slice(0, 80)}". It should be readable at arweave.net/${transaction.id} within minutes.`);
+      this.view.setText('recordStatus', `Sent to ${this.gateway.lastAnsweredBy}, which replied "${reply.slice(0, 80)}". It should be readable at arweave.net/${transaction.id} within minutes.`);
       this.view.elements.recordLink.href = `https://arweave.net/${transaction.id}`;
       this.view.elements.recordLink.textContent = `arweave.net/${transaction.id}`;
       this.view.log(`record transaction ${transaction.id} sent`, 'good');
@@ -483,8 +760,14 @@ class BrowserNodeApp {
     this.view.setText('heldBytes', PageView.formatBytes(this.storage.byteCount));
     this.view.setText('heldChunks', `${this.storage.packedChunks.size} chunk${this.storage.packedChunks.size === 1 ? '' : 's'}`);
     if (!this.session) return;
-    const seconds = SolutionOdds.expectedSecondsPerSolution({ storage: this.storage, partitionNumber: this.partitionNumber, session: this.session });
+    const stepsPerSecond = this.running ? this.pace.stepsPerSecond(SolutionOdds.NETWORK_STEPS_PER_SECOND) : SolutionOdds.NETWORK_STEPS_PER_SECOND;
+    const odds = { storage: this.storage, partitionNumber: this.partitionNumber, session: this.session, stepsPerSecond };
+    const seconds = SolutionOdds.expectedSecondsPerSolution(odds);
     this.view.setText('expectedWait', PageView.formatDuration(seconds));
+    const factors = SolutionOdds.limitingFactors(odds);
+    this.view.setText('limitHeadline', `Biggest limit: ${factors[0].name}. ${this.running ? `Measured pace: ${stepsPerSecond.toFixed(2)} steps a second.` : 'Assumes the network\'s pace of one step a second until mining starts.'}`);
+    this.view.fillLimits(factors);
+    this.view.setText('waitNote', this.usingRealRandomx ? 'Real rules: a solution here would be a real one.' : 'Stand-in RandomX: solutions would not be real.');
   }
 
   refreshPoolOdds() {
@@ -504,6 +787,7 @@ class BrowserNodeApp {
     onClick('addressButton', this.useAddress);
     onClick('keyfileButton', this.loadKeyfile);
     onClick('copyKeyfileButton', this.copyKeyfile);
+    onClick('peersButton', this.findPeers);
     onClick('liveButton', this.loadLiveBlock);
     onClick('sampleButton', this.loadSampleBlock);
     onClick('holdButton', this.holdChunks);
@@ -519,13 +803,15 @@ class BrowserNodeApp {
 
   async run() {
     this.bind();
+    const blocked = PeerAccess.blockedReason();
+    this.view.setText('peerStatus', blocked ? `Gateways only: ${blocked}.` : 'Gateways for now. "Find peers" looks for nodes this page can reach directly.');
     // Open in a working state: the sample block, mining for the address that won it.
-    await this.loadSampleBlock();
+    this.loadSampleBlock();
     this.view.elements.addressInput.value = this.block.reward_addr;
-    this.useAddress();
+    await this.useAddress();
     this.view.setText('identityStatus', 'Default: the address that mined the sample block, possibly a pool. Anything found would pay it, not you.');
     await this.holdChunks();
-    this.view.log('ready: sample block loaded and its two chunks packed. Press Start mining.');
+    this.view.log('ready: sample block loaded with its own packed data. Press Start mining to replay its steps.');
   }
 }
 

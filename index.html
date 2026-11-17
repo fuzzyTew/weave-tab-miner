@@ -55,6 +55,14 @@
   .readout-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
   .readout-value { font-family: var(--font-data); font-size: 1.05rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .readout-wait .readout-value { color: var(--accent); }
+  .readout-small { font-size: 0.85rem; }
+  .limits { background: var(--panel); border: 1px solid var(--rule); padding: 14px; }
+  .limits ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+  .limit-met { color: var(--muted); }
+  .explorer td.explorer-value { white-space: normal; overflow-wrap: anywhere; word-break: break-all; min-width: 16ch; }
+  .explorer th[scope="row"] { font-family: var(--font-body); text-transform: none; letter-spacing: 0; font-size: 0.8rem; color: var(--ink); white-space: nowrap; }
+  #stepRows tr { cursor: pointer; }
+  #stepRows tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
   .banner { border: 2px solid var(--good); background: var(--real-bg); padding: 14px 16px; display: grid; gap: 4px; }
   .banner strong { font-family: var(--font-display); font-size: 1.4rem; color: var(--good); }
@@ -117,8 +125,16 @@
     <div class="readout"><div class="readout-label">Latest VDF step</div><div class="readout-value" id="networkStep">—</div></div>
     <div class="readout"><div class="readout-label">Data held, packed</div><div class="readout-value"><span id="heldBytes">0 B</span> · <span id="heldChunks">0 chunks</span></div></div>
     <div class="readout"><div class="readout-label">Steps mined</div><div class="readout-value" id="stepsMined">0</div></div>
-    <div class="readout readout-wait"><div class="readout-label">Expected wait for a real solution</div><div class="readout-value" id="expectedWait">—</div></div>
+    <div class="readout readout-wait"><div class="readout-label">Expected wait for a solution</div><div class="readout-value" id="expectedWait">—</div></div>
+    <div class="readout"><div class="readout-label">RandomX</div><div class="readout-value readout-small" id="randomxStatus">—</div></div>
   </div>
+
+  <section class="limits" aria-labelledby="limitsHeading">
+    <h2 id="limitsHeading">What limits the wait</h2>
+    <p id="limitHeadline">—</p>
+    <ol id="limitList"></ol>
+    <p class="stage-note" id="waitNote"></p>
+  </section>
 
   <div class="banner" id="solutionBanner" hidden>
     <strong id="solutionTitle">Solution found!</strong>
@@ -151,8 +167,9 @@
         <button id="sampleButton" type="button">Use sample block</button>
       </div>
       <p class="stage-note" id="networkStatus">Loading the sample block…</p>
-      <p class="stage-note">The sample is mainnet block 2,040,257, bundled with this page so it works where gateways are blocked.</p>
-      <p class="stage-note">This viewer blocks requests to other sites, so the live block, wallet lookup and sending only work in a downloaded copy of this page, served from any web server.</p>
+      <p class="stage-note">The sample is mainnet block 2,040,257, bundled with this page so it works where Arweave is blocked.</p>
+      <div class="row"><button id="peersButton" type="button">Find peers</button></div>
+      <p class="stage-note" id="peerStatus">—</p>
     </section>
 
     <section class="stage" aria-labelledby="holdHeading">
@@ -164,14 +181,17 @@
         <input id="chunkCountInput" type="number" min="1" max="64" step="1" value="4">
       </label>
       <div class="row"><button id="holdButton" type="button">Fetch and pack</button></div>
-      <p class="stage-note">With the sample block this packs the two real chunks that block's miner used. With a live block it fetches random chunks from your partition.</p>
+      <p class="stage-note" id="holdStatus">—</p>
+      <p class="stage-note">A live block fetches chunks at one position in successive 3.5 GB sectors of your partition: they share their 32 packing entropies, so 1 or 1,024 of them cost the same packing time. Packed chunks are kept in this browser for this address.</p>
+      <p class="stage-note" id="storageNote"></p>
     </section>
 
     <section class="stage" aria-labelledby="mineHeading">
       <h2 id="mineHeading"><span class="stage-number">4</span>Mine</h2>
-      <label class="choice" for="vdfModeReplay"><input id="vdfModeReplay" name="vdfMode" type="radio" checked> Replay the block's VDF steps, one per second</label>
-      <label class="choice" for="vdfModeFollow"><input id="vdfModeFollow" name="vdfMode" type="radio"> Follow the network: new steps from each new block</label>
-      <label class="choice" for="vdfModeLocal"><input id="vdfModeLocal" name="vdfMode" type="radio"> Compute new VDF steps in this tab</label>
+      <label class="choice" for="vdfModeReplay"><input id="vdfModeReplay" name="vdfMode" type="radio" checked> Replay the block's last 15 VDF steps, one a second</label>
+      <label class="choice" for="vdfModeServer"><input id="vdfModeServer" name="vdfMode" type="radio"> Live: steps from a VDF server, if one answers</label>
+      <label class="choice" for="vdfModeLocal"><input id="vdfModeLocal" name="vdfMode" type="radio"> Live: compute VDF steps in this tab (about 20 times slower)</label>
+      <label class="choice" for="vdfModeFollow"><input id="vdfModeFollow" name="vdfMode" type="radio"> Follow new blocks (steps arrive minutes late)</label>
       <label class="choice" for="aimCheckbox"><input id="aimCheckbox" type="checkbox"> Test: aim range 1 at held data</label>
       <label for="easeSelect">Test: make each hash this many times likelier to pass
         <select id="easeSelect">
@@ -245,6 +265,17 @@
     </div>
   </section>
 
+  <section aria-labelledby="explorerHeading">
+    <h2 id="explorerHeading">Step explorer: <span id="explorerTitle">no step yet</span></h2>
+    <p class="stage-note">Every value of one mining step, with the line of the Arweave node source that defines it. Click a row in Steps to show that step.</p>
+    <div class="table-wrap">
+      <table class="explorer">
+        <thead><tr><th>Value</th><th>Computed</th><th>Source (ArweaveTeam/arweave @ 18d402c)</th></tr></thead>
+        <tbody id="explorerRows"></tbody>
+      </table>
+    </div>
+  </section>
+
   <section aria-labelledby="logHeading">
     <h2 id="logHeading">Activity</h2>
     <ul class="log" id="activityLog"></ul>
@@ -254,22 +285,20 @@
     <h2 id="ledgerHeading">What is real here</h2>
     <div class="ledger">
       <div class="stage">
-        <span class="chip chip-real">From the node source, tested</span>
+        <span class="chip chip-real">Tested against mainnet</span>
         <ul>
-          <li>VDF: recomputes mainnet step 119,924,183 to the exact output in the sample block.</li>
-          <li>Difficulty: the sample block's solution hash passes the same check the node uses.</li>
-          <li>Recall ranges, nonce-to-sub-chunk mapping, H1 and H2.</li>
-          <li>Packing layout: which entropy and which 8 KiB slice each sub-chunk uses, and the XOR.</li>
-          <li>Chunk data, block data and VDF outputs from mainnet.</li>
-          <li>Transactions: data root, signature and id match arweave-js, and arweave-js verifies transactions signed here.</li>
+          <li>Replaying block 2,040,257 with real RandomX finds its own solution again: the same nonce and hash.</li>
+          <li>Packing that block's unpacked chunks reproduces its packed sub-chunks exactly.</li>
+          <li>The VDF recomputes step 119,924,183 to the block's output.</li>
+          <li>Transactions match arweave-js, which verifies transactions signed here.</li>
         </ul>
       </div>
       <div class="stage">
-        <span class="chip chip-stub">Stand-ins</span>
+        <span class="chip chip-stub">Not yet tested live</span>
         <ul>
-          <li>H0 uses SHA-256 in place of Arweave's RandomX (the "rx4096" build with a 512 MiB cache).</li>
-          <li>Packing entropy uses SHA-256 in place of the slow "RandomX squared" generator.</li>
-          <li>Both sit behind their own classes, so a WebAssembly build of the real code can be dropped in. Until then the network would reject any solution found here.</li>
+          <li>Requests to gateways, peers and VDF servers: written from the node source, but the machine this was built on could not reach Arweave.</li>
+          <li>A found solution is not yet built into a signed block and sent.</li>
+          <li>If the 512 MiB RandomX cache cannot be allocated, the page falls back to SHA-256 stand-ins and says so.</li>
         </ul>
       </div>
     </div>

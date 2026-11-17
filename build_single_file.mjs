@@ -12,7 +12,11 @@ class SingleFileBuilder {
    * <script type="module"> holds them all. This works because the modules share no
    * conflicting top-level names; a name clash would show up as a SyntaxError on load.
    */
-  static LIBRARY_ORDER = ['arweave_miner.js', 'arweave_gateway.js', 'arweave_wallet.js', 'arweave_transaction.js'];
+  static LIBRARY_ORDER = [
+    'arweave_miner.js', 'arweave_gateway.js', 'arweave_wallet.js', 'arweave_transaction.js', 'arweave_randomx.js',
+    'arweave_storage.js', 'arweave_peers.js', 'arweave_vdf_client.js', 'arweave_citations.js',
+  ];
+  static RANDOMX_BUNDLE = 'vendor/randomx-arweave/randomx-arweave.iife.js';
 
   constructor(sourceDirectory) {
     this.sourceDirectory = sourceDirectory;
@@ -40,7 +44,11 @@ class SingleFileBuilder {
   build() {
     const library = this.inlinedModules(SingleFileBuilder.LIBRARY_ORDER);
     const pageScript = SingleFileBuilder.safeForScriptElement(`${library}\n${this.inlinedModules(['miner_app.js'])}`);
-    const workerScript = SingleFileBuilder.safeForScriptElement(`${this.inlinedModules(['arweave_miner.js'])}\n${this.inlinedModules(['vdf_worker.js'])}`);
+    const workerScript = SingleFileBuilder.safeForScriptElement(this.inlinedModules(['arweave_miner.js', 'vdf_worker.js']));
+    // The RandomX worker: the bundle (a classic script defining RandomxArweave), then the
+    // library pieces it uses, then the worker body.
+    const randomxWorkerScript = SingleFileBuilder.safeForScriptElement(
+      `${this.read(SingleFileBuilder.RANDOMX_BUNDLE)}\n${this.inlinedModules(['arweave_miner.js', 'arweave_randomx.js', 'randomx_worker.js'])}`);
     const sampleBlock = SingleFileBuilder.safeForScriptElement(this.read('sample_block.json'));
 
     const pageBody = this.read('index.html').replace(
@@ -48,6 +56,7 @@ class SingleFileBuilder {
       [
         `<script type="application/json" id="sampleBlockData">${sampleBlock}</script>`,
         `<script type="text/plain" id="vdfWorkerSource">${workerScript}</script>`,
+        `<script type="text/plain" id="randomxWorkerSource">${randomxWorkerScript}</script>`,
         `<script type="module">\n${pageScript}\n</script>`,
       ].join('\n'),
     );
