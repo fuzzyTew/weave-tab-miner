@@ -25,8 +25,8 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
   call. From the downloaded file, **Find peers** tries nodes first, gateways as fallback;
   an https copy says why it uses gateways only.
 - **VDF**: a public VDF server keeps the network's pace of a step a second, if one answers.
-  Computing steps in the tab is about 20 times slower. Following new blocks gets steps
-  minutes late, so solutions are usually stale.
+  Computing steps in the tab is about 20 times slower. (Steps read from the latest block
+  are no use: a new block must use steps after the latest block's own step.)
 - **What limits the wait** shows the expected time to a solution and what limits it most.
 - **Step explorer** shows every value of a mining step, each linked to the line of the
   Arweave node source (commit `18d402c`) that defines it.
@@ -51,7 +51,7 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
 
 ## Server mode
 
-    node node_miner.mjs --address <43-char address> --vdf follow
+    node node_miner.mjs --address <43-char address> --vdf server
     node node_miner.mjs --address wYnRY0GUYWkoisS45Djguy5DZ5Xt3z1bE0KDPnq66c4 --sample sample_block.json
 
 ## Checks

@@ -245,7 +245,6 @@ class BrowserNodeApp {
    * and send a data transaction. Keys live in memory only.
    */
   static REPLAY_STEP_INTERVAL_MS = 1000; // the network's VDF pace, about one step per second
-  static FOLLOW_POLL_INTERVAL_MS = 60_000; // blocks come about every two minutes
 
   constructor() {
     this.view = new PageView();
@@ -565,14 +564,12 @@ class BrowserNodeApp {
     this.view.elements.stopButton.disabled = false;
     if (this.view.elements.vdfModeLocal.checked) this.runLocalVdf();
     else if (this.view.elements.vdfModeServer.checked) this.runVdfServer();
-    else if (this.view.elements.vdfModeFollow.checked) this.runFollow();
     else this.runReplay();
   }
 
   stop() {
     this.running = false;
     clearTimeout(this.replayTimer);
-    clearTimeout(this.followTimer);
     clearTimeout(this.serverTimer);
     this.view.elements.startButton.disabled = false;
     this.view.elements.stopButton.disabled = true;
@@ -606,7 +603,7 @@ class BrowserNodeApp {
     this.view.setText('vdfStatus', 'Looking for a VDF server among peers and gateways…');
     const client = new VdfServerClient({ baseUrls: [...this.peerUrls, ...ArweaveGateway.DEFAULT_GATEWAY_URLS], log: (message) => this.view.log(message, 'warn') });
     if (!(await client.findServer())) {
-      this.view.setText('vdfStatus', 'No peer or gateway serves the VDF to this page. Use "Compute new VDF steps in this tab" (slower) or "Follow the network".');
+      this.view.setText('vdfStatus', 'No peer or gateway serves the VDF to this page. Use "compute VDF steps in this tab" instead; it is slower but needs no server.');
       this.stop();
       return;
     }
@@ -623,29 +620,6 @@ class BrowserNodeApp {
         this.view.log(`VDF server: ${error.message}`, 'warn');
       }
       if (this.running) this.serverTimer = setTimeout(poll, VdfServerClient.POLL_INTERVAL_MS);
-    };
-    poll();
-  }
-
-  /**
-   * Poll the network for new blocks and mine every step each one adds. Approximation:
-   * steps arrive minutes late, after a newer block may already exist, so a solution found
-   * this way is usually stale. It is still the real VDF, checked by the network.
-   */
-  runFollow() {
-    const poll = async () => {
-      if (!this.running) return;
-      if (await this.loadLiveBlock()) {
-        const fresh = this.session.steps(this.lastMinedStep);
-        this.view.setText('vdfStatus', `Following the network: ${fresh.length} new steps in block ${this.session.height}. These arrive minutes late, so solutions are usually stale.`);
-        for (const [stepNumber, output] of fresh) {
-          if (!this.running) return;
-          await this.mineOne(stepNumber, output, 'network');
-        }
-      } else {
-        this.view.setText('vdfStatus', 'Could not reach the network; trying again in a minute.');
-      }
-      if (this.running) this.followTimer = setTimeout(poll, BrowserNodeApp.FOLLOW_POLL_INTERVAL_MS);
     };
     poll();
   }

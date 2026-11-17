@@ -1,7 +1,7 @@
 // node_miner.mjs — server mode: the same mining library as the page, run from Node 18+.
 //
 //   node node_miner.mjs --address <43-char address> [--partition 62] [--chunks 16]
-//                       [--vdf follow|local|replay] [--sample sample_block.json]
+//                       [--vdf server|local|replay] [--sample sample_block.json]
 //                       [--stub-randomx] [--test-ease 1000000000] [--aim-at-held]
 //
 // --sample uses a saved block (and its two chunks) instead of the network.
@@ -14,13 +14,14 @@ import {
   StubH0Hasher, HeldStorage, Miner, VdfSession, VdfChain, SolutionOdds,
 } from './arweave_miner.js';
 import { ArweaveGateway } from './arweave_gateway.js';
+import { VdfServerClient, VdfUpdate } from './arweave_vdf_client.js';
 import { RandomxBundle, RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from './arweave_randomx.js';
 
 class CommandLineOptions {
   /**
    * `--name value` pairs and bare `--flag`s, with defaults.
    */
-  static DEFAULTS = { partition: null, chunks: '8', vdf: 'follow', sample: null, testEase: '1', aimAtHeld: false, stubRandomx: false, address: null };
+  static DEFAULTS = { partition: null, chunks: '8', vdf: 'server', sample: null, testEase: '1', aimAtHeld: false, stubRandomx: false, address: null };
 
   static parse(argv) {
     const options = { ...CommandLineOptions.DEFAULTS };
@@ -40,8 +41,6 @@ class ServerMiner {
    * Loads a block, holds packed chunks, and mines VDF steps from the chosen source,
    * printing one line per step and stopping at the first solution.
    */
-  static FOLLOW_POLL_INTERVAL_MS = 60_000;
-
   constructor(options) {
     this.options = options;
     this.gateway = new ArweaveGateway({ log: (message) => console.error(`warn: ${message}`) });
@@ -112,15 +111,20 @@ class ServerMiner {
     return true;
   }
 
-  async mineFollowing() {
+  /** Steps from a public VDF server, if any peer or gateway answers GET /vdf. */
+  async mineFromVdfServer() {
+    const client = new VdfServerClient({ baseUrls: ArweaveGateway.DEFAULT_GATEWAY_URLS, log: (message) => console.error(`warn: ${message}`) });
+    if (!(await client.findServer())) throw new Error('no VDF server answered; use --vdf local (slower) instead');
+    console.log(`VDF steps from ${client.serverUrl}`);
     for (;;) {
-      for (const [stepNumber, output] of this.session.steps(this.lastMinedStep)) if (await this.mineStep(stepNumber, output)) return;
-      await new Promise((resolve) => setTimeout(resolve, ServerMiner.FOLLOW_POLL_INTERVAL_MS));
       try {
-        await this.loadBlock();
+        for (const [stepNumber, output] of VdfUpdate.steps(await client.latest(), this.lastMinedStep)) {
+          if (await this.mineStep(stepNumber, output)) return;
+        }
       } catch (error) {
-        console.error(`could not refresh the block: ${error.message}`);
+        console.error(`VDF server: ${error.message}`);
       }
+      await new Promise((resolve) => setTimeout(resolve, VdfServerClient.POLL_INTERVAL_MS));
     }
   }
 
@@ -144,7 +148,7 @@ class ServerMiner {
     if (this.options.vdf === 'local') await this.mineLocalVdf();
     else if (this.options.vdf === 'replay' || this.options.sample) {
       for (const [stepNumber, output] of this.session.steps()) if (await this.mineStep(stepNumber, output)) return;
-    } else await this.mineFollowing();
+    } else await this.mineFromVdfServer();
   }
 }
 
