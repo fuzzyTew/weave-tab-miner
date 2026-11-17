@@ -18,7 +18,14 @@ export class ArweaveGateway {
 
   /** Try these node URLs (see arweave_peers.js) before the gateways; [] goes back to gateways only. */
   preferPeers(peerUrls) {
+    this.peerUrls = peerUrls;
     this.gatewayUrls = [...peerUrls, ...this.fallbackUrls];
+  }
+
+  /** Add more gateways (see GatewayDirectory) after the ones already known. */
+  addGateways(gatewayUrls) {
+    this.fallbackUrls = [...new Set([...this.fallbackUrls, ...gatewayUrls])];
+    this.gatewayUrls = [...(this.peerUrls ?? []), ...this.fallbackUrls];
   }
 
   async request(path, { method = 'GET', body = undefined, headers = {}, readAs = 'json', firstGatewayOnly = false } = {}) {

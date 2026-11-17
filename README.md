@@ -21,6 +21,8 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
 - **Packing** takes about a second per 8 MiB entropy, 32 entropies per batch of chunks.
   Chunks fetched together sit at one position in successive sectors and share those
   entropies. Packed chunks are saved in the browser (IndexedDB) per address.
+- **Gateways**: "Find gateways and peers" adds gateways from an ar.io gateway's registry
+  (`GET /ar-io/peers`), which also lists Arweave nodes.
 - **Peers**: nodes allow browsers (CORS) but speak plain http, which https pages may not
   call. From the downloaded file, **Find peers** tries nodes first, gateways as fallback;
   an https copy says why it uses gateways only.

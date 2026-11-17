@@ -10,7 +10,7 @@ import { ArweaveWallet } from './arweave_wallet.js';
 import { DataTransaction } from './arweave_transaction.js';
 import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from './arweave_randomx.js';
 import { PackedChunkStore } from './arweave_storage.js';
-import { PeerAccess, PeerDirectory } from './arweave_peers.js';
+import { PeerAccess, PeerDirectory, GatewayDirectory } from './arweave_peers.js';
 import { VdfServerClient, VdfUpdate } from './arweave_vdf_client.js';
 import { SourceCitations } from './arweave_citations.js';
 
@@ -372,22 +372,38 @@ class BrowserNodeApp {
 
   // ---- network ----
 
+  /**
+   * More gateways from an ar.io gateway's registry, then, where this page may reach them,
+   * Arweave nodes to try first. Gateways stay the fallback either way.
+   */
   async findPeers() {
+    this.view.setText('peerStatus', 'Asking ar.io for more gateways…');
+    let nodeUrls = [];
+    try {
+      const found = await new GatewayDirectory({ gateway: this.gateway, log: (message) => this.view.log(message, 'warn') }).discover();
+      this.gateway.addGateways(found.gatewayUrls);
+      nodeUrls = found.nodeUrls;
+      this.view.log(`ar.io listed ${found.gatewayUrls.length} more gateways and ${nodeUrls.length} Arweave nodes`, 'good');
+    } catch (error) {
+      this.view.log(`could not get the ar.io gateway list: ${error.message.split('\n')[0]}`, 'warn');
+    }
+    const gatewayCount = this.gateway.fallbackUrls.length;
+
     const blocked = PeerAccess.blockedReason();
     if (blocked) {
-      this.view.setText('peerStatus', `Gateways only: ${blocked}. Open the downloaded file instead to reach nodes directly.`);
+      this.view.setText('peerStatus', `Using ${gatewayCount} gateways, not nodes directly: ${blocked}. A downloaded copy, opened from disk, can reach nodes.`);
       this.view.log(`peers unavailable, using gateways: ${blocked}`, 'warn');
       return;
     }
-    this.view.setText('peerStatus', 'Asking a gateway for peers and probing them…');
+    this.view.setText('peerStatus', `Using ${gatewayCount} gateways; probing Arweave nodes…`);
     try {
-      this.peerUrls = await new PeerDirectory({ gateway: this.gateway, log: (message) => this.view.log(message, 'warn') }).discover();
+      this.peerUrls = await new PeerDirectory({ gateway: this.gateway, log: (message) => this.view.log(message, 'warn') }).discover(nodeUrls);
       this.gateway.preferPeers(this.peerUrls);
       this.view.setText('peerStatus', this.peerUrls.length
-        ? `${this.peerUrls.length} peers answered and are tried first: ${this.peerUrls.join(', ')}. Gateways remain the fallback.`
-        : 'No peer answered, so requests go to gateways.');
+        ? `${this.peerUrls.length} nodes answered and are tried first: ${this.peerUrls.join(', ')}. ${gatewayCount} gateways remain the fallback.`
+        : `No node answered, so requests go to ${gatewayCount} gateways.`);
     } catch (error) {
-      this.view.setText('peerStatus', 'Could not get a peer list; using gateways.');
+      this.view.setText('peerStatus', `Could not get a node list; using ${gatewayCount} gateways.`);
       this.view.log(error.message.split('\n')[0], 'error');
     }
   }
@@ -601,7 +617,7 @@ class BrowserNodeApp {
    */
   async runVdfServer() {
     this.view.setText('vdfStatus', 'Looking for a VDF server among peers and gateways…');
-    const client = new VdfServerClient({ baseUrls: [...this.peerUrls, ...ArweaveGateway.DEFAULT_GATEWAY_URLS], log: (message) => this.view.log(message, 'warn') });
+    const client = new VdfServerClient({ baseUrls: this.gateway.gatewayUrls, log: (message) => this.view.log(message, 'warn') });
     if (!(await client.findServer())) {
       this.view.setText('vdfStatus', 'No peer or gateway serves the VDF to this page. Use "compute VDF steps in this tab" instead; it is slower but needs no server.');
       this.stop();
@@ -778,7 +794,9 @@ class BrowserNodeApp {
   async run() {
     this.bind();
     const blocked = PeerAccess.blockedReason();
-    this.view.setText('peerStatus', blocked ? `Gateways only: ${blocked}.` : 'Gateways for now. "Find peers" looks for nodes this page can reach directly.');
+    this.view.setText('peerStatus', blocked
+      ? `Gateways only: ${blocked}. "Find gateways and peers" still adds more gateways.`
+      : '3 gateways for now. "Find gateways and peers" adds gateways from ar.io and looks for nodes this page can reach directly.');
     // Open in a working state: the sample block, mining for the address that won it.
     this.loadSampleBlock();
     this.view.elements.addressInput.value = this.block.reward_addr;

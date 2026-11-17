@@ -44,14 +44,40 @@ export class PeerDirectory {
     return { peerUrl, height: Number(info.height) };
   }
 
-  /** Returns base URLs ("http://ip:port") of peers that answered, highest chain first. */
-  async discover() {
-    const peers = await this.gateway.request('/peers');
-    const candidates = PeerDirectory.shuffled(peers).slice(0, this.probeCount).map((peer) => `http://${peer}`);
+  /**
+   * Returns base URLs of peers that answered, highest chain first. `extraNodeUrls` adds
+   * candidates found elsewhere (for example GatewayDirectory's Arweave nodes).
+   */
+  async discover(extraNodeUrls = []) {
+    const peers = (await this.gateway.request('/peers')).map((peer) => `http://${peer}`);
+    const candidates = PeerDirectory.shuffled([...new Set([...peers, ...extraNodeUrls])]).slice(0, this.probeCount);
     const results = await Promise.allSettled(candidates.map((peerUrl) => this.probe(peerUrl)));
     const answered = results.filter((result) => result.status === 'fulfilled').map((result) => result.value);
     const failed = results.filter((result) => result.status === 'rejected');
     if (failed.length) this.log(`${failed.length} of ${candidates.length} peers did not answer (first reason: ${failed[0].reason.message})`);
     return answered.sort((left, right) => right.height - left.height).slice(0, this.keepCount).map((result) => result.peerUrl);
+  }
+}
+
+export class GatewayDirectory {
+  /**
+   * Finds more gateways, and the Arweave nodes they use, from an ar.io gateway's
+   * GET /ar-io/peers (ar-io-node src/routes/ar-io.ts): `gateways` maps "host:port" to
+   * { url, status, ... } and `arweaveNodes` maps to { url, height, ... }. ar.io gateways
+   * allow any website to read it (cors() in ar-io-node src/app.ts).
+   */
+  constructor({ gateway, maxGateways = 20, log = () => {} }) {
+    Object.assign(this, { gateway, maxGateways, log });
+  }
+
+  async discover() {
+    const reply = await this.gateway.request('/ar-io/peers');
+    const gatewayUrls = Object.values(reply.gateways ?? {})
+      .filter((entry) => typeof entry.url === 'string' && (entry.status ?? 'joined') === 'joined')
+      .map((entry) => entry.url.replace(/\/+$/, ''));
+    const nodeUrls = Object.values(reply.arweaveNodes ?? {})
+      .filter((entry) => typeof entry.url === 'string')
+      .map((entry) => entry.url.replace(/\/+$/, ''));
+    return { gatewayUrls: PeerDirectory.shuffled(gatewayUrls).slice(0, this.maxGateways), nodeUrls };
   }
 }
