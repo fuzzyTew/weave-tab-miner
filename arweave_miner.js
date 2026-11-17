@@ -424,17 +424,23 @@ export class StubEntropySource {
   /**
    * STUB — not consensus-compatible; for browsers that cannot allocate the 512 MiB RandomX
    * cache. Real entropy is RandomxSquaredEntropySource (arweave_randomx.js). This stand-in
-   * fills the 8 MiB entropy with SHA-256 in counter mode, so it is quick but worthless for
-   * real mining. Same interface: entropyKey -> Promise<8 MiB entropy>.
+   * fills the 8 MiB entropy from an xorshift128 generator (a fast non-cryptographic
+   * pseudo-random sequence) seeded with SHA-256 of the key: quick, deterministic, and
+   * worthless for real mining. Same interface: entropyKey -> Promise<8 MiB entropy>.
    */
   isStub = true;
 
   async entropy(entropyKey) {
-    const entropy = new Uint8Array(ConsensusConstants.REPLICA_2_9_ENTROPY_SIZE);
-    for (let block = 0; block < entropy.length / 32; block++) {
-      entropy.set(Sha256.hash(entropyKey, Bytes.fromBigInt(BigInt(block), 8)), block * 32);
+    const seed = new Uint32Array(Sha256.hash(entropyKey).buffer, 0, 4);
+    let [x, y, z, w] = seed.length === 4 && seed.some(Boolean) ? seed : [1, 2, 3, 4];
+    const words = new Uint32Array(ConsensusConstants.REPLICA_2_9_ENTROPY_SIZE / 4);
+    for (let index = 0; index < words.length; index++) {
+      const t = x ^ (x << 11);
+      x = y; y = z; z = w;
+      w = (w ^ (w >>> 19) ^ t ^ (t >>> 8)) >>> 0;
+      words[index] = w;
     }
-    return entropy;
+    return new Uint8Array(words.buffer);
   }
 }
 

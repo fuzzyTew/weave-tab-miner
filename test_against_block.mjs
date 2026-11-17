@@ -32,23 +32,52 @@ class BlockTests {
     this.check('SHA-256 matches node:crypto on assorted lengths and the 64-byte fast path', allMatch);
   }
 
+  /**
+   * The VDF at full mainnet difficulty costs about 1.4 s per checkpoint here, 25 per step.
+   * Instead of a whole step this checks two real checkpoints against the block (the first,
+   * from the previous step's output, and the last, which must equal the block's output)
+   * and checks how computeStep chains all 25 against an independent implementation at a
+   * tiny iteration count, which is the same loop with fewer repetitions.
+   */
   testVdfStep() {
     const info = this.block.nonce_limiter_info;
     const stepNumber = Number(info.global_step_number);
     const stepOutputs = info.checkpoints.map(Bytes.fromBase64Url);
-    const lastStepCheckpoints = info.last_step_checkpoints.map(Bytes.fromBase64Url);
+    const lastStepCheckpoints = info.last_step_checkpoints.map(Bytes.fromBase64Url); // newest first
     this.check('block checkpoints[0] is the block VDF output', Bytes.equal(stepOutputs[0], Bytes.fromBase64Url(info.output)));
+    this.check('the last of last_step_checkpoints is the block VDF output', Bytes.equal(lastStepCheckpoints[0], stepOutputs[0]));
 
     const chain = new VdfChain({ iterationsPerCheckpoint: Number(info.vdf_difficulty) });
+    const firstSalt = VdfChain.saltNumberForStep(stepNumber - 1);
     const started = performance.now();
-    const firstCheckpoint = chain.computeCheckpoint(VdfChain.saltNumberForStep(stepNumber - 1), stepOutputs[1]);
+    const firstCheckpoint = chain.computeCheckpoint(firstSalt, stepOutputs[1]);
     const secondsPerCheckpoint = (performance.now() - started) / 1000;
-    const position = lastStepCheckpoints.findIndex((checkpoint) => Bytes.equal(checkpoint, firstCheckpoint));
-    this.check('first checkpoint of step N, from step N-1 output, appears in last_step_checkpoints', position >= 0,
-      `found at index ${position}; ${secondsPerCheckpoint.toFixed(2)} s per checkpoint (${(Number(info.vdf_difficulty) / secondsPerCheckpoint / 1e6).toFixed(2)} M hashes/s)`);
+    this.check('checkpoint 1 of the step, from the previous step\'s output, matches the block', Bytes.equal(firstCheckpoint, lastStepCheckpoints.at(-1)),
+      `${secondsPerCheckpoint.toFixed(2)} s per checkpoint (${(Number(info.vdf_difficulty) / secondsPerCheckpoint / 1e6).toFixed(2)} M hashes/s)`);
+    const lastCheckpoint = chain.computeCheckpoint(firstSalt + 24n, lastStepCheckpoints[1]);
+    this.check('checkpoint 25, from checkpoint 24 with salt + 24, equals the block VDF output', Bytes.equal(lastCheckpoint, stepOutputs[0]));
 
-    const fullStep = chain.computeStep(stepNumber, stepOutputs[1]);
-    this.check(`full step ${stepNumber} recomputed equals the block's VDF output`, Bytes.equal(fullStep[24], stepOutputs[0]));
+    const iterations = 3;
+    const reference = (step, input, resetSeed) => {
+      let value = Buffer.from(input);
+      if (resetSeed) value = createHash('sha256').update(value).update(createHash('sha256').update(resetSeed).digest()).digest();
+      let salt = VdfChain.saltNumberForStep(step - 1);
+      const checkpoints = [];
+      for (let index = 0; index < 25; index++, salt++) {
+        const saltBytes = Buffer.from(salt.toString(16).padStart(64, '0'), 'hex');
+        for (let round = 0; round < iterations; round++) value = createHash('sha256').update(saltBytes).update(value).digest();
+        checkpoints.push(new Uint8Array(value));
+      }
+      return checkpoints;
+    };
+    const small = new VdfChain({ iterationsPerCheckpoint: iterations });
+    const plainStep = small.computeStep(stepNumber, stepOutputs[1]);
+    const resetStep = 1200 * 99_937;
+    const mixedStep = small.computeStep(resetStep, stepOutputs[1], Bytes.fromBase64Url(info.next_seed));
+    this.check('computeStep chains 25 salted checkpoints like an independent implementation',
+      plainStep.every((checkpoint, index) => Bytes.equal(checkpoint, reference(stepNumber, stepOutputs[1])[index])));
+    this.check('on a reset step, computeStep mixes in the seed first',
+      mixedStep.every((checkpoint, index) => Bytes.equal(checkpoint, reference(resetStep, stepOutputs[1], Bytes.fromBase64Url(info.next_seed))[index])));
   }
 
   testDifficulty() {

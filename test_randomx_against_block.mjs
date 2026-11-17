@@ -5,7 +5,7 @@ import { runInThisContext } from 'node:vm';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  Bytes, Sha256, ConsensusConstants, Replica29Layout, MiningIdentity, ChunkPacker, HeldStorage, Miner, VdfSession,
+  Bytes, Sha256, ConsensusConstants, Replica29Layout, MiningIdentity, HeldStorage, Miner, VdfSession,
 } from './arweave_miner.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from './arweave_randomx.js';
 
@@ -34,17 +34,26 @@ class RandomxBlockTests {
     return Number(Bytes.toBigInt(Bytes.fromBase64Url(this.block.nonce)));
   }
 
-  async testPacking(packer) {
+  /**
+   * The block proves one packed sub-chunk per recall chunk, and each needs only its own
+   * 8 MiB entropy (about a second), not the 32 a whole chunk takes. Grouping and XOR in
+   * ChunkPacker are covered by test_against_block.mjs, and real whole-chunk packing by
+   * check_page.cjs.
+   */
+  async testPacking(entropySource, address) {
     const subChunkIndex = this.nonce % ConsensusConstants.SUB_CHUNK_COUNT;
     const size = ConsensusConstants.SUB_CHUNK_SIZE;
     for (const [proof, byteField] of [['poa', 'recall_byte'], ['poa2', 'recall_byte2']]) {
       const endOffset = Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField]));
+      const key = Replica29Layout.entropyKey(address, endOffset, subChunkIndex * size);
       const started = performance.now();
-      const packed = await packer.packChunk(Bytes.fromBase64Url(this.block[proof].unpacked_chunk), endOffset);
+      const entropy = await entropySource.entropy(key);
       const seconds = (performance.now() - started) / 1000;
-      const expected = Bytes.fromBase64Url(this.block[proof].chunk);
-      this.check(`${proof}: packing the unpacked chunk reproduces the block's packed sub-chunk ${subChunkIndex}`,
-        Bytes.equal(packed.subarray(subChunkIndex * size, (subChunkIndex + 1) * size), expected), `32 entropies in ${seconds.toFixed(1)} s`);
+      const slice = entropy.subarray(Replica29Layout.sliceIndex(endOffset) * size, (Replica29Layout.sliceIndex(endOffset) + 1) * size);
+      const unpacked = Bytes.fromBase64Url(this.block[proof].unpacked_chunk).subarray(subChunkIndex * size, (subChunkIndex + 1) * size);
+      const packed = unpacked.map((byte, index) => byte ^ slice[index]);
+      this.check(`${proof}: unpacked sub-chunk ${subChunkIndex} XOR its RX2 entropy slice equals the block's packed sub-chunk`,
+        Bytes.equal(packed, Bytes.fromBase64Url(this.block[proof].chunk)), `entropy in ${seconds.toFixed(1)} s`);
     }
   }
 
@@ -77,7 +86,7 @@ class RandomxBlockTests {
     const host = this.loadRandomx();
     const identity = MiningIdentity.fromAddress(this.block.reward_addr);
     await this.testMiningStep(identity, new RandomxH0Hasher(host));
-    await this.testPacking(new ChunkPacker(identity, new RandomxSquaredEntropySource(host)));
+    await this.testPacking(new RandomxSquaredEntropySource(host), identity.addressBytes);
     console.log(this.failures === 0 ? 'all checks passed' : `${this.failures} check(s) failed`);
     process.exitCode = this.failures === 0 ? 0 : 1;
   }

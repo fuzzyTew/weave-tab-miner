@@ -51,15 +51,17 @@ class PageCheck {
     const explorer = await this.text(page, '#explorerRows');
     this.check('explorer shows H0, H2 and source links', /H0 = RandomX/.test(explorer) && /H2/.test(explorer) && (await page.locator('#explorerRows a').count()) > 10);
 
-    // Pack the sample chunks for another address, then reload and expect them restored.
+    // Pack one sample chunk (32 entropies) for another address, then reload and expect it restored.
     const address = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    await page.fill('#chunkCountInput', '1');
     await page.fill('#addressInput', address);
     await page.click('#addressButton');
     started = Date.now();
     await page.click('#holdButton');
     await page.waitForFunction(() => /^Packed/.test(document.getElementById('holdStatus').textContent), null, { timeout: 600000 });
-    this.check('packing two chunks for another address', true, `${await this.text(page, '#holdStatus')} (${((Date.now() - started) / 1000).toFixed(0)} s)`);
-    const saved = /saved 2 packed chunks/.test(await this.text(page, '#activityLog'));
+    this.check('packing one chunk for another address', true, `${await this.text(page, '#holdStatus')} (${((Date.now() - started) / 1000).toFixed(0)} s)`);
+    // Saving follows the status update, so wait for its log line rather than reading it at once.
+    const saved = await this.waitForLog(page, 'saved 1 packed chunk\\b', 30000).then(() => true, () => false);
     this.check('packed chunks saved to browser storage', saved, await this.text(page, '#storageNote'));
 
     await page.reload();
@@ -67,7 +69,7 @@ class PageCheck {
     await page.fill('#addressInput', address);
     await page.click('#addressButton');
     await page.waitForTimeout(1000);
-    this.check('reloading restores them', /restored 2 packed chunks/.test(await this.text(page, '#activityLog')), await this.text(page, '#heldBytes'));
+    this.check('reloading restores it', /restored 1 packed chunk\b/.test(await this.text(page, '#activityLog')), await this.text(page, '#heldBytes'));
 
     await page.setViewportSize({ width: 400, height: 900 });
     this.check('no sideways scroll at phone width', !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
