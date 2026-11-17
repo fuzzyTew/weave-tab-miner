@@ -61,8 +61,10 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
     node test_against_block.mjs sample_block.json   # SHA-256, VDF, difficulty, layout
     node test_randomx_against_block.mjs             # real H0, real packing, the block's own solution
     node test_vdf_update.mjs                        # GET /vdf parsing
-    npm install arweave@1.15.5 && node cross_check_transactions.mjs .
-    npm install playwright && node check_page.cjs   # the built page, opened from disk
+    npm ci --ignore-scripts                         # test-only dependencies, pinned
+    node cross_check_transactions.mjs .             # transactions against arweave-js
+    node check_page.cjs                             # the built page, opened from disk
+                                                    # (PLAYWRIGHT_CHANNEL=chrome to use an installed Chrome)
 
 Not yet tested against the live network: gateway, peer and VDF-server requests (the
 build machine could not reach Arweave). A found solution is not yet turned into a

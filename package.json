@@ -1,0 +1,10 @@
+{
+  "name": "weave-tab-miner",
+  "private": true,
+  "description": "Test-only dependencies; the page and library themselves need none.",
+  "type": "module",
+  "devDependencies": {
+    "arweave": "1.15.5",
+    "playwright-core": "1.47.2"
+  }
+}

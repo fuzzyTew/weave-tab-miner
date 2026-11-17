@@ -1,9 +1,14 @@
 // Opens the built single file from disk in headless Chromium and checks the main paths:
 // real RandomX, replaying the sample block to its own solution, the explorer, packing for
 // another address, and restoring packed chunks after a reload.
-// Run: node check_page.cjs [path/to/weave-tab-miner.html]   (needs the playwright package)
+// Run: npm ci && node check_page.cjs [path/to/weave-tab-miner.html]
 const path = require('node:path');
-const { chromium } = require('playwright');
+// playwright-core drives an installed browser without downloading one. In CI it uses the
+// runner's own Google Chrome (PLAYWRIGHT_CHANNEL=chrome); elsewhere a Playwright-installed
+// Chromium, or the browser named by PLAYWRIGHT_CHANNEL.
+const { chromium } = (() => {
+  try { return require('playwright-core'); } catch { return require('playwright'); }
+})();
 
 class PageCheck {
   constructor(htmlPath) {
@@ -25,7 +30,7 @@ class PageCheck {
   }
 
   async run() {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {});
     const context = await browser.newContext({ viewport: { width: 1200, height: 1000 } });
     const page = await context.newPage();
     const errors = [];
