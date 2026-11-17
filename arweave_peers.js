@@ -4,6 +4,7 @@
 // apps/arweave/src/ar_http_iface_middleware.erl). But nodes speak plain HTTP on port 1984,
 // and browsers block a page loaded over https from calling plain-http addresses ("mixed
 // content"). So peers work from the downloaded single file, not from an https copy.
+import { ArweaveGateway } from './arweave_gateway.js';
 
 export class PeerAccess {
   /**
@@ -65,13 +66,19 @@ export class GatewayDirectory {
    * GET /ar-io/peers (ar-io-node src/routes/ar-io.ts): `gateways` maps "host:port" to
    * { url, status, ... } and `arweaveNodes` maps to { url, height, ... }. ar.io gateways
    * allow any website to read it (cors() in ar-io-node src/app.ts).
+   *
+   * Asked of known ar.io gateways only: arweave.net answers /ar-io/peers with 404, so it
+   * is not one, or does not expose that route.
    */
-  constructor({ gateway, maxGateways = 20, log = () => {} }) {
-    Object.assign(this, { gateway, maxGateways, log });
+  static AR_IO_GATEWAY_URLS = ['https://ar-io.net', 'https://permagate.io', 'https://turbo-gateway.com'];
+
+  constructor({ arIoGatewayUrls = GatewayDirectory.AR_IO_GATEWAY_URLS, maxGateways = 20, timeoutMs = 20000, log = () => {} } = {}) {
+    Object.assign(this, { maxGateways, log });
+    this.registrySource = new ArweaveGateway({ gatewayUrls: arIoGatewayUrls, timeoutMs, log });
   }
 
   async discover() {
-    const reply = await this.gateway.request('/ar-io/peers');
+    const reply = await this.registrySource.request('/ar-io/peers');
     const gatewayUrls = Object.values(reply.gateways ?? {})
       .filter((entry) => typeof entry.url === 'string' && (entry.status ?? 'joined') === 'joined')
       .map((entry) => entry.url.replace(/\/+$/, ''));

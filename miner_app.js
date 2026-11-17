@@ -423,7 +423,7 @@ class BrowserNodeApp {
     this.view.setText('peerStatus', 'Asking ar.io for more gateways…');
     let nodeUrls = [];
     try {
-      const found = await new GatewayDirectory({ gateway: this.gateway, log: (message) => this.view.log(message, 'warn') }).discover();
+      const found = await new GatewayDirectory({ log: (message) => this.view.log(message, 'warn') }).discover();
       this.gateway.addGateways(found.gatewayUrls);
       nodeUrls = found.nodeUrls;
       this.view.log(`ar.io listed ${found.gatewayUrls.length} more gateways and ${nodeUrls.length} Arweave nodes`, 'good');
@@ -517,7 +517,9 @@ class BrowserNodeApp {
       this.view.setText('holdStatus', `Holding the block's own packed sub-chunk ${subChunkIndex} of each recall chunk, exactly as its miner held them.`);
       return;
     }
-    const chunks = proofs.map(([proof, byteField]) => ({
+    // The sample has two chunks; "Chunks to fetch" can limit packing to the first.
+    const wanted = Math.max(1, Math.min(proofs.length, Number(this.view.elements.chunkCountInput.value || proofs.length)));
+    const chunks = proofs.slice(0, wanted).map(([proof, byteField]) => ({
       bytes: Bytes.fromBase64Url(this.block[proof].unpacked_chunk),
       endOffset: Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField])),
     }));
