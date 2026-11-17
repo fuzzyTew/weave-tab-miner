@@ -240,6 +240,7 @@ export class SourceGatherer {
     const nodes = nodeResults.filter((result) => result.ok).slice(0, keepNodes).map(entry);
     const vdfServers = [...publicVdfResults, ...gatewayResults, ...nodeResults].filter((result) => result.vdf).map(entry);
     for (const result of publicVdfResults) this.log(`${result.url}: /info ${result.ok ? 'ok' : result.error}; /vdf ${result.vdf ? 'ok' : result.vdfError}`);
+    this.log(`served the VDF: ${vdfServers.map((entry) => entry.url).join(', ') || 'none'}`);
     this.log(`answered: ${gateways.length} of ${gatewayUrls.length} gateways, ${nodes.length} of ${nodeUrls.length} nodes; ${vdfServers.length} served the VDF`);
     return { gatheredAt: new Date().toISOString(), gateways, nodes, vdfServers };
   }
