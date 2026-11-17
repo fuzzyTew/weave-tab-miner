@@ -8,6 +8,32 @@ import { ArweaveGateway } from './arweave_gateway.js';
 import { ArweaveWallet } from './arweave_wallet.js';
 import { DataTransaction } from './arweave_transaction.js';
 
+class BundledResources {
+  /**
+   * The sample block and the VDF worker come either embedded in the page (the single-file
+   * build, which opens from disk with no web server) or as separate files next to it.
+   * Browsers refuse to fetch neighbouring files for a page opened from file://, hence both.
+   */
+  static embeddedText(elementId) {
+    return document.getElementById(elementId)?.textContent ?? null;
+  }
+
+  static async sampleBlock() {
+    const embedded = BundledResources.embeddedText('sampleBlockData');
+    if (embedded) return JSON.parse(embedded);
+    const response = await fetch('./sample_block.json');
+    return response.json();
+  }
+
+  static vdfWorker() {
+    const embedded = BundledResources.embeddedText('vdfWorkerSource');
+    // The embedded worker has its imports already inlined, so it runs as a classic script:
+    // Chromium refuses module workers from blob: URLs on pages opened from file://.
+    if (embedded) return new Worker(URL.createObjectURL(new Blob([embedded], { type: 'text/javascript' })));
+    return new Worker(new URL('./vdf_worker.js', import.meta.url), { type: 'module' });
+  }
+}
+
 class PageView {
   /**
    * Thin helpers over the page's elements, so the controller reads as what it shows.
@@ -189,8 +215,7 @@ class BrowserNodeApp {
   }
 
   async loadSampleBlock() {
-    const response = await fetch('./sample_block.json');
-    this.useBlock(await response.json(), 'sample');
+    this.useBlock(await BundledResources.sampleBlock(), 'sample');
   }
 
   useBlock(block, origin) {
@@ -350,7 +375,7 @@ class BrowserNodeApp {
 
   runLocalVdf() {
     if (!this.worker) {
-      this.worker = new Worker(new URL('./vdf_worker.js', import.meta.url), { type: 'module' });
+      this.worker = BundledResources.vdfWorker();
       this.worker.onerror = (event) => {
         this.view.log(`VDF worker could not run: ${event.message || 'the browser gave no reason'}`, 'error');
         this.stop();
