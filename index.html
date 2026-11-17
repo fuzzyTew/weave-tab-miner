@@ -80,6 +80,9 @@
   .history { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem; }
   .history ul { margin: 4px 0 0; padding-left: 16px; font-family: var(--font-data); overflow-wrap: anywhere; }
   a { color: var(--accent); }
+  .button-link { font: 600 0.88rem var(--font-body); padding: 7px 12px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); text-decoration: none; }
+  .button-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .permaweb-links { margin: 0; padding-left: 18px; font-family: var(--font-data); font-size: 0.8rem; overflow-wrap: anywhere; }
   input[type="text"], input[type="number"], select {
     font: 0.9rem var(--font-data); color: var(--ink); background: var(--bg);
     border: 1px solid var(--rule); padding: 6px 8px; width: 100%; min-width: 0;
@@ -278,6 +281,14 @@
   <section aria-labelledby="logHeading">
     <h2 id="logHeading">Activity</h2>
     <ul class="log" id="activityLog"></ul>
+  </section>
+
+  <section class="stage run-yourself" aria-labelledby="runHeading">
+    <h2 id="runHeading">Run it yourself</h2>
+    <div class="row"><a id="downloadLink" class="button-link" download="weave-tab-miner.html" href="#">Download this page</a></div>
+    <p class="stage-note" id="downloadNote"></p>
+    <p class="stage-note" id="permawebNote"></p>
+    <ul id="permawebLinks" class="permaweb-links"></ul>
   </section>
 
   <section aria-labelledby="ledgerHeading">

@@ -36,6 +36,49 @@ class BundledResources {
   }
 }
 
+class RunYourself {
+  /**
+   * Fills the "Run it yourself" panel: a download link when the page came from a web
+   * server, and a link to its permanent Arweave copy once one exists (permaweb.json).
+   */
+  static GATEWAYS_FOR_LINKS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
+
+  constructor(view) {
+    this.view = view;
+  }
+
+  show() {
+    const link = this.view.elements.downloadLink;
+    if (location.protocol === 'file:') {
+      link.hidden = true;
+      this.view.setText('downloadNote', 'You are running a copy from your own disk, which can also reach Arweave nodes directly.');
+    } else {
+      // Same-origin links honour the download attribute, saving the page as it was served.
+      link.href = location.href.split('#')[0];
+      this.view.setText('downloadNote', 'Save it and open the file from your disk: it runs with no server, keeps working if this site goes away, and can reach Arweave nodes directly.');
+    }
+
+    const { transactionId } = JSON.parse(BundledResources.embeddedText('permawebData'));
+    const list = this.view.elements.permawebLinks;
+    list.replaceChildren();
+    if (!transactionId) {
+      this.view.setText('permawebNote', 'Not stored on Arweave yet. Storing this page (about 1 MB) costs a small amount of AR, paid once; whoever pays can put the transaction id in permaweb.json, and the next build links to it here, from any gateway.');
+      return;
+    }
+    this.view.setText('permawebNote', `Stored permanently on Arweave as transaction ${transactionId}. Any gateway serves the same bytes:`);
+    for (const gateway of RunYourself.GATEWAYS_FOR_LINKS) {
+      const item = document.createElement('li');
+      const anchor = document.createElement('a');
+      anchor.href = `${gateway}/${transactionId}`;
+      anchor.target = '_blank';
+      anchor.rel = 'noopener';
+      anchor.textContent = anchor.href;
+      item.append(anchor);
+      list.append(item);
+    }
+  }
+}
+
 class PageView {
   /**
    * Thin helpers over the page's elements, so the controller reads as what it shows.
@@ -793,6 +836,7 @@ class BrowserNodeApp {
 
   async run() {
     this.bind();
+    new RunYourself(this.view).show();
     const blocked = PeerAccess.blockedReason();
     this.view.setText('peerStatus', blocked
       ? `Gateways only: ${blocked}. "Find gateways and peers" still adds more gateways.`

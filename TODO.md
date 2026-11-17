@@ -54,6 +54,13 @@ or a peer list of other malicious nodes. Each item below says what to check and 
 - [ ] Sign the block and send it (`POST /block_announcement`, then `POST /block2`).
 - [ ] Test each field by rebuilding a real block from its parent.
 
+## Hosting
+
+- [ ] Upload the page itself to Arweave from the page: it is about 1 MB, so it needs the
+      chunked upload (`POST /tx` without data, then `POST /chunk` per 256 KiB with its
+      `data_path`), which `DataTransaction` does not do yet. Then record the id in
+      `permaweb.json`.
+
 ## Pool
 
 - [ ] Pool mode: mine to a pool's address and send solutions to the pool, which records the

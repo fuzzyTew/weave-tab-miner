@@ -50,11 +50,13 @@ class SingleFileBuilder {
     const randomxWorkerScript = SingleFileBuilder.safeForScriptElement(
       `${this.read(SingleFileBuilder.RANDOMX_BUNDLE)}\n${this.inlinedModules(['arweave_miner.js', 'arweave_randomx.js', 'randomx_worker.js'])}`);
     const sampleBlock = SingleFileBuilder.safeForScriptElement(this.read('sample_block.json'));
+    const permaweb = SingleFileBuilder.safeForScriptElement(this.read('permaweb.json'));
 
     const pageBody = this.read('index.html').replace(
       /<script type="module" src="\.\/miner_app\.js"><\/script>/,
       [
         `<script type="application/json" id="sampleBlockData">${sampleBlock}</script>`,
+        `<script type="application/json" id="permawebData">${permaweb}</script>`,
         `<script type="text/plain" id="vdfWorkerSource">${workerScript}</script>`,
         `<script type="text/plain" id="randomxWorkerSource">${randomxWorkerScript}</script>`,
         `<script type="module">\n${pageScript}\n</script>`,
