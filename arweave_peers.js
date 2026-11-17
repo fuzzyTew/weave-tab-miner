@@ -88,3 +88,50 @@ export class GatewayDirectory {
     return { gatewayUrls: PeerDirectory.shuffled(gatewayUrls).slice(0, this.maxGateways), nodeUrls };
   }
 }
+
+export class SourceTester {
+  /**
+   * Tries gateways and nodes with GET /info and reports which answer, how fast, and at what
+   * chain height, so the fastest working ones can be tried first and the reasons for
+   * failures shown. Plain-http sources are skipped with a reason when the page cannot call
+   * them (see PeerAccess).
+   */
+  constructor({ timeoutMs = 8000, pageLocation = globalThis.location } = {}) {
+    Object.assign(this, { timeoutMs, pageLocation });
+  }
+
+  static normalized(text) {
+    const trimmed = text.trim().replace(/\/+$/, '');
+    if (!trimmed) return null;
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `${/:\d+$/.test(trimmed) ? 'http' : 'https'}://${trimmed}`;
+  }
+
+  /** Parses a list typed by a person: one address per line or separated by spaces or commas. */
+  static parseList(text) {
+    return [...new Set(text.split(/[\s,]+/).map(SourceTester.normalized).filter(Boolean))];
+  }
+
+  async test(url) {
+    if (url.startsWith('http:') && PeerAccess.blockedReason(this.pageLocation)) {
+      return { url, ok: false, error: 'plain http, which this https page may not call' };
+    }
+    const started = performance.now();
+    try {
+      const response = await fetch(`${url}/info`, { signal: AbortSignal.timeout(this.timeoutMs) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const info = await response.json();
+      if (!Number.isFinite(Number(info.height))) throw new Error('answered, but not with Arweave node info');
+      return { url, ok: true, milliseconds: Math.round(performance.now() - started), height: Number(info.height) };
+    } catch (error) {
+      // A blocked or unreachable host usually shows as a bare "Failed to fetch" TypeError.
+      const reason = error.name === 'TimeoutError' ? `no answer in ${this.timeoutMs / 1000} s` : error.message;
+      return { url, ok: false, error: reason };
+    }
+  }
+
+  /** Tests all at once; working sources first, fastest first. */
+  async testAll(urls) {
+    const results = await Promise.all(urls.map((url) => this.test(url)));
+    return results.sort((left, right) => (right.ok - left.ok) || ((left.milliseconds ?? 0) - (right.milliseconds ?? 0)));
+  }
+}

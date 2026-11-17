@@ -10,23 +10,37 @@ export class ArweaveGateway {
   static DEFAULT_GATEWAY_URLS = ['https://arweave.net', 'https://turbo-gateway.com'];
 
   constructor({ gatewayUrls = ArweaveGateway.DEFAULT_GATEWAY_URLS, timeoutMs = 20000, log = () => {} } = {}) {
+    // Sources are tried in three tiers: chosen first (a person's seeds, or tested sources
+    // fastest first), then directly reachable nodes, then gateways.
+    this.firstUrls = [];
+    this.peerUrls = [];
     this.fallbackUrls = gatewayUrls;
-    this.gatewayUrls = gatewayUrls;
     this.timeoutMs = timeoutMs;
     this.log = log;
     this.lastAnsweredBy = null;
+    this.reorder();
+  }
+
+  reorder() {
+    this.gatewayUrls = [...new Set([...this.firstUrls, ...this.peerUrls, ...this.fallbackUrls])];
   }
 
   /** Try these node URLs (see arweave_peers.js) before the gateways; [] goes back to gateways only. */
   preferPeers(peerUrls) {
     this.peerUrls = peerUrls;
-    this.gatewayUrls = [...peerUrls, ...this.fallbackUrls];
+    this.reorder();
+  }
+
+  /** Try these sources before all others, in this order. */
+  preferFirst(urls) {
+    this.firstUrls = [...new Set(urls)];
+    this.reorder();
   }
 
   /** Add more gateways (see GatewayDirectory) after the ones already known. */
   addGateways(gatewayUrls) {
     this.fallbackUrls = [...new Set([...this.fallbackUrls, ...gatewayUrls])];
-    this.gatewayUrls = [...(this.peerUrls ?? []), ...this.fallbackUrls];
+    this.reorder();
   }
 
   async request(path, { method = 'GET', body = undefined, headers = {}, readAs = 'json', firstGatewayOnly = false } = {}) {
