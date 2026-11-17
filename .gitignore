@@ -1,3 +1,6 @@
 node_modules/
 weave-tab-miner.html
 page-check.png
+site/
+package.json
+package-lock.json
