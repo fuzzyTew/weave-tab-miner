@@ -45,6 +45,7 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
 | `src/chunk-share.js` | Moving saved chunks between copies of the page |
 | `src/networks.js` | Storage networks behind one interface: compare prices, mirror a record |
 | `src/signing-guard.js` | Refuses to sign two competing blocks with one key |
+| `src/account-tree.js`, `src/rewards.js` | The account tree root and released rewards, for building blocks |
 | `src/gateway.js`, `src/peers.js` | HTTP to gateways and nodes; finding and testing sources |
 | `src/vdf-client.js` | Reading steps from VDF servers (GET /vdf) |
 | `src/wallet.js`, `src/transaction.js`, `src/bundle.js` | Keys, signed transactions, ANS-104 items for Turbo |

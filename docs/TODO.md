@@ -66,9 +66,11 @@ the steps, in order. Each is checked against blocks a real node made, saved on t
 `localnet-fixtures` branch by the manual "Localnet fixtures" workflow (3 blocks from
 height 2,069,866 with their parents' state, captured).
 
-1. [ ] Account tree root: rebuild `wallet_list` from the saved 304,143 accounts exactly as
-       `ar_patricia_tree` does, and match the parent block's root. Then apply a block's
-       changes (the reward, released locked rewards) and match the child's root.
+1. [x] Account tree root: `src/account-tree.js` rebuilds `wallet_list` from the saved
+       304,143 accounts exactly as `ar_patricia_tree` does and matches the parent's root;
+       releasing each block's oldest locked reward (`src/rewards.js`) matches all three
+       children's roots (`test/account-tree.test.mjs`). Transactions' account changes and
+       redenomination are not handled yet (empty blocks need neither).
 2. [ ] Rolling hashes: `reward_history_hash`, `block_time_history_hash`, and the block-index
        hash `hash_list_merkle`, from the saved histories.
 3. [ ] Small fields: height, previous block, timestamp, `previous_solution_hash`, the
