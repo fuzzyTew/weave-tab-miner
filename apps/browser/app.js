@@ -761,7 +761,8 @@ class BrowserNodeApp {
     this.blockOrigin = origin;
     this.session = VdfSession.fromBlock(block);
     const partitionInput = this.view.elements.partitionInput;
-    if (!partitionInput.value) partitionInput.value = String(block.partition_number ?? 0);
+    if (origin === 'live' && !this.partitionChosenByPerson && !this.storage.byteCount) partitionInput.value = String(this.browserPartition());
+    else if (!partitionInput.value) partitionInput.value = String(block.partition_number ?? 0);
     this.view.setText('networkHeight', this.session.height.toLocaleString());
     this.view.setText('networkStep', this.session.latestStepNumber.toLocaleString());
     const source = this.gateway.lastAnsweredBy && origin === 'live' ? ` from ${this.gateway.lastAnsweredBy}` : '';
@@ -772,6 +773,34 @@ class BrowserNodeApp {
   }
 
   // ---- holding data ----
+
+  static PARTITION_STORAGE_KEY = 'weave-tab-miner.partition';
+
+  /**
+   * A partition picked at random once per browser and remembered, so tabs mining with the
+   * same (shared) key spread over the weave instead of all packing the same partition:
+   * distinct data means more one-chunk tries in all and more range-2 lookups landing on
+   * held data. Within the partition, each fetch also starts at a random position.
+   */
+  browserPartition() {
+    const partitionCount = Number((this.session.partitionUpperBound + ConsensusConstants.PARTITION_SIZE - 1n) / ConsensusConstants.PARTITION_SIZE);
+    let remembered = null;
+    try {
+      remembered = localStorage.getItem(BrowserNodeApp.PARTITION_STORAGE_KEY);
+    } catch {
+      // Storage refused: a fresh random pick each visit still spreads tabs out.
+    }
+    // The last partition may be partly filled; the random pick avoids it.
+    if (remembered !== null && Number(remembered) < partitionCount) return Number(remembered);
+    const picked = Math.floor(Math.random() * Math.max(1, partitionCount - 1));
+    try {
+      localStorage.setItem(BrowserNodeApp.PARTITION_STORAGE_KEY, String(picked));
+    } catch {
+      // Not remembered; used for this visit.
+    }
+    this.view.log(`partition ${picked} picked for this browser, out of ${partitionCount}, so tabs sharing a key hold different data`);
+    return picked;
+  }
 
   get partitionNumber() {
     return Number(this.view.elements.partitionInput.value || 0);
@@ -1209,7 +1238,10 @@ class BrowserNodeApp {
     onClick('quoteButton', this.quoteRecord);
     onClick('sendButton', this.sendRecord);
     onClick('freeSendButton', this.sendRecordFree);
-    this.view.elements.partitionInput.addEventListener('change', () => this.refreshSummary());
+    this.view.elements.partitionInput.addEventListener('change', () => {
+      this.partitionChosenByPerson = true;
+      this.refreshSummary();
+    });
     for (const id of ['poolTabsInput', 'poolSizeInput', 'poolFeeInput', 'poolThresholdInput']) this.view.elements[id].addEventListener('input', () => this.refreshPoolOdds());
     this.view.elements.recordInput.addEventListener('input', () => this.view.setText('recordSize', `${this.recordBytes().length} bytes`));
   }

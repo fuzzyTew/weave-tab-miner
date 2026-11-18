@@ -240,7 +240,7 @@
       <div class="row"><button id="holdButton" type="button">Fetch and pack</button><button id="stopHoldButton" type="button" hidden>Stop early</button></div>
       <progress id="holdProgress" max="1" value="0" hidden></progress>
       <p class="stage-note" id="holdStatus">—</p>
-      <p class="stage-note">A live block fetches chunks at one position in successive 3.5 GB sectors of your partition: they share their 32 packing entropies, so 1 or 1,024 of them cost the same packing time. Packed chunks are kept in this browser for this address.</p>
+      <p class="stage-note">With a live block, each browser gets its own randomly picked partition (kept between visits), and each fetch starts at a random position in it, so tabs sharing a key rarely hold the same data. A live block fetches chunks at one position in successive 3.5 GB sectors of your partition: they share their 32 packing entropies, so 1 or 1,024 of them cost the same packing time. Packed chunks are kept in this browser for this address.</p>
       <p class="stage-note" id="storageNote"></p>
       <div class="row">
         <button id="exportChunksButton" type="button">Export packed chunks</button>
