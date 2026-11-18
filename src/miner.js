@@ -326,10 +326,13 @@ export class MiningIdentity {
    * keys both the packing and H0. Mining only needs the address — the wallet (the
    * private key) matters only for signing a block or a transaction.
    */
-  constructor(addressBytes, wallet = null) {
+  constructor(addressBytes, wallet = null, { verificationOnly = false } = {}) {
     if (addressBytes.length !== 32) throw new Error(`mining address must be 32 bytes, got ${addressBytes.length}`);
     this.addressBytes = addressBytes;
     this.wallet = wallet;
+    // An address used only to replay a known block (someone else's): never packed for,
+    // since anything mined for it would pay them.
+    this.verificationOnly = verificationOnly;
   }
 
   get address() {
@@ -510,6 +513,22 @@ export class ChunkPacker {
       onEntropy(++done, jobsByKey.size);
     }
     return packed;
+  }
+
+  /**
+   * Packed data for one address turned into packed data for another, without the original
+   * bytes: packing is an XOR with entropy, so packing again for the old address restores
+   * the plain chunk, which is then packed for the new one. `entries` is
+   * [[bucketEndOffset, Uint8Array(256 KiB)], ...]; returns the same shape. Costs the
+   * entropies of both addresses; chunks at one bucket position share them, so a set
+   * fetched together repacks in about a minute.
+   */
+  static async repackChunks({ entries, fromIdentity, toIdentity, entropySource, onEntropy = () => {} }) {
+    const asChunks = (list) => list.map(([endOffset, bytes]) => ({ endOffset, bytes }));
+    const plain = await new ChunkPacker(fromIdentity, entropySource).packChunks(asChunks(entries), (done, total) => onEntropy(done, total * 2));
+    const offsets = entries.map(([endOffset]) => endOffset);
+    const repacked = await new ChunkPacker(toIdentity, entropySource).packChunks(plain.map((bytes, index) => ({ endOffset: offsets[index], bytes })), (done, total) => onEntropy(total + done, total * 2));
+    return repacked.map((bytes, index) => [offsets[index], bytes]);
   }
 
   async packChunk(chunkBytes, endOffset) {
