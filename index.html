@@ -64,6 +64,11 @@
   #stepRows tr { cursor: pointer; }
   #stepRows tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+  .reminders { display: grid; gap: 10px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+  .reminder { border: 2px solid var(--warn); padding: 10px 14px; display: grid; gap: 6px; align-content: start; }
+  .reminder h3 { margin: 0; font-size: 1rem; }
+  .alternatives { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; font-size: 0.9rem; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .banner { border: 2px solid var(--good); background: var(--real-bg); padding: 14px 16px; display: grid; gap: 4px; }
   .banner strong { font-family: var(--font-display); font-size: 1.4rem; color: var(--good); }
 
@@ -127,6 +132,34 @@
     <p class="lede">An Arweave mining node that runs in this tab: it takes a mining address, packs chunks of the live weave to it, follows the VDF, and checks every nonce it can against the network difficulty. Given long enough, it would say "Solution found!"</p>
   </header>
 
+  <section class="reminders" aria-labelledby="remindersHeading">
+    <h2 id="remindersHeading" class="visually-hidden">Reminders</h2>
+    <div class="reminder">
+      <h3 id="runHeading">Keep a copy</h3>
+      <div class="row"><a id="downloadLink" class="button-link" download="weave-tab-miner.html" href="#">Download this page</a></div>
+      <p class="stage-note" id="downloadNote"></p>
+      <p class="stage-note" id="permawebNote"></p>
+      <ul id="permawebLinks" class="permaweb-links"></ul>
+    </div>
+    <div class="reminder">
+      <h3>If this network blocks Arweave</h3>
+      <p class="stage-note">Try the source test below, another network, or a phone hotspot. Tor can also run inside a web page: <a href="https://www.npmjs.com/package/tor-js" target="_blank" rel="noopener">tor-js</a> and <a href="https://github.com/igor53627/webtor-rs" target="_blank" rel="noopener">webtor-rs</a> build it into WebAssembly and use Snowflake to get through blocks. This page does not include it yet (see TODO.md). On a shared or work network, ask before routing around its filter.</p>
+    </div>
+    <div class="reminder">
+      <h3>Other ways to keep data permanently</h3>
+      <ul class="alternatives">
+        <li><a href="https://www.arweave.org" target="_blank" rel="noopener">Arweave</a>: pay once; miners are paid to keep replicas, and one surviving copy can restore the rest.</li>
+        <li><a href="https://ardrive.io" target="_blank" rel="noopener">ArDrive Turbo</a>: an Arweave bundler; items up to 100 KiB free, larger ones paid by card or crypto.</li>
+        <li><a href="https://www.autonomys.xyz" target="_blank" rel="noopener">Autonomys</a> (Auto Drive): pay once; farmers are paid to hold erasure-coded pieces of all history.</li>
+        <li><a href="https://autonomi.com" target="_blank" rel="noopener">Autonomi</a> (formerly MaidSafe): pay once at upload; nodes keep copies as they join and leave.</li>
+        <li><a href="https://crust.network" target="_blank" rel="noopener">Crust Network</a>: IPFS pinning paid from a renewal pool that orders can be topped up.</li>
+        <li><a href="https://bsvblockchain.org" target="_blank" rel="noopener">Bitcoin SV</a>: data in transactions; miners are not paid to keep old data and may prune it.</li>
+        <li><a href="https://archive.org" target="_blank" rel="noopener">Internet Archive</a>: free, not a blockchain; one organization keeps it.</li>
+        <li>Your own copies: several places you control, such as optical discs, checked from time to time.</li>
+      </ul>
+    </div>
+  </section>
+
   <div class="readouts" aria-live="polite">
     <div class="readout"><div class="readout-label">Block height</div><div class="readout-value" id="networkHeight">—</div></div>
     <div class="readout"><div class="readout-label">Latest VDF step</div><div class="readout-value" id="networkStep">—</div></div>
@@ -183,7 +216,6 @@
       </label>
       <div class="row"><button id="testSourcesButton" type="button">Test all sources</button></div>
       <ul class="source-results" id="sourceResults"></ul>
-      <p class="stage-note">If a network blocks every Arweave host, Tor can run inside a web page (tor-js and webtor-rs build it into WebAssembly, using Snowflake to get through blocks). This page does not include it yet; it is in TODO.md. On a shared or work network, ask before routing around its filter.</p>
     </section>
 
     <section class="stage" aria-labelledby="holdHeading">
@@ -297,14 +329,6 @@
   <section aria-labelledby="logHeading">
     <h2 id="logHeading">Activity</h2>
     <ul class="log" id="activityLog"></ul>
-  </section>
-
-  <section class="stage run-yourself" aria-labelledby="runHeading">
-    <h2 id="runHeading">Run it yourself</h2>
-    <div class="row"><a id="downloadLink" class="button-link" download="weave-tab-miner.html" href="#">Download this page</a></div>
-    <p class="stage-note" id="downloadNote"></p>
-    <p class="stage-note" id="permawebNote"></p>
-    <ul id="permawebLinks" class="permaweb-links"></ul>
   </section>
 
   <section aria-labelledby="ledgerHeading">
