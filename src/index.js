@@ -11,6 +11,8 @@ export * from './storage.js';
 export * from './chunk-fetcher.js';
 export * from './chunk-share.js';
 export * from './signing-guard.js';
+export * from './account-tree.js';
+export * from './rewards.js';
 export * from './peers.js';
 export * from './vdf-client.js';
 export * from './citations.js';
