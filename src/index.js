@@ -13,6 +13,7 @@ export * from './chunk-share.js';
 export * from './signing-guard.js';
 export * from './account-tree.js';
 export * from './rewards.js';
+export * from './block-history.js';
 export * from './peers.js';
 export * from './vdf-client.js';
 export * from './citations.js';
