@@ -1,8 +1,24 @@
 {
   "name": "weave-tab-miner",
   "private": true,
-  "description": "Test-only dependencies; the page and library themselves need none.",
+  "description": "An Arweave mining node and storage client that runs in a browser tab or Node, as a library with no runtime dependencies.",
   "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./*": "./src/*.js"
+  },
+  "files": [
+    "src",
+    "vendor",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build-single-file.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:page": "node test/check-page.cjs",
+    "check:network": "node scripts/live-network-check.mjs",
+    "gather:sources": "node scripts/gather-sources.mjs data/sources.json"
+  },
   "devDependencies": {
     "arweave": "1.15.5",
     "playwright-core": "1.47.2"

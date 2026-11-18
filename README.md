@@ -7,10 +7,10 @@ it finds the block's own solution again.
 
 ## Use it
 
-Build the page, then open `weave-tab-miner.html` by double-clicking it. No web server or
+Build the page, then open `dist/weave-tab-miner.html` by double-clicking it. No web server or
 Python needed.
 
-    node scripts/build-single-file.mjs
+    npm run build
 
 The page opens on the sample block, mining for the address that won it. **Start mining**
 replays the block's last 15 VDF steps and finds its solution. For live mining: load the live
@@ -33,23 +33,29 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
 - **Step explorer** shows every value of a mining step, each linked to the line of the
   Arweave node source (commit `18d402c`) that defines it.
 
-## Files
+## Layout
 
-| File | What it holds |
+| Path | What it holds |
 |---|---|
+| `src/` | The library, with no runtime dependencies; `src/index.js` re-exports it all |
 | `src/miner.js` | Constants, SHA-256, VDF, difficulty, packing layout, H0/H1/H2, the miner, odds |
-| `src/randomx.js`, `src/workers/randomx-worker.js` | Real H0 and packing entropy through `vendor/randomx-arweave` |
+| `src/randomx.js` | Real H0 and packing entropy through `vendor/randomx-arweave` |
 | `src/storage.js` | Packed chunks in IndexedDB |
-| `src/peers.js` | Direct node access and when it is blocked |
+| `src/gateway.js`, `src/peers.js` | HTTP to gateways and nodes; finding and testing sources |
 | `src/vdf-client.js` | Reading steps from VDF servers (GET /vdf) |
+| `src/wallet.js`, `src/transaction.js`, `src/bundle.js` | Keys, signed transactions, ANS-104 items for Turbo |
 | `src/citations.js` | Links from each rule to the node source |
-| `src/gateway.js` | HTTP: blocks, chunks, wallets, prices, transactions |
-| `src/wallet.js`, `src/transaction.js` | Keys and signed data transactions |
-| `index.html`, `apps/browser/app.js`, `src/workers/vdf-worker.js` | The page |
-| `scripts/build-single-file.mjs` | Joins everything into `weave-tab-miner.html` |
+| `src/workers/` | The VDF and RandomX web workers |
+| `apps/browser/` | The page: `index.html` and its controller `app.js` |
 | `apps/node/miner.mjs` | Server mode, same library |
+| `scripts/` | The single-file build, source gathering, the live network check, localnet capture |
+| `test/` | Tests (`*.test.mjs`), the page check, and `fixtures/` |
+| `data/` | Build inputs: the sample block, gathered sources, the page's permaweb id |
 | `vendor/randomx-arweave/` | randomx.js built for Arweave, with its patch and build notes |
-| `data/sample-block.json` | Block 2,040,257 with its recall chunks and solution preimage |
+| `docs/TODO.md` | What is planned |
+
+As a library: `import { Miner, DataItem } from 'weave-tab-miner'`, or one module at a time,
+`import { DataItem } from 'weave-tab-miner/bundle'`.
 
 ## Server mode
 
@@ -58,13 +64,11 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
 
 ## Checks
 
-    node test/against-block.test.mjs data/sample-block.json   # SHA-256, VDF, difficulty, layout
-    node test/randomx-against-block.test.mjs             # real H0, real packing, the block's own solution
-    node test/vdf-update.test.mjs                        # GET /vdf parsing
-    npm ci --ignore-scripts                         # test-only dependencies, pinned
-    node test/transactions.test.mjs .             # transactions against arweave-js
-    node test/check-page.cjs                             # the built page, opened from disk
-                                                    # (PLAYWRIGHT_CHANNEL=chrome to use an installed Chrome)
+    npm ci --ignore-scripts          # test-only dependencies, pinned
+    npm test                         # every test/*.test.mjs: block 2,040,257, RandomX, VDF,
+                                     # transactions and ANS-104 against reference libraries
+    npm run build && npm run test:page   # the built page, opened from disk
+                                     # (PLAYWRIGHT_CHANNEL=chrome to use an installed Chrome)
 
 `scripts/live-network-check.mjs` tries every live request the page makes against real gateways and
 nodes; the GitHub workflow runs it on each push (it reports without blocking the build). A
