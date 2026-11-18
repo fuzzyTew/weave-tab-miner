@@ -80,9 +80,10 @@ export class ChunkShareBridge {
     post({ kind: 'offer', addresses });
     let sent = 0;
     for (const { address } of addresses) {
-      const entries = await store.load(address);
-      for (let start = 0; start < entries.length; start += ChunkShareBridge.CHUNKS_PER_BATCH) {
-        const batch = entries.slice(start, start + ChunkShareBridge.CHUNKS_PER_BATCH)
+      // A batch at a time from storage, so a large store never sits in memory whole.
+      const offsets = await store.offsets(address);
+      for (let start = 0; start < offsets.length; start += ChunkShareBridge.CHUNKS_PER_BATCH) {
+        const batch = (await store.loadSome(address, offsets.slice(start, start + ChunkShareBridge.CHUNKS_PER_BATCH)))
           .map(([offset, chunk]) => [offset.toString(), chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength)]);
         const acknowledged = nextAck();
         post({ kind: 'batch', address, entries: batch }, batch.map(([, buffer]) => buffer));

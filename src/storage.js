@@ -71,6 +71,41 @@ export class PackedChunkStore {
     return removed === true;
   }
 
+  /** The offsets saved for an address, without their bytes: [BigInt], ascending as text. */
+  async offsets(address) {
+    const offsets = await this.transaction('readonly', (store) => {
+      const result = { value: [] };
+      const cursorRequest = store.openKeyCursor(IDBKeyRange.bound(`${address}:`, `${address}:\uffff`));
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return;
+        result.value.push(BigInt(String(cursor.key).slice(address.length + 1)));
+        cursor.continue();
+      };
+      return result;
+    });
+    return offsets ?? [];
+  }
+
+  /** Some of an address's chunks: [[offset, Uint8Array]] for the offsets found. */
+  async loadSome(address, offsets) {
+    const entries = await this.transaction('readonly', (store) => {
+      const result = { value: [] };
+      for (const offset of offsets) {
+        const request = store.get(PackedChunkStore.key(address, offset));
+        request.onsuccess = () => { if (request.result) result.value.push([BigInt(offset), new Uint8Array(request.result)]); };
+      }
+      return result;
+    });
+    return entries ?? [];
+  }
+
+  /** One chunk, or null if not saved. */
+  async loadOne(address, offset) {
+    const [entry] = await this.loadSome(address, [offset]);
+    return entry ? entry[1] : null;
+  }
+
   /** All packed chunks saved for an address, as [[bucketEndOffset (BigInt), Uint8Array], ...]. */
   async load(address) {
     const entries = await this.transaction('readonly', (store) => {
