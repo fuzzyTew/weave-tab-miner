@@ -66,8 +66,8 @@ class PageCheck {
     await page.click('#addressButton');
     started = Date.now();
     await page.click('#holdButton');
-    await page.waitForFunction(() => /^Packed/.test(document.getElementById('holdStatus').textContent), null, { timeout: 600000 });
-    this.check('packing one chunk for another address', true, `${await this.text(page, '#holdStatus')} (${((Date.now() - started) / 1000).toFixed(0)} s)`);
+    await page.waitForFunction(() => /^Packed/.test(document.getElementById('packStatus').textContent), null, { timeout: 600000 });
+    this.check('packing one chunk for another address', true, `${await this.text(page, '#packStatus')} (${((Date.now() - started) / 1000).toFixed(0)} s)`);
     // Saving follows the status update, so wait for its log line rather than reading it at once.
     const saved = await this.waitForLog(page, 'saved 1 packed chunk\\b', 30000).then(() => true, () => false);
     this.check('packed chunks saved to browser storage', saved, await this.text(page, '#storageNote'));

@@ -825,7 +825,7 @@ class BrowserNodeApp {
   }
 
   packingProgress(done, total) {
-    this.view.setText('holdStatus', `Packing: entropy ${done} of ${total} (about a second each)…`);
+    this.view.setText('packStatus', `Packing: entropy ${done} of ${total} (about a second each; chunks at the same position reuse them)…`);
   }
 
   async holdChunks() {
@@ -902,11 +902,17 @@ class BrowserNodeApp {
         onProgress: (progress) => { lastProgress = progress; this.showFetchProgress(progress, held); },
         onSkip: (weaveByte, error) => this.view.log(`skipping the chunk at byte ${weaveByte}: no source had it (${error.message.split('\n')[1] ?? error.message})`, 'warn'),
       });
+      // Pack each batch while the next one is fetched: packing runs in the RandomX worker,
+      // so the page stays free to keep requests going. One batch packs at a time.
+      let packing = Promise.resolve();
       for await (const batch of batches) {
-        await this.packAndHold(batch);
-        held += batch.length;
-        if (lastProgress) this.showFetchProgress(lastProgress, held);
+        await packing;
+        packing = this.packAndHold(batch).then(() => {
+          held += batch.length;
+          if (lastProgress) this.showFetchProgress(lastProgress, held);
+        });
       }
+      await packing;
     } finally {
       this.view.elements.stopHoldButton.hidden = true;
       this.view.elements.holdProgress.hidden = true;
@@ -930,7 +936,7 @@ class BrowserNodeApp {
     const entries = packed.map((packedChunk, index) => [chunks[index].endOffset, packedChunk]);
     for (const [endOffset, packedChunk] of entries) this.storage.add(endOffset, packedChunk);
     const seconds = (performance.now() - started) / 1000;
-    this.view.setText('holdStatus', `Packed ${chunks.length} chunk${chunks.length === 1 ? '' : 's'} in ${seconds.toFixed(0)} s${this.usingRealRandomx ? '' : ' with stand-in packing, which is not saved'}.`);
+    this.view.setText('packStatus', `Packed ${chunks.length} chunk${chunks.length === 1 ? '' : 's'} in ${seconds.toFixed(0)} s${this.usingRealRandomx ? '' : ' with stand-in packing, which is not saved'}.`);
     this.view.log(`packed ${chunks.length} chunks for ${this.identity.address.slice(0, 8)}…`, 'good');
     await this.saveChunks(entries);
   }
