@@ -992,6 +992,7 @@ class BrowserNodeApp {
     this.view.elements.startButton.disabled = true;
     await this.repackEverythingForThisAddress();
     this.running = true;
+    this.holdScreenAwake();
     this.pace.reset();
     this.view.elements.solutionBanner.hidden = true;
     this.view.elements.startButton.disabled = true;
@@ -1001,7 +1002,27 @@ class BrowserNodeApp {
     else this.runReplay();
   }
 
+  /**
+   * Keeps the screen on while mining (the Screen Wake Lock API), so a plugged-in phone or
+   * laptop does not sleep and pause the tab. Browsers drop the lock when the tab is hidden;
+   * it is taken again when the tab shows. Fails quietly where unsupported.
+   */
+  async holdScreenAwake() {
+    if (!this.running || !navigator.wakeLock || this.wakeLock) return;
+    try {
+      this.wakeLock = await navigator.wakeLock.request('screen');
+      this.wakeLock.addEventListener('release', () => { this.wakeLock = null; });
+      if (!this.wakeLockListening) {
+        this.wakeLockListening = true;
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.holdScreenAwake(); });
+      }
+    } catch (error) {
+      this.view.log(`could not keep the screen on: ${error.message}`, 'warn');
+    }
+  }
+
   stop() {
+    this.wakeLock?.release();
     this.running = false;
     clearTimeout(this.replayTimer);
     clearTimeout(this.serverTimer);
