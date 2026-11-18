@@ -80,7 +80,7 @@ jobs:
           LOCALNET_MINE_COMMAND: >-
             erl -name capture@127.0.0.1 -setcookie localnet -noshell -eval
             "io:format(\"~p~n\", [rpc:call('main-localnet@127.0.0.1', ar_localnet, mine_one_block, [])]), halt()."
-        run: node localnet_capture.mjs localnet_fixtures "${{ inputs.blocks }}"
+        run: node scripts/localnet-capture.mjs localnet_fixtures "${{ inputs.blocks }}"
 
       - name: Show the localnet log
         if: always()

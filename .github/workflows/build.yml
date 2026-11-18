@@ -1,4 +1,4 @@
-# Builds weave-tab-miner.html, runs the checks, publishes the page to GitHub Pages from
+# Builds dist/weave-tab-miner.html, runs the checks, publishes the page to GitHub Pages from
 # main, and attaches the page to a GitHub release when a tag like v0.1.0 is pushed.
 #
 # The library checks and the browser check run as parallel jobs. Test dependencies come
@@ -39,25 +39,25 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Check SHA-256, VDF, difficulty and layout against block 2,040,257
-        run: node test_against_block.mjs sample_block.json
+        run: node test/against-block.test.mjs
 
       - name: Check real RandomX H0 and packing against block 2,040,257
-        run: node test_randomx_against_block.mjs
+        run: node test/randomx-against-block.test.mjs
 
       - name: Check the VDF server reply parser
-        run: node test_vdf_update.mjs
+        run: node test/vdf-update.test.mjs
 
       - name: Check the Solana gateway registry decoder against ar.io's encoder
-        run: node test_solana_registry.mjs
+        run: node test/solana-registry.test.mjs
 
       - name: Check the wait estimate's arithmetic
-        run: node test_odds.mjs
+        run: node test/odds.test.mjs
 
       - name: Check ANS-104 data items against arbundles' output
-        run: node test_data_item.mjs
+        run: node test/data-item.test.mjs
 
       - name: Check transactions against arweave-js
-        run: node cross_check_transactions.mjs .
+        run: node test/transactions.test.mjs
 
   live-network:
     # Tries every request the page makes against real gateways and nodes. The network can
@@ -73,7 +73,7 @@ jobs:
           node-version: 22
 
       - name: Try every live request
-        run: node live_network_check.mjs
+        run: node scripts/live-network-check.mjs
 
   page:
     runs-on: ubuntu-latest
@@ -90,31 +90,31 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Gather gateways and nodes that answer from here
-        # A failed gathering keeps the committed sources.json, so the build still works.
+        # A failed gathering keeps the committed data/sources.json, so the build still works.
         continue-on-error: true
         timeout-minutes: 5
-        run: node gather_sources.mjs sources.json
+        run: node scripts/gather-sources.mjs data/sources.json
 
       - name: Build the single-file page
-        run: node build_single_file.mjs
+        run: node scripts/build-single-file.mjs
 
       - name: Check the built page in the runner's Chrome
         env:
           PLAYWRIGHT_CHANNEL: chrome
-        run: node check_page.cjs weave-tab-miner.html
+        run: node test/check-page.cjs dist/weave-tab-miner.html
 
       - name: Keep the built page as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: weave-tab-miner
           path: |
-            weave-tab-miner.html
-            sources.json
+            dist/weave-tab-miner.html
+            data/sources.json
 
       - name: Prepare the GitHub Pages site
         run: |
           mkdir -p site
-          cp weave-tab-miner.html site/index.html
+          cp dist/weave-tab-miner.html site/index.html
 
       - name: Upload the GitHub Pages site
         if: github.ref == 'refs/heads/main'
@@ -150,4 +150,4 @@ jobs:
       - name: Attach the page to a release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" weave-tab-miner.html --repo "$GITHUB_REPOSITORY" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/weave-tab-miner.html --repo "$GITHUB_REPOSITORY" --generate-notes

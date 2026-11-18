@@ -10,7 +10,7 @@ it finds the block's own solution again.
 Build the page, then open `weave-tab-miner.html` by double-clicking it. No web server or
 Python needed.
 
-    node build_single_file.mjs
+    node scripts/build-single-file.mjs
 
 The page opens on the sample block, mining for the address that won it. **Start mining**
 replays the block's last 15 VDF steps and finds its solution. For live mining: load the live
@@ -37,35 +37,35 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
 
 | File | What it holds |
 |---|---|
-| `arweave_miner.js` | Constants, SHA-256, VDF, difficulty, packing layout, H0/H1/H2, the miner, odds |
-| `arweave_randomx.js`, `randomx_worker.js` | Real H0 and packing entropy through `vendor/randomx-arweave` |
-| `arweave_storage.js` | Packed chunks in IndexedDB |
-| `arweave_peers.js` | Direct node access and when it is blocked |
-| `arweave_vdf_client.js` | Reading steps from VDF servers (GET /vdf) |
-| `arweave_citations.js` | Links from each rule to the node source |
-| `arweave_gateway.js` | HTTP: blocks, chunks, wallets, prices, transactions |
-| `arweave_wallet.js`, `arweave_transaction.js` | Keys and signed data transactions |
-| `index.html`, `miner_app.js`, `vdf_worker.js` | The page |
-| `build_single_file.mjs` | Joins everything into `weave-tab-miner.html` |
-| `node_miner.mjs` | Server mode, same library |
+| `src/miner.js` | Constants, SHA-256, VDF, difficulty, packing layout, H0/H1/H2, the miner, odds |
+| `src/randomx.js`, `src/workers/randomx-worker.js` | Real H0 and packing entropy through `vendor/randomx-arweave` |
+| `src/storage.js` | Packed chunks in IndexedDB |
+| `src/peers.js` | Direct node access and when it is blocked |
+| `src/vdf-client.js` | Reading steps from VDF servers (GET /vdf) |
+| `src/citations.js` | Links from each rule to the node source |
+| `src/gateway.js` | HTTP: blocks, chunks, wallets, prices, transactions |
+| `src/wallet.js`, `src/transaction.js` | Keys and signed data transactions |
+| `index.html`, `apps/browser/app.js`, `src/workers/vdf-worker.js` | The page |
+| `scripts/build-single-file.mjs` | Joins everything into `weave-tab-miner.html` |
+| `apps/node/miner.mjs` | Server mode, same library |
 | `vendor/randomx-arweave/` | randomx.js built for Arweave, with its patch and build notes |
-| `sample_block.json` | Block 2,040,257 with its recall chunks and solution preimage |
+| `data/sample-block.json` | Block 2,040,257 with its recall chunks and solution preimage |
 
 ## Server mode
 
-    node node_miner.mjs --address <43-char address> --vdf server
-    node node_miner.mjs --address wYnRY0GUYWkoisS45Djguy5DZ5Xt3z1bE0KDPnq66c4 --sample sample_block.json
+    node apps/node/miner.mjs --address <43-char address> --vdf server
+    node apps/node/miner.mjs --address wYnRY0GUYWkoisS45Djguy5DZ5Xt3z1bE0KDPnq66c4 --sample data/sample-block.json
 
 ## Checks
 
-    node test_against_block.mjs sample_block.json   # SHA-256, VDF, difficulty, layout
-    node test_randomx_against_block.mjs             # real H0, real packing, the block's own solution
-    node test_vdf_update.mjs                        # GET /vdf parsing
+    node test/against-block.test.mjs data/sample-block.json   # SHA-256, VDF, difficulty, layout
+    node test/randomx-against-block.test.mjs             # real H0, real packing, the block's own solution
+    node test/vdf-update.test.mjs                        # GET /vdf parsing
     npm ci --ignore-scripts                         # test-only dependencies, pinned
-    node cross_check_transactions.mjs .             # transactions against arweave-js
-    node check_page.cjs                             # the built page, opened from disk
+    node test/transactions.test.mjs .             # transactions against arweave-js
+    node test/check-page.cjs                             # the built page, opened from disk
                                                     # (PLAYWRIGHT_CHANNEL=chrome to use an installed Chrome)
 
-`live_network_check.mjs` tries every live request the page makes against real gateways and
+`scripts/live-network-check.mjs` tries every live request the page makes against real gateways and
 nodes; the GitHub workflow runs it on each push (it reports without blocking the build). A
 found solution is not yet turned into a signed block.
