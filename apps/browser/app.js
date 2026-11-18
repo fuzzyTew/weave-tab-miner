@@ -374,6 +374,7 @@ class BrowserNodeApp {
     this.loadSampleBlock();
     const identity = new MiningIdentity(Bytes.fromBase64Url(this.block.reward_addr), null, { verificationOnly: true });
     await this.setIdentity(identity, `the sample block's own miner, for checking only; this page will not pack for it`);
+    this.view.elements.partitionInput.value = String(this.block.partition_number);
     this.view.elements.vdfModeReplay.checked = true;
     await this.holdChunks();
     this.view.log('verification ready: Start mining replays the sample block and should find its solution');
@@ -777,8 +778,9 @@ class BrowserNodeApp {
     this.blockOrigin = origin;
     this.session = VdfSession.fromBlock(block);
     const partitionInput = this.view.elements.partitionInput;
-    if (origin === 'live' && !this.partitionChosenByPerson && !this.storage.byteCount) partitionInput.value = String(this.browserPartition());
-    else if (!partitionInput.value) partitionInput.value = String(block.partition_number ?? 0);
+    // The browser's own partition unless the person chose one or chunks are held elsewhere;
+    // "Verify against the sample" sets the sample's own partition for its replay.
+    if (!this.partitionChosenByPerson && !this.storage?.byteCount) partitionInput.value = String(this.browserPartition());
     this.view.setText('networkHeight', this.session.height.toLocaleString());
     this.view.setText('networkStep', this.session.latestStepNumber.toLocaleString());
     const source = this.gateway.lastAnsweredBy && origin === 'live' ? ` from ${this.gateway.lastAnsweredBy}` : '';
