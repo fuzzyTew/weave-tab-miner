@@ -51,6 +51,9 @@ or a peer list of other malicious nodes. Each item below says what to check and 
       to WebAssembly, `fetch()`-like) through Snowflake WebSocket bridges, or webtor-rs.
       Off by default: it is several MB, slow to start, and bridges or gateways may block it
       too. Plug it in as a `fetch` the gateway and peer classes take.
+- [ ] Storage networks share one interface (src/networks.js: StorageNetwork, RecordMirror).
+      Autonomi is a stub waiting for a libp2p transport; add others the same way, each
+      naming the transport it needs.
 - [ ] Beyond HTTP: Tor would also let a page reach any TCP port, so clients for other
       storage networks could be written, prices compared and data mirrored. libp2p in the
       browser (WebRTC, WebTransport) reaches libp2p networks such as Autonomi. Chrome's

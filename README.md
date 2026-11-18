@@ -40,7 +40,11 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
 | `src/` | The library, with no runtime dependencies; `src/index.js` re-exports it all |
 | `src/miner.js` | Constants, SHA-256, VDF, difficulty, packing layout, H0/H1/H2, the miner, odds |
 | `src/randomx.js` | Real H0 and packing entropy through `vendor/randomx-arweave` |
-| `src/storage.js` | Packed chunks in IndexedDB |
+| `src/storage.js` | Packed chunks in IndexedDB; export and import files |
+| `src/chunk-fetcher.js` | Fetching many chunks at once, with progress and a stop |
+| `src/chunk-share.js` | Moving saved chunks between copies of the page |
+| `src/networks.js` | Storage networks behind one interface: compare prices, mirror a record |
+| `src/signing-guard.js` | Refuses to sign two competing blocks with one key |
 | `src/gateway.js`, `src/peers.js` | HTTP to gateways and nodes; finding and testing sources |
 | `src/vdf-client.js` | Reading steps from VDF servers (GET /vdf) |
 | `src/wallet.js`, `src/transaction.js`, `src/bundle.js` | Keys, signed transactions, ANS-104 items for Turbo |
