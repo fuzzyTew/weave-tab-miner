@@ -628,13 +628,73 @@ export class HeldStorage {
    * The packed chunks this node holds, keyed by bucket end offset, each one 256 KiB buffer
    * of 32 packed sub-chunks. A real node keeps terabytes on disk; a tab keeps what its
    * browser storage allows (see src/storage.js).
+   *
+   * Every held chunk is known by its offset, but only some need to be in memory. Given
+   * `loadChunk(bucketEndOffset) → Promise<Uint8Array|null>`, chunks marked reloadable (saved
+   * somewhere loadChunk can read) are dropped from memory beyond `residentLimit`, least
+   * recently used first, and read back when a step needs them (ensureLoaded). Without a
+   * loader everything stays in memory.
    */
-  constructor() {
-    this.packedChunks = new Map();
+  constructor({ loadChunk = null, residentLimit = 64 } = {}) {
+    this.packedChunks = new Map(); // offset string -> Uint8Array, or null when only on disk
+    this.reloadable = new Set();
+    this.loadChunk = loadChunk;
+    this.residentLimit = residentLimit;
+    this.resident = new Set(); // offsets in memory, least recently used first
   }
 
-  add(bucketEndOffset, packedChunk) {
-    this.packedChunks.set(bucketEndOffset.toString(), packedChunk);
+  add(bucketEndOffset, packedChunk, { reloadable = false } = {}) {
+    const key = bucketEndOffset.toString();
+    this.packedChunks.set(key, packedChunk);
+    if (reloadable) this.reloadable.add(key);
+    this.touch(key);
+  }
+
+  /** A chunk saved where loadChunk can read it, known by offset only until needed. */
+  addOnDisk(bucketEndOffset) {
+    const key = bucketEndOffset.toString();
+    if (this.packedChunks.get(key)) return;
+    this.packedChunks.set(key, null);
+    this.reloadable.add(key);
+  }
+
+  /** Marks chunks as saved, so they may leave memory. */
+  markReloadable(bucketEndOffsets) {
+    for (const offset of bucketEndOffsets) this.reloadable.add(offset.toString());
+    this.evictBeyondLimit();
+  }
+
+  touch(key) {
+    this.resident.delete(key);
+    this.resident.add(key);
+    this.evictBeyondLimit();
+  }
+
+  evictBeyondLimit() {
+    if (!this.loadChunk) return;
+    for (const key of this.resident) {
+      if (this.resident.size <= this.residentLimit) break;
+      if (!this.reloadable.has(key)) continue;
+      this.packedChunks.set(key, null);
+      this.resident.delete(key);
+    }
+  }
+
+  /** Brings the chunks holding these weave bytes into memory, where held. */
+  async ensureLoaded(weaveBytes) {
+    const keys = [...new Set(weaveBytes.map((byte) => Replica29Layout.bucketEndOffsetForByte(byte).toString()))]
+      .filter((key) => this.packedChunks.has(key));
+    for (const key of keys) {
+      if (this.packedChunks.get(key) === null && this.loadChunk) {
+        const chunk = await this.loadChunk(BigInt(key));
+        if (chunk) this.packedChunks.set(key, chunk);
+      }
+      if (this.packedChunks.get(key)) this.touch(key);
+    }
+  }
+
+  get residentCount() {
+    return this.resident.size;
   }
 
   subChunkForByte(weaveByte, subChunkIndex) {
@@ -691,6 +751,15 @@ export class Miner {
       const firstHeld = this.storage.packedChunks.keys().next().value;
       if (firstHeld) range1Start = BigInt(firstHeld) - BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
     }
+
+    // Held chunks may be on disk only (HeldStorage.ensureLoaded): read in the ones both
+    // ranges touch before trying their nonces.
+    const chunksPerRange = ConsensusConstants.noncesPerRecallRange / ConsensusConstants.SUB_CHUNK_COUNT;
+    const rangeBytes = [];
+    for (let chunk = 0; chunk < chunksPerRange; chunk++) {
+      for (const start of [range1Start, range2Start]) rangeBytes.push(MiningMath.recallByteForNonce(start, chunk * ConsensusConstants.SUB_CHUNK_COUNT)[0]);
+    }
+    await this.storage.ensureLoaded(rangeBytes);
 
     const trace = {
       vdfOutput, partitionNumber: this.partitionNumber, seed: session.seed.subarray(0, 32), address: this.identity.addressBytes,
