@@ -79,6 +79,23 @@ export class PackedChunkStore {
     return entries ?? [];
   }
 
+  /** Every address with saved chunks, and how many: [{ address, chunkCount }], by address. */
+  async addresses() {
+    const counts = await this.transaction('readonly', (store) => {
+      const result = { value: new Map() };
+      const cursorRequest = store.openKeyCursor();
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return;
+        const address = String(cursor.key).split(':')[0];
+        result.value.set(address, (result.value.get(address) ?? 0) + 1);
+        cursor.continue();
+      };
+      return result;
+    });
+    return [...(counts ?? new Map())].map(([address, chunkCount]) => ({ address, chunkCount }));
+  }
+
   /** Ask the browser not to clear this site's data under disk pressure. Returns whether granted. */
   static async requestPersistence() {
     try {
@@ -95,5 +112,53 @@ export class PackedChunkStore {
     } catch {
       return null;
     }
+  }
+}
+
+export class PackedChunkArchive {
+  /**
+   * A file of packed chunks for one address, to move them between browsers or machines
+   * without packing again. Layout: one text line naming the format, one line of JSON
+   * { address, chunkSize, bucketEndOffsets: [string] }, then the chunks back to back in
+   * that order, each exactly chunkSize bytes.
+   *
+   * Packed chunks are only useful for the address they were packed for; importing checks
+   * nothing else about them (a damaged chunk just never yields a valid solution).
+   */
+  static FORMAT_LINE = 'weave-tab-miner packed chunks v1';
+  static CHUNK_SIZE = 262144;
+
+  /** A Blob ready to download; `entries` is [[bucketEndOffset, Uint8Array], ...]. */
+  static toBlob(address, entries) {
+    const header = { address, chunkSize: PackedChunkArchive.CHUNK_SIZE, bucketEndOffsets: entries.map(([offset]) => offset.toString()) };
+    for (const [offset, chunk] of entries) {
+      if (chunk.length !== PackedChunkArchive.CHUNK_SIZE) throw new Error(`chunk at ${offset} is ${chunk.length} bytes, not ${PackedChunkArchive.CHUNK_SIZE}`);
+    }
+    return new Blob([`${PackedChunkArchive.FORMAT_LINE}\n${JSON.stringify(header)}\n`, ...entries.map(([, chunk]) => chunk)], { type: 'application/octet-stream' });
+  }
+
+  static fileName(address, chunkCount) {
+    return `weave-chunks-${address.slice(0, 8)}-${chunkCount}.bin`;
+  }
+
+  /**
+   * Reads an archive back: { address, entries }. Reads the chunks one slice at a time, so a
+   * large file is not copied whole. Throws with the reason if the file is not an archive.
+   */
+  static async fromBlob(blob) {
+    const headStart = new TextDecoder().decode(new Uint8Array(await blob.slice(0, 1 << 20).arrayBuffer()));
+    const firstBreak = headStart.indexOf('\n');
+    const secondBreak = headStart.indexOf('\n', firstBreak + 1);
+    if (headStart.slice(0, firstBreak) !== PackedChunkArchive.FORMAT_LINE || secondBreak < 0) throw new Error('not a packed chunk archive from this page');
+    const header = JSON.parse(headStart.slice(firstBreak + 1, secondBreak));
+    const dataStart = new TextEncoder().encode(headStart.slice(0, secondBreak + 1)).length;
+    const expectedSize = dataStart + header.bucketEndOffsets.length * header.chunkSize;
+    if (blob.size !== expectedSize) throw new Error(`archive is ${blob.size} bytes; its header promises ${expectedSize}`);
+    const entries = [];
+    for (const [index, offset] of header.bucketEndOffsets.entries()) {
+      const start = dataStart + index * header.chunkSize;
+      entries.push([BigInt(offset), new Uint8Array(await blob.slice(start, start + header.chunkSize).arrayBuffer())]);
+    }
+    return { address: header.address, entries };
   }
 }
