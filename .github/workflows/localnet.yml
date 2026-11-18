@@ -1,0 +1,98 @@
+# Starts an Arweave localnet (a private chain started from the snapshot in Arweave's
+# repository), has its own miner make a few blocks, and commits each block with its
+# parent's state to the localnet-fixtures branch. The block builder is checked against
+# those blocks offline. Manual only: building Arweave takes a while, so it stays out of
+# the per-push checks.
+name: Localnet fixtures
+
+on:
+  workflow_dispatch:
+    inputs:
+      blocks:
+        description: Blocks to mine and save
+        default: '3'
+
+permissions:
+  contents: write
+
+env:
+  # The Arweave commit this project's citations and ports were read from.
+  ARWEAVE_COMMIT: 18d402c714132e1de3962b12ff32a420127e0c02
+  LOCALNET_NODE: main-localnet@127.0.0.1
+  ERL_EPMD_ADDRESS: 127.0.0.1
+
+jobs:
+  capture:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: '26.2.5'
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake libgmp-dev libssl-dev pkg-config
+
+      - name: Check out Arweave at the pinned commit, with the snapshot's LFS files
+        run: |
+          git init arweave
+          cd arweave
+          git remote add origin https://github.com/ArweaveTeam/arweave.git
+          git fetch --depth 1 origin "$ARWEAVE_COMMIT"
+          git checkout FETCH_HEAD
+          git submodule update --init --recursive --depth 1
+          git lfs install --local
+          git lfs pull --include "localnet_snapshot/**"
+          du -sh localnet_snapshot
+
+      - name: Reuse an earlier build
+        uses: actions/cache@v4
+        with:
+          path: arweave/_build
+          key: arweave-localnet-${{ env.ARWEAVE_COMMIT }}
+
+      - name: Build the localnet profile
+        working-directory: arweave
+        run: ./ar-rebar3 localnet compile
+
+      - name: Start the localnet
+        working-directory: arweave
+        run: |
+          mkdir -p .tmp
+          ERL_LOCALNET_OPTS="-pa $(./rebar3 as localnet path) $(./rebar3 as localnet path --base)/lib/arweave/test -config config/sys.config"
+          nohup erl $ERL_LOCALNET_OPTS -name "$LOCALNET_NODE" -setcookie localnet -noshell \
+            -s ar shell_localnet -eval "timer:sleep(infinity)." > .tmp/localnet.log 2>&1 &
+          for second in $(seq 1 600); do
+            info=$(curl -fsS --max-time 2 -H 'x-network: arweave.localnet' http://127.0.0.1:1984/info || true)
+            if echo "$info" | grep -q '"height":[0-9]'; then echo "ready after ${second} s: $info"; exit 0; fi
+            sleep 1
+          done
+          echo "localnet did not start; its log:"; tail -200 .tmp/localnet.log; exit 1
+
+      - name: Mine and save blocks
+        env:
+          LOCALNET_MINE_COMMAND: >-
+            erl -name capture@127.0.0.1 -setcookie localnet -noshell -eval
+            "io:format(\"~p~n\", [rpc:call('main-localnet@127.0.0.1', ar_localnet, mine_one_block, [])]), halt()."
+        run: node localnet_capture.mjs localnet_fixtures "${{ inputs.blocks }}"
+
+      - name: Show the localnet log
+        if: always()
+        run: tail -300 arweave/.tmp/localnet.log || true
+
+      - name: Commit the fixtures to the localnet-fixtures branch
+        run: |
+          git config user.name "localnet workflow"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout --orphan localnet-fixtures
+          git rm -rq --cached .
+          git add localnet_fixtures
+          git commit -qm "Localnet blocks and state from Arweave $ARWEAVE_COMMIT"
+          git push -f origin localnet-fixtures
+          du -sh localnet_fixtures; ls -la localnet_fixtures
