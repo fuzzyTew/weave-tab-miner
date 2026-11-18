@@ -14,7 +14,7 @@ class SingleFileBuilder {
    */
   static LIBRARY_ORDER = [
     'src/miner.js', 'src/gateway.js', 'src/wallet.js', 'src/transaction.js', 'src/bundle.js', 'src/randomx.js',
-    'src/storage.js', 'src/chunk-fetcher.js', 'src/peers.js', 'src/vdf-client.js', 'src/citations.js',
+    'src/storage.js', 'src/chunk-fetcher.js', 'src/chunk-share.js', 'src/signing-guard.js', 'src/peers.js', 'src/vdf-client.js', 'src/citations.js',
   ];
   static RANDOMX_BUNDLE = 'vendor/randomx-arweave/randomx-arweave.iife.js';
 
@@ -57,6 +57,7 @@ class SingleFileBuilder {
     const sampleBlock = SingleFileBuilder.safeForScriptElement(this.read('data/sample-block.json'));
     const permaweb = SingleFileBuilder.safeForScriptElement(this.read('data/permaweb.json'));
     const sources = SingleFileBuilder.safeForScriptElement(this.read('data/sources.json'));
+    const publicKey = SingleFileBuilder.safeForScriptElement(this.read('data/public-key.json'));
 
     const pageBody = this.read(SingleFileBuilder.PAGE).replace(
       /<script type="module" src="\.\/app\.js"><\/script>/,
@@ -64,6 +65,7 @@ class SingleFileBuilder {
         `<script type="application/json" id="sampleBlockData">${sampleBlock}</script>`,
         `<script type="application/json" id="permawebData">${permaweb}</script>`,
         `<script type="application/json" id="sourcesData">${sources}</script>`,
+        `<script type="application/json" id="publicKeyData">${publicKey}</script>`,
         `<script type="text/plain" id="vdfWorkerSource">${workerScript}</script>`,
         `<script type="text/plain" id="randomxWorkerSource">${randomxWorkerScript}</script>`,
         `<script type="module">\n${pageScript}\n</script>`,

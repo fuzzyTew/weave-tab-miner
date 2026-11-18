@@ -62,6 +62,15 @@ export class PackedChunkStore {
     return saved === true;
   }
 
+  /** Removes every chunk saved for an address. Returns true if removed. */
+  async deleteAddress(address) {
+    const removed = await this.transaction('readwrite', (store) => {
+      store.delete(IDBKeyRange.bound(`${address}:`, `${address}:\uffff`));
+      return { value: true };
+    });
+    return removed === true;
+  }
+
   /** All packed chunks saved for an address, as [[bucketEndOffset (BigInt), Uint8Array], ...]. */
   async load(address) {
     const entries = await this.transaction('readonly', (store) => {
