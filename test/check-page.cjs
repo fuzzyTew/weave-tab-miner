@@ -89,6 +89,15 @@ class PageCheck {
     await page.waitForTimeout(1000);
     this.check('reloading restores it', /restored 1 packed chunk\b/.test(await this.text(page, '#activityLog')), await this.text(page, '#heldBytes'));
 
+    // Restored chunks stay on disk; a step aimed at one must read it back to try its nonces.
+    await page.check('#aimCheckbox');
+    await page.check('#vdfModeReplay');
+    await page.click('#startButton');
+    await page.waitForFunction(() => /no pass|found/.test(document.getElementById('stepRows').textContent), null, { timeout: 120000 }).catch(() => {});
+    await page.click('#stopButton');
+    await page.uncheck('#aimCheckbox');
+    this.check('a step reads a held chunk back from storage', /no pass|found/.test(await this.text(page, '#stepRows')), (await this.text(page, '#stepRows')).slice(0, 120));
+
     // Export this address's chunk, then import it into a fresh browser profile.
     const [download] = await Promise.all([page.waitForEvent('download'), page.click('#exportChunksButton')]);
     const archivePath = require('node:path').join(require('node:os').tmpdir(), download.suggestedFilename());

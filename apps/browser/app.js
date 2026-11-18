@@ -419,7 +419,9 @@ class BrowserNodeApp {
 
   async setIdentity(identity, note) {
     this.identity = identity;
-    this.storage = new HeldStorage(); // packing is per address, so another address's chunks do not count
+    // Packing is per address, so another address's chunks do not count. Saved chunks stay
+    // on disk and are read in as steps need them, so storage, not memory, sets the limit.
+    this.storage = this.heldStorageFor(identity);
     this.view.setText('identityAddress', identity.address);
     this.view.setText('identityStatus', note);
     this.view.elements.walletAddressInput.value = identity.address;
@@ -431,10 +433,18 @@ class BrowserNodeApp {
 
   // ---- browser storage ----
 
+  // Chunks kept in memory at once (64 × 256 KiB = 16 MiB); the rest are read from storage.
+  static RESIDENT_CHUNKS = 64;
+
+  heldStorageFor(identity) {
+    return new HeldStorage({ loadChunk: (offset) => this.store.loadOne(identity.address, offset), residentLimit: BrowserNodeApp.RESIDENT_CHUNKS });
+  }
+
   async restoreStoredChunks() {
     // Stand-in packing is never saved, so anything stored is real packing.
-    const entries = await this.store.load(this.identity.address);
-    for (const [bucketEndOffset, packedChunk] of entries) this.storage.add(bucketEndOffset, packedChunk);
+    // Only the offsets: the chunks themselves are read from storage when a step needs them.
+    const entries = await this.store.offsets(this.identity.address);
+    for (const bucketEndOffset of entries) this.storage.addOnDisk(bucketEndOffset);
     if (entries.length) {
       this.view.log(`restored ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} from browser storage`, 'good');
       this.view.setText('holdStatus', `Holding ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} saved in this browser earlier.`);
@@ -495,16 +505,16 @@ class BrowserNodeApp {
       this.view.setText('holdStatus', 'Repacking needs real RandomX, which this browser could not start.');
       return;
     }
-    const entries = await this.store.load(address);
+    const offsets = await this.store.offsets(address);
     const started = performance.now();
     const target = this.identity;
     let repackedCount = 0;
-    // A batch at a time, so a large set never sits twice in memory.
-    for (let start = 0; start < entries.length; start += BrowserNodeApp.CHUNK_BATCH_SIZE) {
-      const batch = entries.slice(start, start + BrowserNodeApp.CHUNK_BATCH_SIZE);
+    // A batch at a time from storage, so a large set never sits in memory whole.
+    for (let start = 0; start < offsets.length; start += BrowserNodeApp.CHUNK_BATCH_SIZE) {
+      const batch = await this.store.loadSome(address, offsets.slice(start, start + BrowserNodeApp.CHUNK_BATCH_SIZE));
       const repacked = await ChunkPacker.repackChunks({
         entries: batch, fromIdentity: MiningIdentity.fromAddress(address), toIdentity: target, entropySource: this.entropySource,
-        onEntropy: (done, total) => this.view.setText('holdStatus', `Repacking chunks ${start + 1}–${start + batch.length} of ${entries.length}: entropy ${done} of ${total}…`),
+        onEntropy: (done, total) => this.view.setText('holdStatus', `Repacking chunks ${start + 1}–${start + batch.length} of ${offsets.length}: entropy ${done} of ${total}…`),
       });
       if (target !== this.identity) return; // the person switched identity meanwhile
       for (const [offset, chunk] of repacked) this.storage.add(offset, chunk);
@@ -535,7 +545,7 @@ class BrowserNodeApp {
   async deleteSaved(address, chunkCount) {
     if (!confirm(`Delete ${chunkCount} packed chunks saved for ${address}?`)) return;
     await this.store.deleteAddress(address);
-    if (address === this.identity?.address) this.storage = new HeldStorage();
+    if (address === this.identity?.address) this.storage = this.heldStorageFor(this.identity);
     this.view.log(`deleted ${chunkCount} saved chunks for ${address}`);
     await this.refreshStorageNote();
   }
@@ -548,7 +558,7 @@ class BrowserNodeApp {
         sourceUrl: localStorage.getItem('weave-tab-miner.share-source') ?? ChunkShareBridge.DEFAULT_SOURCE_URL,
         saveBatch: async (address, entries) => {
           if (!(await this.store.save(address, entries))) throw new Error('this browser refused to store them');
-          if (address === this.identity?.address) for (const [offset, chunk] of entries) this.storage.add(offset, chunk);
+          if (address === this.identity?.address) for (const [offset] of entries) this.storage.addOnDisk(offset);
         },
         onOffer: (addresses) => this.view.log(`the website copy offers ${addresses.map(({ address, chunkCount }) => `${chunkCount} for ${address.slice(0, 8)}…`).join(', ') || 'nothing'}`),
         onProgress: (counts) => this.view.setText('holdStatus', `Received ${Object.values(counts).reduce((sum, count) => sum + count, 0)} chunks…`),
@@ -599,7 +609,7 @@ class BrowserNodeApp {
       const { address, entries } = await PackedChunkArchive.fromBlob(file);
       if (!(await this.store.save(address, entries))) throw new Error('this browser refused to store them');
       if (address === this.identity?.address) {
-        for (const [offset, chunk] of entries) this.storage.add(offset, chunk);
+        for (const [offset] of entries) this.storage.addOnDisk(offset);
         this.choosePartitionWithMostHeld();
         this.view.setText('holdStatus', `Imported ${entries.length} packed chunks for this address.`);
       } else {
@@ -617,6 +627,7 @@ class BrowserNodeApp {
   async saveChunks(entries) {
     if (!this.usingRealRandomx) return;
     if (await this.store.save(this.identity.address, entries)) {
+      this.storage.markReloadable(entries.map(([offset]) => offset));
       const persistent = await PackedChunkStore.requestPersistence();
       this.view.log(`saved ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} to browser storage${persistent ? '' : ' (the browser may clear it if disk runs low)'}`);
     }

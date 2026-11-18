@@ -87,14 +87,16 @@ To continue in a new conversation with Claude, a prompt like this works:
 
 ## Holding more data
 
-- [ ] Held chunks are all loaded into memory to mine. Past a few GB that runs out of RAM:
-      read each step's recall-range chunks from IndexedDB on demand instead.
+- [x] Held chunks no longer all sit in memory: saved ones are read from IndexedDB as each
+      step needs them (HeldStorage.ensureLoaded), 64 at most kept in memory.
+- [ ] Export still gathers every chunk of an address into one file in memory; stream it
+      for very large stores.
 - [ ] More storage than one site's allowance: browsers give each site its own allowance, so
       the same page opened from several hosts (several Arweave gateways, once the page is
       stored on Arweave; a copy on disk) holds more in all. Each copy picks its own
       partition and mines it; they could share one VDF source.
 - [ ] Old phones as miners: plugged in, screen kept on (the page holds a wake lock while
-      mining), with on-demand reading so their free storage counts.
+      mining); on-demand reading now lets their free storage count. Try one.
 
 ## Hosting
 
