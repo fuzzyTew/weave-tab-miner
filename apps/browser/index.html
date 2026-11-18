@@ -135,6 +135,12 @@
     <p class="lede">An Arweave mining node that runs in this tab: it takes a mining address, packs chunks of the live weave to it, follows the VDF, and checks every nonce it can against the network difficulty. Given long enough, it would say "Solution found!"</p>
   </header>
 
+  <section class="reminder share-request" id="shareRequest" hidden>
+    <h3>A copy of this page asked for your saved chunks</h3>
+    <p class="stage-note" id="shareRequestNote">—</p>
+    <div class="row"><button id="sendChunksButton" class="primary" type="button">Send them</button></div>
+  </section>
+
   <section class="reminders" aria-labelledby="remindersHeading">
     <h2 id="remindersHeading" class="visually-hidden">Reminders</h2>
     <div class="reminder">
@@ -188,7 +194,8 @@
   <div class="stages">
     <section class="stage" aria-labelledby="identityHeading">
       <h2 id="identityHeading"><span class="stage-number">1</span>Identity</h2>
-      <div class="row"><button id="generateButton" type="button">Generate a key</button></div>
+      <div class="row"><button id="sharedKeyButton" type="button">Use the shared key</button><button id="generateButton" type="button">Generate a key</button></div>
+      <p class="stage-note">The shared key comes with this page, so tabs can mine together without each needing a key. This page will never sign two competing blocks with any key, which would get its address banned.</p>
       <label for="addressInput">or use a mining address
         <input id="addressInput" type="text" spellcheck="false" autocomplete="off" placeholder="43-character address">
       </label>
@@ -209,6 +216,7 @@
       <div class="row">
         <button id="liveButton" type="button">Load live block</button>
         <button id="sampleButton" type="button">Use sample block</button>
+        <button id="verifySampleButton" type="button">Verify against the sample</button>
       </div>
       <p class="stage-note" id="networkStatus">Loading the sample block…</p>
       <p class="stage-note">The sample is mainnet block 2,040,257, bundled with this page so it works where Arweave is blocked.</p>
@@ -239,6 +247,7 @@
         <label class="button-link" for="importChunksInput">Import packed chunks<input id="importChunksInput" type="file" accept=".bin,application/octet-stream" hidden></label>
       </div>
       <p class="stage-note">Export saves this address's packed chunks to a file; import loads such a file in another browser or a copy opened from disk, with no packing again.</p>
+      <div class="row"><button id="bringChunksButton" type="button" hidden>Bring chunks from the website copy</button></div>
       <ul class="saved-addresses" id="savedAddresses"></ul>
     </section>
 

@@ -43,6 +43,14 @@ class PageCheck {
     this.check('RandomX runs in the page', /real/.test(await this.text(page, '#randomxStatus')), `${await this.text(page, '#randomxStatus')} after ${((Date.now() - started) / 1000).toFixed(0)} s`);
     console.log(`      wait: ${await this.text(page, '#expectedWait')} | ${await this.text(page, '#limitList')} | ${await this.text(page, '#rangeHitNote')}`);
 
+    const sharedAddress = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '../data/public-key.json'), 'utf8')).address;
+    this.check('opens with the shared key', (await page.inputValue('#walletAddressInput')) === sharedAddress, sharedAddress);
+    await page.click('#verifySampleButton');
+    await this.waitForLog(page, 'verification ready', 60000);
+    await page.fill('#addressInput', await page.inputValue('#walletAddressInput'));
+    await page.click('#holdButton');
+    this.check('the sample miner is for checking only', /checking only/.test(await this.text(page, '#identityStatus')));
+
     started = Date.now();
     await page.click('#startButton');
     await page.waitForSelector('#solutionBanner:not([hidden])', { timeout: 120000 });
@@ -96,6 +104,35 @@ class PageCheck {
     await freshPage.waitForTimeout(1000);
     this.check('export then import into a fresh browser', /restored 1 packed chunk\b/.test(await this.text(freshPage, '#activityLog')), `${download.suggestedFilename()} → ${await this.text(freshPage, '#heldBytes')}`);
     await freshContext.close();
+
+    // The bridge: a copy served over http (standing in for the website) holds the chunk;
+    // a copy opened from disk asks for it, and the website window sends it after consent.
+    const server = require('node:http').createServer((request, response) => {
+      response.setHeader('content-type', 'text/html');
+      response.end(require('node:fs').readFileSync(this.url.replace('file://', '')));
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const websiteUrl = `http://127.0.0.1:${server.address().port}/weave-tab-miner.html`;
+    const bridgeContext = await browser.newContext();
+    const website = await bridgeContext.newPage();
+    website.on('pageerror', (error) => errors.push(error.message));
+    await website.goto(websiteUrl);
+    await this.waitForLog(website, 'ready:', 120000);
+    await website.setInputFiles('#importChunksInput', archivePath);
+    await this.waitForLog(website, 'imported 1 packed chunks', 30000);
+    await website.close();
+    const diskCopy = await bridgeContext.newPage();
+    diskCopy.on('pageerror', (error) => errors.push(error.message));
+    await diskCopy.goto(this.url);
+    await this.waitForLog(diskCopy, 'ready:', 120000);
+    await diskCopy.evaluate((url) => localStorage.setItem('weave-tab-miner.share-source', url), websiteUrl);
+    const [popup] = await Promise.all([bridgeContext.waitForEvent('page'), diskCopy.click('#bringChunksButton')]);
+    await popup.waitForSelector('#shareRequest:not([hidden])', { timeout: 120000 });
+    await popup.click('#sendChunksButton');
+    await this.waitForLog(diskCopy, 'brought 1 chunks from the website copy', 60000).catch(() => {});
+    this.check('a copy on disk brings chunks from the website copy', /brought 1 chunks/.test(await this.text(diskCopy, '#activityLog')), await this.text(diskCopy, '#holdStatus'));
+    await bridgeContext.close();
+    server.close();
 
     await page.setViewportSize({ width: 400, height: 900 });
     this.check('no sideways scroll at phone width', !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));

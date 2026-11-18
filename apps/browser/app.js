@@ -10,6 +10,7 @@ import { ArweaveWallet } from '../../src/wallet.js';
 import { DataTransaction } from '../../src/transaction.js';
 import { DataItem, TurboUploader } from '../../src/bundle.js';
 import { ChunkFetcher } from '../../src/chunk-fetcher.js';
+import { ChunkShareBridge } from '../../src/chunk-share.js';
 import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/randomx.js';
 import { PackedChunkStore, PackedChunkArchive } from '../../src/storage.js';
 import { PeerAccess, PeerDirectory, GatewayDirectory, SourceTester } from '../../src/peers.js';
@@ -39,6 +40,11 @@ class BundledResources {
     } catch {
       return { gatheredAt: null, gateways: [], nodes: [], vdfServers: [] };
     }
+  }
+
+  /** The shared key published with the page (data/public-key.json). */
+  static publicKey() {
+    return JSON.parse(BundledResources.embeddedText('publicKeyData'));
   }
 
   static sampleBlock() {
@@ -355,9 +361,30 @@ class BrowserNodeApp {
     await this.setIdentity(MiningIdentity.fromWallet(await ArweaveWallet.generate()), 'new key made in this tab and never saved; it can sign transactions');
   }
 
+  async useSharedKey() {
+    const { jwk } = BundledResources.publicKey();
+    await this.setIdentity(MiningIdentity.fromWallet(await ArweaveWallet.fromJwk(jwk)), 'the shared key that comes with this page');
+  }
+
+  /**
+   * The sample block's own miner, held only to replay its solution: the block carries that
+   * miner's packed sub-chunks. Never packed for, since mining for it would pay them.
+   */
+  async verifyAgainstSample() {
+    this.loadSampleBlock();
+    const identity = new MiningIdentity(Bytes.fromBase64Url(this.block.reward_addr), null, { verificationOnly: true });
+    await this.setIdentity(identity, `the sample block's own miner, for checking only; this page will not pack for it`);
+    this.view.elements.vdfModeReplay.checked = true;
+    await this.holdChunks();
+    this.view.log('verification ready: Start mining replays the sample block and should find its solution');
+  }
+
   async useAddress() {
     try {
-      await this.setIdentity(MiningIdentity.fromAddress(this.view.elements.addressInput.value), 'address only: enough to mine and look up, not to sign');
+      const typed = MiningIdentity.fromAddress(this.view.elements.addressInput.value);
+      const isSampleMiner = typed.address === BundledResources.sampleBlock().reward_addr;
+      const identity = isSampleMiner ? new MiningIdentity(typed.addressBytes, null, { verificationOnly: true }) : typed;
+      await this.setIdentity(identity, isSampleMiner ? `the sample block's own miner, for checking only; this page will not pack for it` : 'address only: enough to mine and look up, not to sign');
     } catch (error) {
       this.view.setText('identityStatus', `That address did not work: ${error.message}. It should be 43 characters.`);
     }
@@ -437,18 +464,100 @@ class BrowserNodeApp {
       const item = document.createElement('li');
       const current = address === this.identity?.address;
       item.append(`${current ? 'This address' : 'Saved here'}: ${address}, ${chunkCount} chunk${chunkCount === 1 ? '' : 's'}`);
+      const addButton = (label, action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', action);
+        item.append(button);
+      };
       if (!current) {
-        const useButton = document.createElement('button');
-        useButton.type = 'button';
-        useButton.textContent = 'Mine for it';
-        useButton.addEventListener('click', () => {
+        addButton('Mine for it', () => {
           this.view.elements.addressInput.value = address;
           this.useAddress();
         });
-        item.append(useButton);
+        if (this.identity && !this.identity.verificationOnly) addButton('Repack for this address', () => this.repackFrom(address));
       }
+      addButton('Delete', () => this.deleteSaved(address, chunkCount));
       return item;
     }));
+  }
+
+  /**
+   * Turns chunks saved for another address into chunks for this one, with no download:
+   * unpacking and packing are both XORs with entropy (ChunkPacker.repackChunks).
+   */
+  async repackFrom(address) {
+    this.view.setText('holdStatus', 'Waiting for RandomX to be ready…');
+    await this.randomxReady;
+    if (!this.usingRealRandomx) {
+      this.view.setText('holdStatus', 'Repacking needs real RandomX, which this browser could not start.');
+      return;
+    }
+    const entries = await this.store.load(address);
+    const started = performance.now();
+    const target = this.identity;
+    let repackedCount = 0;
+    // A batch at a time, so a large set never sits twice in memory.
+    for (let start = 0; start < entries.length; start += BrowserNodeApp.CHUNK_BATCH_SIZE) {
+      const batch = entries.slice(start, start + BrowserNodeApp.CHUNK_BATCH_SIZE);
+      const repacked = await ChunkPacker.repackChunks({
+        entries: batch, fromIdentity: MiningIdentity.fromAddress(address), toIdentity: target, entropySource: this.entropySource,
+        onEntropy: (done, total) => this.view.setText('holdStatus', `Repacking chunks ${start + 1}–${start + batch.length} of ${entries.length}: entropy ${done} of ${total}…`),
+      });
+      if (target !== this.identity) return; // the person switched identity meanwhile
+      for (const [offset, chunk] of repacked) this.storage.add(offset, chunk);
+      await this.saveChunks(repacked);
+      repackedCount += repacked.length;
+    }
+    this.choosePartitionWithMostHeld();
+    this.view.setText('holdStatus', `Repacked ${repackedCount} chunks from ${address.slice(0, 8)}… for this address in ${((performance.now() - started) / 1000).toFixed(0)} s. The originals are still saved; delete them if you no longer need them.`);
+    this.refreshSummary();
+  }
+
+  async deleteSaved(address, chunkCount) {
+    if (!confirm(`Delete ${chunkCount} packed chunks saved for ${address}?`)) return;
+    await this.store.deleteAddress(address);
+    if (address === this.identity?.address) this.storage = new HeldStorage();
+    this.view.log(`deleted ${chunkCount} saved chunks for ${address}`);
+    await this.refreshStorageNote();
+  }
+
+  /** From a copy on disk: open the website copy, which sends its saved chunks here. */
+  async bringChunksFromWebsite() {
+    this.view.setText('holdStatus', 'Opening the website copy; agree there to send its chunks…');
+    try {
+      const received = await ChunkShareBridge.receive({
+        sourceUrl: localStorage.getItem('weave-tab-miner.share-source') ?? ChunkShareBridge.DEFAULT_SOURCE_URL,
+        saveBatch: async (address, entries) => {
+          if (!(await this.store.save(address, entries))) throw new Error('this browser refused to store them');
+          if (address === this.identity?.address) for (const [offset, chunk] of entries) this.storage.add(offset, chunk);
+        },
+        onOffer: (addresses) => this.view.log(`the website copy offers ${addresses.map(({ address, chunkCount }) => `${chunkCount} for ${address.slice(0, 8)}…`).join(', ') || 'nothing'}`),
+        onProgress: (counts) => this.view.setText('holdStatus', `Received ${Object.values(counts).reduce((sum, count) => sum + count, 0)} chunks…`),
+      });
+      const total = Object.values(received).reduce((sum, count) => sum + count, 0);
+      this.view.setText('holdStatus', total ? `Brought over ${total} packed chunks; they are saved here now.` : 'The website copy had no saved chunks.');
+      this.view.log(`brought ${total} chunks from the website copy`, 'good');
+      this.choosePartitionWithMostHeld();
+      await this.refreshStorageNote();
+    } catch (error) {
+      this.view.setText('holdStatus', `Nothing brought over: ${error.message}`);
+      this.view.log(`chunk sharing failed: ${error.message}`, 'error');
+    }
+  }
+
+  /** In a window opened by another copy asking for chunks: say so and wait for consent. */
+  async offerShare() {
+    const addresses = await this.store.addresses();
+    const total = addresses.reduce((sum, { chunkCount }) => sum + chunkCount, 0);
+    this.view.elements.shareRequest.hidden = false;
+    this.view.setText('shareRequestNote', `It would receive ${total} packed chunks (${PageView.formatBytes(total * ConsensusConstants.DATA_CHUNK_SIZE)}) for ${addresses.length} address${addresses.length === 1 ? '' : 'es'}. Packed chunks are public data, so nothing secret is shared; no key is ever sent.`);
+    this.view.elements.sendChunksButton.addEventListener('click', async () => {
+      this.view.elements.sendChunksButton.disabled = true;
+      const sent = await ChunkShareBridge.send({ store: this.store, onProgress: (count) => this.view.setText('shareRequestNote', `Sent ${count} of ${total}…`) });
+      this.view.setText('shareRequestNote', `Sent ${sent} chunks. You can close this window.`);
+    }, { once: true });
   }
 
   async exportChunks() {
@@ -678,6 +787,10 @@ class BrowserNodeApp {
       return;
     }
     await this.randomxReady;
+    if (this.identity.verificationOnly && !(this.blockOrigin === 'sample' && this.identity.address === this.block.reward_addr)) {
+      this.view.setText('holdStatus', 'This address belongs to the sample block\'s miner and is for checking only: packing for it would only help them. Use the shared key, generate one, or load your own.');
+      return;
+    }
     if (this.blockOrigin === 'sample') await this.holdSampleChunks();
     else await this.holdLiveChunks();
     this.refreshSummary();
@@ -1075,6 +1188,9 @@ class BrowserNodeApp {
   bind() {
     const onClick = (id, handler) => this.view.elements[id].addEventListener('click', () => handler.call(this));
     onClick('generateButton', this.generateIdentity);
+    onClick('sharedKeyButton', this.useSharedKey);
+    onClick('verifySampleButton', this.verifyAgainstSample);
+    onClick('bringChunksButton', this.bringChunksFromWebsite);
     onClick('addressButton', this.useAddress);
     onClick('keyfileButton', this.loadKeyfile);
     onClick('copyKeyfileButton', this.copyKeyfile);
@@ -1103,13 +1219,13 @@ class BrowserNodeApp {
     new RunYourself(this.view).show();
     this.restoreSeeds();
     this.view.setText('peerStatus', this.describeGatheredSources());
-    // Open in a working state: the sample block, mining for the address that won it.
+    this.view.elements.bringChunksButton.hidden = location.protocol !== 'file:';
+    if (ChunkShareBridge.isShareRequest()) this.offerShare();
+    // Open on the sample block, mining for the shared key. "Verify against the sample"
+    // switches to the sample's own miner to replay its solution.
     this.loadSampleBlock();
-    this.view.elements.addressInput.value = this.block.reward_addr;
-    await this.useAddress();
-    this.view.setText('identityStatus', 'Default: the address that mined the sample block, possibly a pool. Anything found would pay it, not you.');
-    await this.holdChunks();
-    this.view.log('ready: sample block loaded with its own packed data. Press Start mining to replay its steps.');
+    await this.useSharedKey();
+    this.view.log('ready: the shared key and the sample block. "Verify against the sample" replays a real solution; load the live block to mine.');
   }
 }
 
