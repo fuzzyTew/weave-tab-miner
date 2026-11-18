@@ -144,6 +144,10 @@
   <section class="reminders" aria-labelledby="remindersHeading">
     <h2 id="remindersHeading" class="visually-hidden">Reminders</h2>
     <div class="reminder">
+      <h3>Unfinished: turning a solution into a block</h3>
+      <p class="stage-note">A solution found here cannot yet be signed and sent as a block. The steps are in docs/TODO.md, "Building blocks". To continue with Claude, ask: “Continue the weave-tab-miner block builder (github.com/fuzzyTew/weave-tab-miner, docs/TODO.md "Building blocks"). Start at the first unchecked step, test it against the localnet-fixtures branch, and commit each step separately.”</p>
+    </div>
+    <div class="reminder">
       <h3 id="runHeading">Keep a copy</h3>
       <div class="row"><a id="downloadLink" class="button-link" download="weave-tab-miner.html" href="#">Download this page</a></div>
       <p class="stage-note" id="downloadNote"></p>
@@ -156,6 +160,7 @@
     </div>
     <div class="reminder">
       <h3>Other ways to keep data permanently</h3>
+      <p class="stage-note">A page can only speak HTTP and a few browser protocols. Tor would let it reach any TCP port, and libp2p in the browser reaches networks such as Autonomi, so one client could compare and mirror across these. Not built yet (see TODO.md).</p>
       <ul class="alternatives">
         <li><a href="https://www.arweave.org" target="_blank" rel="noopener">Arweave</a>: pay once; miners are paid to keep replicas, and one surviving copy can restore the rest.</li>
         <li><a href="https://ardrive.io" target="_blank" rel="noopener">ArDrive Turbo</a>: an Arweave bundler; items up to 100 KiB free, larger ones paid by card or crypto.</li>
@@ -246,7 +251,7 @@
         <button id="exportChunksButton" type="button">Export packed chunks</button>
         <label class="button-link" for="importChunksInput">Import packed chunks<input id="importChunksInput" type="file" accept=".bin,application/octet-stream" hidden></label>
       </div>
-      <p class="stage-note">Export saves this address's packed chunks to a file; import loads such a file in another browser or a copy opened from disk, with no packing again.</p>
+      <p class="stage-note">Export saves this address's packed chunks to a file; import loads such a file in another browser or a copy opened from disk, with no packing again. Chunks saved for other addresses are repacked for this one when mining starts, so all storage counts.</p>
       <div class="row"><button id="bringChunksButton" type="button" hidden>Bring chunks from the website copy</button></div>
       <ul class="saved-addresses" id="savedAddresses"></ul>
     </section>
