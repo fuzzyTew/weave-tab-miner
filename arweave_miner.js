@@ -718,27 +718,69 @@ export class SolutionOdds {
   }
 
   /**
-   * What stands between this node and a full-speed miner, largest first. Each factor says
-   * how many times faster solutions would come if only that limit were lifted:
-   * storage (holding the whole partition), coverage (holding the whole weave, so every
-   * range-2 lookup lands on held data), and VDF pace (one step a second).
+   * Why the wait is as long as it is, as factors that multiply: the wait of a miner that
+   * holds the whole partition and the whole weave at the network's pace, times one factor
+   * per shortfall. Each factor is how many times shorter the wait would be if only that
+   * shortfall were removed; all of them together give the wait itself.
+   *
+   * `quotaBytes` (optional) is how much this browser lets the tab store; with it, the
+   * storage factor also says how far the tab itself could bring it down.
    */
-  static limitingFactors({ storage, partitionNumber, session, stepsPerSecond }) {
+  static waitBreakdown({ storage, partitionNumber, session, stepsPerSecond = SolutionOdds.NETWORK_STEPS_PER_SECOND, quotaBytes = null }) {
     const rates = SolutionOdds.rates({ storage, partitionNumber, session });
-    const current = SolutionOdds.solutionsPerStep(rates);
+    const fullSpeedPerStep = SolutionOdds.solutionsPerStep({ ...rates, heldFractionOfPartition: 1, heldFractionOfWeave: 1 });
+    const fullSpeedSeconds = 1 / (fullSpeedPerStep * SolutionOdds.NETWORK_STEPS_PER_SECOND);
+    const partitionWindow = rates.heldFractionOfPartition > 0 ? storage.bytesInPartition(partitionNumber) / rates.heldFractionOfPartition : Number(ConsensusConstants.PARTITION_SIZE);
     const factors = [];
-    if (current === 0) {
-      return [{ name: 'storage', speedup: Infinity, explanation: `no data held in partition ${partitionNumber}: no nonce can be tried` }];
+
+    let storageNote = `holding ${(rates.heldFractionOfPartition * 100).toPrecision(2)}% of partition ${partitionNumber}`;
+    if (quotaBytes) {
+      const mostHeld = Math.min(quotaBytes, partitionWindow);
+      storageNote += `; this browser allows about ${PrettyNumber.bytes(quotaBytes)}, so the most this tab could reach is ×${PrettyNumber.factor(partitionWindow / mostHeld)}`;
     }
-    const fullPartition = SolutionOdds.solutionsPerStep({ ...rates, heldFractionOfPartition: 1 });
-    factors.push({ name: 'storage', speedup: fullPartition / current,
-      explanation: `holding ${(rates.heldFractionOfPartition * 100).toPrecision(2)}% of partition ${partitionNumber}; all of it would mean ${PrettyNumber.times(fullPartition / current)} more tries` });
-    const fullCoverage = SolutionOdds.solutionsPerStep({ ...rates, heldFractionOfWeave: 1 });
-    factors.push({ name: 'coverage', speedup: fullCoverage / current,
-      explanation: `range 2 lands on held data ${(rates.heldFractionOfWeave * 100).toPrecision(2)}% of the time; two-chunk tries are 100× likelier to pass than one-chunk ones` });
-    factors.push({ name: 'VDF pace', speedup: SolutionOdds.NETWORK_STEPS_PER_SECOND / stepsPerSecond,
+    factors.push({ name: 'storage', multiplier: rates.heldFractionOfPartition > 0 ? 1 / rates.heldFractionOfPartition : Infinity, explanation: storageNote });
+
+    const withCoverage = rates.h1Probability + rates.heldFractionOfWeave * rates.h2Probability;
+    factors.push({ name: 'coverage', multiplier: (rates.h1Probability + rates.h2Probability) / withCoverage,
+      explanation: `two-chunk tries need range 2 held too, which happens ${(rates.heldFractionOfWeave * 100).toPrecision(2)}% of the time; they pass 100× more often than one-chunk tries` });
+
+    factors.push({ name: 'VDF pace', multiplier: SolutionOdds.NETWORK_STEPS_PER_SECOND / stepsPerSecond,
       explanation: `${stepsPerSecond >= 1 ? 'keeping up with' : `${(1 / stepsPerSecond).toFixed(1)} s per step against`} the network's one step a second` });
-    return factors.sort((left, right) => right.speedup - left.speedup);
+
+    const seconds = factors.reduce((product, factor) => product * factor.multiplier, fullSpeedSeconds);
+    return { fullSpeedSeconds, factors, seconds };
+  }
+
+  /**
+   * The chance that one step's range 1 touches any held chunk, so that at least one
+   * one-chunk try happens. Range 1 starts uniformly in the partition and covers
+   * RECALL_RANGE bytes; it touches a held chunk ending at e when it starts within
+   * (e - chunk - range, e). The union of those windows over all held chunks, divided by
+   * the partition, is the chance. Held chunks next to each other share windows, so this
+   * depends on where the chunks are, not only how many.
+   */
+  static heldRangeHitChance({ storage, partitionNumber, session }) {
+    const partitionStart = BigInt(partitionNumber) * ConsensusConstants.PARTITION_SIZE;
+    const window = Number(session.partitionUpperBound < ConsensusConstants.PARTITION_SIZE ? session.partitionUpperBound : ConsensusConstants.PARTITION_SIZE);
+    const reach = ConsensusConstants.DATA_CHUNK_SIZE + ConsensusConstants.recallRangeSize;
+    const ends = [...storage.packedChunks.keys()].map(BigInt)
+      .filter((end) => (end - 1n) / ConsensusConstants.PARTITION_SIZE === BigInt(partitionNumber))
+      .map((end) => Number(end - partitionStart)).sort((left, right) => left - right);
+    let covered = 0;
+    let runStart = null;
+    let runEnd = null;
+    for (const end of ends) {
+      const start = Math.max(0, end - reach);
+      if (runEnd !== null && start <= runEnd) {
+        runEnd = Math.max(runEnd, end);
+      } else {
+        if (runEnd !== null) covered += runEnd - runStart;
+        runStart = start;
+        runEnd = end;
+      }
+    }
+    if (runEnd !== null) covered += runEnd - runStart;
+    return Math.min(1, covered / window);
   }
 
   /**
@@ -770,6 +812,18 @@ export class PrettyNumber {
   /**
    * Short readable multipliers and durations for status text.
    */
+  static factor(value) {
+    if (!isFinite(value)) return '∞';
+    return value < 10 ? value.toPrecision(2) : value < 1e6 ? Math.round(value).toLocaleString() : value.toExponential(1).replace('e+', ' × 10^');
+  }
+
+  static bytes(count) {
+    const units = ['bytes', 'KiB', 'MiB', 'GiB', 'TiB'];
+    let unit = 0;
+    while (count >= 1024 && unit < units.length - 1) { count /= 1024; unit++; }
+    return `${count.toPrecision(3)} ${units[unit]}`;
+  }
+
   static times(value) {
     if (!isFinite(value)) return 'infinitely';
     return value < 1e6 ? `${Math.round(value).toLocaleString()}×` : `${value.toExponential(1).replace('e+', ' × 10^')}×`;

@@ -50,6 +50,9 @@ jobs:
       - name: Check the Solana gateway registry decoder against ar.io's encoder
         run: node test_solana_registry.mjs
 
+      - name: Check the wait estimate's arithmetic
+        run: node test_odds.mjs
+
       - name: Check ANS-104 data items against arbundles' output
         run: node test_data_item.mjs
 
