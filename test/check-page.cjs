@@ -81,6 +81,22 @@ class PageCheck {
     await page.waitForTimeout(1000);
     this.check('reloading restores it', /restored 1 packed chunk\b/.test(await this.text(page, '#activityLog')), await this.text(page, '#heldBytes'));
 
+    // Export this address's chunk, then import it into a fresh browser profile.
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click('#exportChunksButton')]);
+    const archivePath = require('node:path').join(require('node:os').tmpdir(), download.suggestedFilename());
+    await download.saveAs(archivePath);
+    const freshContext = await browser.newContext();
+    const freshPage = await freshContext.newPage();
+    freshPage.on('pageerror', (error) => errors.push(error.message));
+    await freshPage.goto(this.url);
+    await this.waitForLog(freshPage, 'ready:', 120000);
+    await freshPage.setInputFiles('#importChunksInput', archivePath);
+    await this.waitForLog(freshPage, 'imported 1 packed chunks', 30000).catch(() => {});
+    await freshPage.click('#savedAddresses button');
+    await freshPage.waitForTimeout(1000);
+    this.check('export then import into a fresh browser', /restored 1 packed chunk\b/.test(await this.text(freshPage, '#activityLog')), `${download.suggestedFilename()} → ${await this.text(freshPage, '#heldBytes')}`);
+    await freshContext.close();
+
     await page.setViewportSize({ width: 400, height: 900 });
     this.check('no sideways scroll at phone width', !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
     await page.setViewportSize({ width: 1200, height: 1000 });

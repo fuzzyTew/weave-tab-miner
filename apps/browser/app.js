@@ -11,7 +11,7 @@ import { DataTransaction } from '../../src/transaction.js';
 import { DataItem, TurboUploader } from '../../src/bundle.js';
 import { ChunkFetcher } from '../../src/chunk-fetcher.js';
 import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/randomx.js';
-import { PackedChunkStore } from '../../src/storage.js';
+import { PackedChunkStore, PackedChunkArchive } from '../../src/storage.js';
 import { PeerAccess, PeerDirectory, GatewayDirectory, SourceTester } from '../../src/peers.js';
 import { VdfServerClient, VdfUpdate } from '../../src/vdf-client.js';
 import { SourceCitations } from '../../src/citations.js';
@@ -410,8 +410,82 @@ class BrowserNodeApp {
     if (entries.length) {
       this.view.log(`restored ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} from browser storage`, 'good');
       this.view.setText('holdStatus', `Holding ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} saved in this browser earlier.`);
+      this.choosePartitionWithMostHeld();
     }
     await this.refreshStorageNote();
+  }
+
+  /** Mining tries one partition; pick the one holding the most chunks, if the current holds none. */
+  choosePartitionWithMostHeld() {
+    if (this.storage.bytesInPartition(this.partitionNumber) > 0) return;
+    const counts = new Map();
+    for (const key of this.storage.packedChunks.keys()) {
+      const partition = Number((BigInt(key) - 1n) / ConsensusConstants.PARTITION_SIZE);
+      counts.set(partition, (counts.get(partition) ?? 0) + 1);
+    }
+    const [best] = [...counts].sort((left, right) => right[1] - left[1]);
+    if (!best) return;
+    this.view.elements.partitionInput.value = best[0];
+    this.view.log(`partition set to ${best[0]}, where ${best[1]} held chunk${best[1] === 1 ? ' is' : 's are'}`);
+  }
+
+  /** Lists every address with chunks saved here, each with a button to mine for it. */
+  async refreshSavedAddresses() {
+    const list = this.view.elements.savedAddresses;
+    const saved = await this.store.addresses();
+    list.replaceChildren(...saved.map(({ address, chunkCount }) => {
+      const item = document.createElement('li');
+      const current = address === this.identity?.address;
+      item.append(`${current ? 'This address' : 'Saved here'}: ${address}, ${chunkCount} chunk${chunkCount === 1 ? '' : 's'}`);
+      if (!current) {
+        const useButton = document.createElement('button');
+        useButton.type = 'button';
+        useButton.textContent = 'Mine for it';
+        useButton.addEventListener('click', () => {
+          this.view.elements.addressInput.value = address;
+          this.useAddress();
+        });
+        item.append(useButton);
+      }
+      return item;
+    }));
+  }
+
+  async exportChunks() {
+    const entries = this.identity ? await this.store.load(this.identity.address) : [];
+    if (!entries.length) {
+      this.view.setText('holdStatus', 'Nothing saved for this address to export. Only real (RandomX) packing is saved.');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(PackedChunkArchive.toBlob(this.identity.address, entries));
+    link.download = PackedChunkArchive.fileName(this.identity.address, entries.length);
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+    this.view.setText('holdStatus', `Exported ${entries.length} packed chunks (${PageView.formatBytes(entries.length * PackedChunkArchive.CHUNK_SIZE)}) as ${link.download}.`);
+  }
+
+  async importChunks() {
+    const [file] = this.view.elements.importChunksInput.files;
+    if (!file) return;
+    this.view.elements.importChunksInput.value = '';
+    try {
+      const { address, entries } = await PackedChunkArchive.fromBlob(file);
+      if (!(await this.store.save(address, entries))) throw new Error('this browser refused to store them');
+      if (address === this.identity?.address) {
+        for (const [offset, chunk] of entries) this.storage.add(offset, chunk);
+        this.choosePartitionWithMostHeld();
+        this.view.setText('holdStatus', `Imported ${entries.length} packed chunks for this address.`);
+      } else {
+        this.view.setText('holdStatus', `Imported ${entries.length} packed chunks for ${address}. They only work for that address: use "Mine for it" below.`);
+      }
+      this.view.log(`imported ${entries.length} packed chunks for ${address} from ${file.name}`, 'good');
+      await this.refreshStorageNote();
+      this.refreshSummary();
+    } catch (error) {
+      this.view.setText('holdStatus', `Not imported: ${error.message}`);
+      this.view.log(`import of ${file.name} failed: ${error.message}`, 'error');
+    }
   }
 
   async saveChunks(entries) {
@@ -429,6 +503,7 @@ class BrowserNodeApp {
     this.view.setText('storageNote', estimate
       ? `This site uses ${PageView.formatBytes(estimate.usage ?? 0)} of browser storage, of ${PageView.formatBytes(estimate.quota ?? 0)} allowed.`
       : 'This browser does not report its storage limits.');
+    await this.refreshSavedAddresses();
     this.refreshSummary();
   }
 
@@ -1010,6 +1085,8 @@ class BrowserNodeApp {
     onClick('sampleButton', this.loadSampleBlock);
     onClick('holdButton', this.holdChunks);
     onClick('stopHoldButton', this.stopHolding);
+    onClick('exportChunksButton', this.exportChunks);
+    this.view.elements.importChunksInput.addEventListener('change', () => this.importChunks());
     onClick('startButton', this.start);
     onClick('stopButton', this.stop);
     onClick('walletButton', this.lookUpWallet);
