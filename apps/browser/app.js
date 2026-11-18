@@ -9,6 +9,7 @@ import { ArweaveGateway } from '../../src/gateway.js';
 import { ArweaveWallet } from '../../src/wallet.js';
 import { DataTransaction } from '../../src/transaction.js';
 import { DataItem, TurboUploader } from '../../src/bundle.js';
+import { ChunkFetcher } from '../../src/chunk-fetcher.js';
 import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/randomx.js';
 import { PackedChunkStore } from '../../src/storage.js';
 import { PeerAccess, PeerDirectory, GatewayDirectory, SourceTester } from '../../src/peers.js';
@@ -330,7 +331,9 @@ class BrowserNodeApp {
       const host = new RandomxWorkerHost(() => BundledResources.worker('randomxWorkerSource'));
       await host.ready();
       this.h0Hasher = new RandomxH0Hasher(host);
-      this.entropySource = new RandomxSquaredEntropySource(host);
+      // 32 entropies (8 MiB each, 256 MiB) cover one chunk's sub-chunks, so batches of chunks
+      // sharing a bucket position reuse them instead of recomputing per batch.
+      this.entropySource = new RandomxSquaredEntropySource(host, { keepEntropies: BrowserNodeApp.KEPT_ENTROPIES });
       this.view.setText('randomxStatus', 'real (Arweave\'s RandomX in WebAssembly)');
       this.view.log('RandomX ready: H0 and packing are real', 'good');
       return true;
@@ -628,6 +631,21 @@ class BrowserNodeApp {
     await this.packAndHold(chunks);
   }
 
+  static KEPT_ENTROPIES = 32;
+  // Requests at once: enough to hide each request's latency, few enough to be polite.
+  static CHUNK_FETCH_CONCURRENCY = 6;
+  // Chunks packed and saved together (32 MiB), so a long fetch never holds it all in memory.
+  static CHUNK_BATCH_SIZE = 128;
+
+  showFetchProgress(progress, heldSoFar) {
+    const { elements } = this.view;
+    elements.holdProgress.hidden = false;
+    elements.holdProgress.value = progress.fetched / progress.wanted;
+    const left = isFinite(progress.secondsLeft) ? `, about ${PageView.formatDuration(progress.secondsLeft)} left` : '';
+    const skipped = progress.skipped ? `; skipped ${progress.skipped} that no source had` : '';
+    this.view.setText('holdStatus', `Fetched ${progress.fetched} of ${progress.wanted} chunks (${PageView.formatBytes(progress.bytes)}) at ${PageView.formatBytes(progress.bytesPerSecond)}/s${left}${skipped}. Packed and saved: ${heldSoFar}.`);
+  }
+
   async holdLiveChunks() {
     const wanted = Number(this.view.elements.chunkCountInput.value || 4);
     const partitionStart = BigInt(this.partitionNumber) * ConsensusConstants.PARTITION_SIZE;
@@ -637,23 +655,37 @@ class BrowserNodeApp {
     }
     // Chunks at one bucket position in successive sectors share all 32 entropies.
     const firstByte = partitionStart + BigInt(Math.floor(Math.random() * Number(ConsensusConstants.entropySectorSize)));
-    const chunks = [];
-    // Twice as many positions as wanted, so chunks no source has can be skipped.
-    let skipped = 0;
-    for (const weaveByte of Replica29Layout.entropySharingBytes(firstByte, wanted * 2, this.session.partitionUpperBound)) {
-      if (chunks.length >= wanted) break;
-      this.view.setText('holdStatus', `Fetching chunk ${chunks.length + 1} of ${wanted} (byte ${weaveByte.toLocaleString()})${skipped ? `; skipped ${skipped} that no source had` : ''}…`);
-      try {
-        // Approximation: the chunk is filed under the 256 KiB bucket holding the byte asked
-        // for. Exact would place it by its own end offset from its data_path.
-        chunks.push({ bytes: Bytes.fromBase64Url((await this.gateway.chunkJson(weaveByte)).chunk), endOffset: Replica29Layout.bucketEndOffsetForByte(weaveByte) });
-      } catch (error) {
-        skipped++;
-        this.view.log(`skipping the chunk at byte ${weaveByte}: no source had it (${error.message.split('\n')[1] ?? error.message})`, 'warn');
+    const stopper = new AbortController();
+    this.holdStopper = stopper;
+    this.view.elements.stopHoldButton.hidden = false;
+    const fetcher = new ChunkFetcher({ gateway: this.gateway, concurrency: BrowserNodeApp.CHUNK_FETCH_CONCURRENCY });
+    let held = 0;
+    let lastProgress = null;
+    try {
+      const batches = fetcher.batches(Replica29Layout.entropySharingPositions(firstByte, this.session.partitionUpperBound), {
+        wanted, batchSize: BrowserNodeApp.CHUNK_BATCH_SIZE, signal: stopper.signal,
+        onProgress: (progress) => { lastProgress = progress; this.showFetchProgress(progress, held); },
+        onSkip: (weaveByte, error) => this.view.log(`skipping the chunk at byte ${weaveByte}: no source had it (${error.message.split('\n')[1] ?? error.message})`, 'warn'),
+      });
+      for await (const batch of batches) {
+        await this.packAndHold(batch);
+        held += batch.length;
+        if (lastProgress) this.showFetchProgress(lastProgress, held);
       }
+    } finally {
+      this.view.elements.stopHoldButton.hidden = true;
+      this.view.elements.holdProgress.hidden = true;
+      this.holdStopper = null;
     }
-    if (chunks.length) await this.packAndHold(chunks);
-    else this.view.setText('holdStatus', 'No chunks could be fetched.');
+    const speed = lastProgress ? ` at ${PageView.formatBytes(lastProgress.bytesPerSecond)}/s` : '';
+    this.view.setText('holdStatus', held
+      ? `Holding ${held} new chunk${held === 1 ? '' : 's'}${stopper.signal.aborted ? ' (stopped early)' : ''}, fetched${speed}, packed and saved.`
+      : 'No chunks could be fetched.');
+  }
+
+  stopHolding() {
+    this.holdStopper?.abort();
+    this.view.setText('holdStatus', 'Stopping: requests already sent will finish, then what arrived is packed and saved.');
   }
 
   async packAndHold(chunks) {
@@ -943,7 +975,7 @@ class BrowserNodeApp {
     this.view.fillLimits(factors);
     const hitChance = SolutionOdds.heldRangeHitChance(odds);
     this.view.setText('rangeHitNote', hitChance > 0
-      ? `Range 1 touches a chunk this tab holds about once every ${PageView.formatDuration(1 / (hitChance * stepsPerSecond))} (${(hitChance * 100).toPrecision(2)}% of steps). Most steps try nothing; each touch gives up to ${ConsensusConstants.noncesPerRecallRange / (ConsensusConstants.recallRangeSize / ConsensusConstants.DATA_CHUNK_SIZE)} tries per held chunk in range.`
+      ? `Range 1 touches a chunk this tab holds about once every ${PageView.formatDuration(1 / (hitChance * stepsPerSecond))} (${(hitChance * 100).toPrecision(2)}% of steps). Each held chunk in range gives ${ConsensusConstants.noncesPerRecallRange / (ConsensusConstants.recallRangeSize / ConsensusConstants.DATA_CHUNK_SIZE)} tries. Spreading chunks out makes touches more frequent but smaller, and holding them side by side makes them rarer but larger; the expected wait above is the same either way.`
       : `No chunks held in partition ${this.partitionNumber}, so no step can try anything.`);
     this.view.setText('waitNote', this.usingRealRandomx ? 'Real rules: a solution here would be a real one.' : 'Stand-in RandomX: solutions would not be real.');
   }
@@ -977,6 +1009,7 @@ class BrowserNodeApp {
     onClick('liveButton', this.loadLiveBlock);
     onClick('sampleButton', this.loadSampleBlock);
     onClick('holdButton', this.holdChunks);
+    onClick('stopHoldButton', this.stopHolding);
     onClick('startButton', this.start);
     onClick('stopButton', this.stop);
     onClick('walletButton', this.lookUpWallet);

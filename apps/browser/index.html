@@ -64,6 +64,7 @@
   #stepRows tr { cursor: pointer; }
   #stepRows tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+  #holdProgress { width: 100%; }
   .reminders { display: grid; gap: 10px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
   .reminder { border: 2px solid var(--warn); padding: 10px 14px; display: grid; gap: 6px; align-content: start; }
   .reminder h3 { margin: 0; font-size: 1rem; }
@@ -224,9 +225,10 @@
         <input id="partitionInput" type="number" min="0" step="1">
       </label>
       <label for="chunkCountInput">Chunks to fetch (256 KiB each)
-        <input id="chunkCountInput" type="number" min="1" max="64" step="1" value="4">
+        <input id="chunkCountInput" type="number" min="1" max="4096" step="1" value="4">
       </label>
-      <div class="row"><button id="holdButton" type="button">Fetch and pack</button></div>
+      <div class="row"><button id="holdButton" type="button">Fetch and pack</button><button id="stopHoldButton" type="button" hidden>Stop early</button></div>
+      <progress id="holdProgress" max="1" value="0" hidden></progress>
       <p class="stage-note" id="holdStatus">—</p>
       <p class="stage-note">A live block fetches chunks at one position in successive 3.5 GB sectors of your partition: they share their 32 packing entropies, so 1 or 1,024 of them cost the same packing time. Packed chunks are kept in this browser for this address.</p>
       <p class="stage-note" id="storageNote"></p>
