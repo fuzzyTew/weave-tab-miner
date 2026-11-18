@@ -14,7 +14,7 @@ class SingleFileBuilder {
    */
   static LIBRARY_ORDER = [
     'src/miner.js', 'src/gateway.js', 'src/wallet.js', 'src/transaction.js', 'src/bundle.js', 'src/randomx.js',
-    'src/storage.js', 'src/peers.js', 'src/vdf-client.js', 'src/citations.js',
+    'src/storage.js', 'src/chunk-fetcher.js', 'src/peers.js', 'src/vdf-client.js', 'src/citations.js',
   ];
   static RANDOMX_BUNDLE = 'vendor/randomx-arweave/randomx-arweave.iife.js';
 

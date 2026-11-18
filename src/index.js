@@ -7,6 +7,7 @@ export * from './transaction.js';
 export * from './bundle.js';
 export * from './randomx.js';
 export * from './storage.js';
+export * from './chunk-fetcher.js';
 export * from './peers.js';
 export * from './vdf-client.js';
 export * from './citations.js';

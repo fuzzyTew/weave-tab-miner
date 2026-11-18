@@ -402,13 +402,29 @@ export class Replica29Layout {
    * `count` of them costs the same 32 entropies as packing one (up to 1024 per partition).
    */
   static entropySharingBytes(firstByte, count, weaveUpperBound) {
-    const sectorSize = ConsensusConstants.entropySectorSize;
-    const partitionNumber = firstByte / ConsensusConstants.PARTITION_SIZE;
-    const partitionEnd = (partitionNumber + 1n) * ConsensusConstants.PARTITION_SIZE;
-    const limit = partitionEnd < weaveUpperBound ? partitionEnd : weaveUpperBound;
     const bytes = [];
-    for (let byte = firstByte; byte < limit && bytes.length < count; byte += sectorSize) bytes.push(byte);
+    for (const byte of Replica29Layout.entropySharingPositions(firstByte, weaveUpperBound)) {
+      if (bytes.length >= count) break;
+      bytes.push(byte);
+    }
     return bytes;
+  }
+
+  /**
+   * Every position in `firstByte`'s partition, ordered so that each run of up to 1,024
+   * shares one set of entropies: the same bucket in each sector, then the next bucket.
+   * Packing in this order needs 32 entropies per run instead of 32 per chunk.
+   */
+  static *entropySharingPositions(firstByte, weaveUpperBound) {
+    const sectorSize = ConsensusConstants.entropySectorSize;
+    const chunkSize = BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
+    const partitionStart = (firstByte / ConsensusConstants.PARTITION_SIZE) * ConsensusConstants.PARTITION_SIZE;
+    const partitionEnd = partitionStart + ConsensusConstants.PARTITION_SIZE;
+    const limit = partitionEnd < weaveUpperBound ? partitionEnd : weaveUpperBound;
+    const firstOffsetInSector = (firstByte - partitionStart) % sectorSize;
+    for (let bucketOffset = firstOffsetInSector; bucketOffset < sectorSize; bucketOffset += chunkSize) {
+      for (let byte = partitionStart + bucketOffset; byte < limit; byte += sectorSize) yield byte;
+    }
   }
 
   /** The end offset of the 256 KiB bucket holding `weaveByte` (above the split threshold). */
