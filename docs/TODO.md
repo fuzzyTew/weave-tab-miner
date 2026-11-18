@@ -51,24 +51,44 @@ or a peer list of other malicious nodes. Each item below says what to check and 
       to WebAssembly, `fetch()`-like) through Snowflake WebSocket bridges, or webtor-rs.
       Off by default: it is several MB, slow to start, and bridges or gateways may block it
       too. Plug it in as a `fetch` the gateway and peer classes take.
+- [ ] Beyond HTTP: Tor would also let a page reach any TCP port, so clients for other
+      storage networks could be written, prices compared and data mirrored. libp2p in the
+      browser (WebRTC, WebTransport) reaches libp2p networks such as Autonomi. Chrome's
+      Direct Sockets API gives raw TCP, but only to installed Isolated Web Apps.
 
-## Building blocks
+## Building blocks (next)
 
-- [ ] Assemble an empty block (no transactions) from the previous block: reward and
-      block-time histories, difficulty, price, denomination, endowment pool, block-index root.
-- [ ] Keep the account tree: download it once (`GET /wallet_list/{root}/{cursor}`, 2,500
-      accounts a page), apply each new block, and compute its root as `ar_patricia_tree_core`
-      does.
-- [ ] Sign the block and send it (`POST /block_announcement`, then `POST /block2`).
-- [ ] Test each field by rebuilding a real block from its parent.
-- [ ] Localnet harness (manual workflow): `ar_localnet` starts from the repo's mainnet
-      snapshot with 21 MiB of seed data. It skips difficulty (`passes_diff_check`) and lets
-      a block name its recall bytes (`get_precalculated_recall_range`), so our own built
-      blocks can be accepted there every step. Its pool route cannot help: `ar_pool`
-      derives recall range 1 from H0, which lands in the seeded 21 MiB about once in
-      150,000 steps.
-- [ ] Capture fixtures from GitHub (block N, N+1, reward and block-time histories, the
-      account pages they touch) and commit them, since this sandbox cannot reach Arweave.
+A found solution cannot become a block yet: nothing assembles, signs or sends one. These are
+the steps, in order. Each is checked against blocks a real node made, saved on the
+`localnet-fixtures` branch by the manual "Localnet fixtures" workflow (3 blocks from
+height 2,069,866 with their parents' state, captured).
+
+1. [ ] Account tree root: rebuild `wallet_list` from the saved 304,143 accounts exactly as
+       `ar_patricia_tree` does, and match the parent block's root. Then apply a block's
+       changes (the reward, released locked rewards) and match the child's root.
+2. [ ] Rolling hashes: `reward_history_hash`, `block_time_history_hash`, and the block-index
+       hash `hash_list_merkle`, from the saved histories.
+3. [ ] Small fields: height, previous block, timestamp, `previous_solution_hash`, the
+       cumulative difficulty pair, the reward, and carried-over prices and pools.
+4. [ ] Signature preimage and block hash (`indep_hash`), signed with the miner's key
+       (RSA or secp256k1 ECDSA, both accepted since 2.9), through `DoubleSigningGuard`.
+5. [ ] Rebuild each saved localnet block from its parent, field by field, until all match.
+6. [ ] Localnet acceptance: a manual workflow posts several blocks our code built in a row
+       (`POST /block_announcement`, then `POST /block2`) and reports what the node accepted.
+       The localnet skips difficulty and lets a block choose its recall chunks, so every
+       step can make a block.
+7. [ ] Mainnet: the same, after a real solution.
+
+To continue in a new conversation with Claude, a prompt like this works:
+
+> Continue the weave-tab-miner block builder (github.com/fuzzyTew/weave-tab-miner,
+> docs/TODO.md "Building blocks"). Start at the first unchecked step, test it against the
+> localnet-fixtures branch, and commit each step separately.
+
+## Holding more data
+
+- [ ] Held chunks are all loaded into memory to mine. Past a few GB that runs out of RAM:
+      read each step's recall-range chunks from IndexedDB on demand instead.
 
 ## Hosting
 
