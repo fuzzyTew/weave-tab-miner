@@ -59,6 +59,9 @@ jobs:
       - name: Check the account tree against the localnet's blocks
         run: node test/account-tree.test.mjs localnet_fixtures
 
+      - name: Check the history hashes against the localnet's blocks
+        run: node test/block-history.test.mjs localnet_fixtures
+
       - name: Check ANS-104 data items against arbundles' output
         run: node test/data-item.test.mjs
 

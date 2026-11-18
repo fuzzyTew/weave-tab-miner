@@ -71,8 +71,9 @@ height 2,069,866 with their parents' state, captured).
        releasing each block's oldest locked reward (`src/rewards.js`) matches all three
        children's roots (`test/account-tree.test.mjs`). Transactions' account changes and
        redenomination are not handled yet (empty blocks need neither).
-2. [ ] Rolling hashes: `reward_history_hash`, `block_time_history_hash`, and the block-index
-       hash `hash_list_merkle`, from the saved histories.
+2. [x] Rolling hashes: `src/block-history.js` computes `reward_history_hash`,
+       `block_time_history_hash` and `hash_list_merkle` from the parent alone, matching all
+       three saved blocks (`test/block-history.test.mjs`).
 3. [ ] Small fields: height, previous block, timestamp, `previous_solution_hash`, the
        cumulative difficulty pair, the reward, and carried-over prices and pools.
 4. [ ] Signature preimage and block hash (`indep_hash`), signed with the miner's key
