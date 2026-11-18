@@ -487,7 +487,7 @@ class BrowserNodeApp {
    * Turns chunks saved for another address into chunks for this one, with no download:
    * unpacking and packing are both XORs with entropy (ChunkPacker.repackChunks).
    */
-  async repackFrom(address) {
+  async repackFrom(address, { deleteOriginals = false } = {}) {
     this.view.setText('holdStatus', 'Waiting for RandomX to be ready…');
     await this.randomxReady;
     if (!this.usingRealRandomx) {
@@ -510,9 +510,25 @@ class BrowserNodeApp {
       await this.saveChunks(repacked);
       repackedCount += repacked.length;
     }
+    if (deleteOriginals) await this.store.deleteAddress(address);
     this.choosePartitionWithMostHeld();
-    this.view.setText('holdStatus', `Repacked ${repackedCount} chunks from ${address.slice(0, 8)}… for this address in ${((performance.now() - started) / 1000).toFixed(0)} s. The originals are still saved; delete them if you no longer need them.`);
-    this.refreshSummary();
+    this.view.setText('holdStatus', `Repacked ${repackedCount} chunks from ${address.slice(0, 8)}… for this address in ${((performance.now() - started) / 1000).toFixed(0)} s.${deleteOriginals ? '' : ' The originals are still saved; delete them if you no longer need them.'}`);
+    this.view.log(`repacked ${repackedCount} chunks from ${address} for ${this.identity.address}`, 'good');
+    await this.refreshStorageNote();
+  }
+
+  /**
+   * Before mining, moves every chunk saved for other addresses to this one, so all the
+   * storage counts: repacked for this address, then the old copies deleted (they can be
+   * repacked back the same way). Not for verification-only identities, which never pack.
+   */
+  async repackEverythingForThisAddress() {
+    if (this.identity.verificationOnly || !this.usingRealRandomx) return;
+    const others = (await this.store.addresses()).filter(({ address }) => address !== this.identity.address);
+    for (const { address, chunkCount } of others) {
+      this.view.log(`moving ${chunkCount} chunks packed for ${address.slice(0, 8)}… to this address before mining`);
+      await this.repackFrom(address, { deleteOriginals: true });
+    }
   }
 
   async deleteSaved(address, chunkCount) {
@@ -973,6 +989,8 @@ class BrowserNodeApp {
       return;
     }
     await this.randomxReady;
+    this.view.elements.startButton.disabled = true;
+    await this.repackEverythingForThisAddress();
     this.running = true;
     this.pace.reset();
     this.view.elements.solutionBanner.hidden = true;
