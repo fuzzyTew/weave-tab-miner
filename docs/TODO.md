@@ -89,6 +89,12 @@ To continue in a new conversation with Claude, a prompt like this works:
 
 - [ ] Held chunks are all loaded into memory to mine. Past a few GB that runs out of RAM:
       read each step's recall-range chunks from IndexedDB on demand instead.
+- [ ] More storage than one site's allowance: browsers give each site its own allowance, so
+      the same page opened from several hosts (several Arweave gateways, once the page is
+      stored on Arweave; a copy on disk) holds more in all. Each copy picks its own
+      partition and mines it; they could share one VDF source.
+- [ ] Old phones as miners: plugged in, screen kept on (the page holds a wake lock while
+      mining), with on-demand reading so their free storage counts.
 
 ## Hosting
 
