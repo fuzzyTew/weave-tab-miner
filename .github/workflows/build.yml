@@ -53,6 +53,12 @@ jobs:
       - name: Check the wait estimate's arithmetic
         run: node test/odds.test.mjs
 
+      - name: Fetch the localnet blocks and state (localnet-fixtures branch)
+        run: git fetch --depth 1 origin localnet-fixtures && git archive FETCH_HEAD | tar x
+
+      - name: Check the account tree against the localnet's blocks
+        run: node test/account-tree.test.mjs localnet_fixtures
+
       - name: Check ANS-104 data items against arbundles' output
         run: node test/data-item.test.mjs
 
