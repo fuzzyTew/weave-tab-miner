@@ -5,6 +5,7 @@ export * from './gateway.js';
 export * from './wallet.js';
 export * from './transaction.js';
 export * from './bundle.js';
+export * from './networks.js';
 export * from './randomx.js';
 export * from './storage.js';
 export * from './chunk-fetcher.js';
