@@ -65,6 +65,9 @@
   #stepRows tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
   #holdProgress { width: 100%; }
+  .networks { border: 1px solid var(--line, #ccc); padding: 8px 10px; display: grid; gap: 4px; }
+  .networks label { font-size: 0.9rem; }
+  .network-results { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; font-size: 0.85rem; overflow-wrap: anywhere; }
   .saved-addresses { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 0.85rem; }
   .saved-addresses li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere; }
   .reminders { display: grid; gap: 10px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
@@ -320,13 +323,16 @@
         <textarea id="recordInput" rows="4">A small permanent record, sent from a browser tab.</textarea>
       </label>
       <p class="stage-note" id="recordSize">49 bytes</p>
+      <fieldset class="networks">
+        <legend>Where to keep it (one or several, as mirrors)</legend>
+        <div id="networkChoices"></div>
+      </fieldset>
       <div class="row">
-        <button id="quoteButton" type="button">Get price</button>
-        <button id="sendButton" class="primary" type="button">Sign and send</button>
-        <button id="freeSendButton" type="button">Store free through Turbo</button>
+        <button id="quoteButton" type="button">Compare prices</button>
+        <button id="sendButton" class="primary" type="button">Sign and store</button>
       </div>
-      <p class="stage-note" id="recordStatus">Sign and send: a normal Arweave transaction straight to a gateway, paid in AR from your key, no bundler involved, up to 256 KiB. Store free: signed by your key as an ANS-104 item and handed to ArDrive's Turbo bundler, which stores up to 100 KiB without payment, so a key with no AR works; getting it into a block then depends on Turbo.</p>
-      <a id="recordLink" href="https://arweave.net" target="_blank" rel="noopener" class="address"></a>
+      <ul class="network-results" id="networkResults"></ul>
+      <p class="stage-note" id="recordStatus">Arweave, direct: a normal transaction straight to a gateway, paid in AR from your key, no bundler, up to 256 KiB. Through Turbo: signed by your key as an ANS-104 item for ArDrive's bundler, free up to 100 KiB, so a key with no AR works; getting it into a block then depends on Turbo. Networks this page cannot reach yet are listed with what they need.</p>
     </section>
   </div>
 
