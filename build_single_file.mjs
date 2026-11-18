@@ -13,7 +13,7 @@ class SingleFileBuilder {
    * conflicting top-level names; a name clash would show up as a SyntaxError on load.
    */
   static LIBRARY_ORDER = [
-    'arweave_miner.js', 'arweave_gateway.js', 'arweave_wallet.js', 'arweave_transaction.js', 'arweave_randomx.js',
+    'arweave_miner.js', 'arweave_gateway.js', 'arweave_wallet.js', 'arweave_transaction.js', 'arweave_bundle.js', 'arweave_randomx.js',
     'arweave_storage.js', 'arweave_peers.js', 'arweave_vdf_client.js', 'arweave_citations.js',
   ];
   static RANDOMX_BUNDLE = 'vendor/randomx-arweave/randomx-arweave.iife.js';

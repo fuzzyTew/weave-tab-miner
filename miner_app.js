@@ -8,6 +8,7 @@ import {
 import { ArweaveGateway } from './arweave_gateway.js';
 import { ArweaveWallet } from './arweave_wallet.js';
 import { DataTransaction } from './arweave_transaction.js';
+import { DataItem, TurboUploader } from './arweave_bundle.js';
 import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from './arweave_randomx.js';
 import { PackedChunkStore } from './arweave_storage.js';
 import { PeerAccess, PeerDirectory, GatewayDirectory, SourceTester } from './arweave_peers.js';
@@ -893,6 +894,36 @@ class BrowserNodeApp {
     }
   }
 
+  /**
+   * The record as an ANS-104 item signed by this key, handed to Turbo's free tier. The id
+   * is fixed by the signature here, so it can be looked up on any gateway once bundled.
+   */
+  async sendRecordFree() {
+    const wallet = this.identity?.wallet;
+    if (!wallet) {
+      this.view.setText('recordStatus', 'Storing needs a key to sign with: generate one or load a keyfile in Identity. It needs no AR.');
+      return;
+    }
+    const data = this.recordBytes();
+    if (data.length > TurboUploader.FREE_BYTES - 2048) {
+      this.view.setText('recordStatus', `${data.length} bytes is too big for Turbo's free tier (100 KiB including about 1 KiB of signature and tags).`);
+      return;
+    }
+    try {
+      const item = await new DataItem({ data, tags: [['Content-Type', 'text/plain; charset=utf-8'], ['App-Name', 'Weave-Tab-Miner']] }).sign(wallet);
+      this.view.setText('recordStatus', `Signed item ${item.id}. Sending to Turbo…`);
+      const receipt = await new TurboUploader().upload(item);
+      if (receipt.id !== item.id) throw new Error(`Turbo answered for a different id, ${receipt.id}`);
+      this.view.setText('recordStatus', `Turbo accepted ${item.id}${receipt.winc === '0' ? ' for free' : ` and charged ${receipt.winc} winc`}. It should be readable at arweave.net/${item.id} soon, and in a block once Turbo bundles it.`);
+      this.view.elements.recordLink.href = `https://arweave.net/${item.id}`;
+      this.view.elements.recordLink.textContent = `arweave.net/${item.id}`;
+      this.view.log(`Turbo receipt: ${JSON.stringify(receipt).slice(0, 400)}`, 'good');
+    } catch (error) {
+      this.view.setText('recordStatus', `Not stored: ${error.message.split('\n')[0]}`);
+      this.view.log(error.message.split('\n')[0], 'error');
+    }
+  }
+
   // ---- odds ----
 
   refreshSummary() {
@@ -943,6 +974,7 @@ class BrowserNodeApp {
     onClick('walletButton', this.lookUpWallet);
     onClick('quoteButton', this.quoteRecord);
     onClick('sendButton', this.sendRecord);
+    onClick('freeSendButton', this.sendRecordFree);
     this.view.elements.partitionInput.addEventListener('change', () => this.refreshSummary());
     for (const id of ['poolTabsInput', 'poolSizeInput', 'poolFeeInput', 'poolThresholdInput']) this.view.elements[id].addEventListener('input', () => this.refreshPoolOdds());
     this.view.elements.recordInput.addEventListener('input', () => this.view.setText('recordSize', `${this.recordBytes().length} bytes`));
