@@ -61,6 +61,14 @@ or a peer list of other malicious nodes. Each item below says what to check and 
       does.
 - [ ] Sign the block and send it (`POST /block_announcement`, then `POST /block2`).
 - [ ] Test each field by rebuilding a real block from its parent.
+- [ ] Localnet harness (manual workflow): `ar_localnet` starts from the repo's mainnet
+      snapshot with 21 MiB of seed data. It skips difficulty (`passes_diff_check`) and lets
+      a block name its recall bytes (`get_precalculated_recall_range`), so our own built
+      blocks can be accepted there every step. Its pool route cannot help: `ar_pool`
+      derives recall range 1 from H0, which lands in the seeded 21 MiB about once in
+      150,000 steps.
+- [ ] Capture fixtures from GitHub (block N, N+1, reward and block-time histories, the
+      account pages they touch) and commit them, since this sandbox cannot reach Arweave.
 
 ## Hosting
 
