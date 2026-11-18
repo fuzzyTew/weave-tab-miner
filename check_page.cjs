@@ -41,7 +41,7 @@ class PageCheck {
     await this.waitForLog(page, 'ready:', 120000);
     await this.waitForLog(page, 'RandomX ready|RandomX unavailable', 120000);
     this.check('RandomX runs in the page', /real/.test(await this.text(page, '#randomxStatus')), `${await this.text(page, '#randomxStatus')} after ${((Date.now() - started) / 1000).toFixed(0)} s`);
-    console.log(`      wait: ${await this.text(page, '#expectedWait')} | ${await this.text(page, '#limitHeadline')}`);
+    console.log(`      wait: ${await this.text(page, '#expectedWait')} | ${await this.text(page, '#limitList')} | ${await this.text(page, '#rangeHitNote')}`);
 
     started = Date.now();
     await page.click('#startButton');

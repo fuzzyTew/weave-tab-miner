@@ -3,7 +3,7 @@
 // page's controls and displays to them.
 import {
   Bytes, ConsensusConstants, Replica29Layout, MiningIdentity, ChunkPacker, StubEntropySource,
-  StubH0Hasher, HeldStorage, Miner, VdfSession, SolutionOdds,
+  StubH0Hasher, HeldStorage, Miner, VdfSession, SolutionOdds, PrettyNumber,
 } from './arweave_miner.js';
 import { ArweaveGateway } from './arweave_gateway.js';
 import { ArweaveWallet } from './arweave_wallet.js';
@@ -187,15 +187,16 @@ class PageView {
     }
   }
 
+  /** The wait's factors, each as "× N name — why"; ones already at full speed are dimmed. */
   fillLimits(factors) {
     const list = this.elements.limitList;
     list.replaceChildren();
     for (const factor of factors) {
       const item = document.createElement('li');
       const name = document.createElement('strong');
-      name.textContent = factor.name;
+      name.textContent = `× ${PrettyNumber.factor(factor.multiplier)} ${factor.name}`;
       item.append(name, ` — ${factor.explanation}`);
-      if (factor.speedup <= 1.0001) item.className = 'limit-met';
+      if (factor.multiplier <= 1.0001) item.className = 'limit-met';
       list.append(item);
     }
   }
@@ -421,9 +422,11 @@ class BrowserNodeApp {
 
   async refreshStorageNote() {
     const estimate = await PackedChunkStore.estimate();
+    this.storageQuotaBytes = estimate?.quota ?? null;
     this.view.setText('storageNote', estimate
       ? `This site uses ${PageView.formatBytes(estimate.usage ?? 0)} of browser storage, of ${PageView.formatBytes(estimate.quota ?? 0)} allowed.`
       : 'This browser does not report its storage limits.');
+    this.refreshSummary();
   }
 
   // ---- network ----
@@ -934,9 +937,14 @@ class BrowserNodeApp {
     const odds = { storage: this.storage, partitionNumber: this.partitionNumber, session: this.session, stepsPerSecond };
     const seconds = SolutionOdds.expectedSecondsPerSolution(odds);
     this.view.setText('expectedWait', PageView.formatDuration(seconds));
-    const factors = SolutionOdds.limitingFactors(odds);
-    this.view.setText('limitHeadline', `Biggest limit: ${factors[0].name}. ${this.running ? `Measured pace: ${stepsPerSecond.toFixed(2)} steps a second.` : 'Assumes the network\'s pace of one step a second until mining starts.'}`);
+    const { fullSpeedSeconds, factors } = SolutionOdds.waitBreakdown({ ...odds, quotaBytes: this.storageQuotaBytes });
+    const pace = this.running ? `Measured pace: ${stepsPerSecond.toFixed(2)} steps a second.` : 'Assumes the network\'s pace of one step a second until mining starts.';
+    this.view.setText('limitHeadline', `A miner holding the whole partition and the whole weave would wait about ${PageView.formatDuration(fullSpeedSeconds)}. Each shortfall below multiplies that; they compound. ${pace}`);
     this.view.fillLimits(factors);
+    const hitChance = SolutionOdds.heldRangeHitChance(odds);
+    this.view.setText('rangeHitNote', hitChance > 0
+      ? `Range 1 touches a chunk this tab holds about once every ${PageView.formatDuration(1 / (hitChance * stepsPerSecond))} (${(hitChance * 100).toPrecision(2)}% of steps). Most steps try nothing; each touch gives up to ${ConsensusConstants.noncesPerRecallRange / (ConsensusConstants.recallRangeSize / ConsensusConstants.DATA_CHUNK_SIZE)} tries per held chunk in range.`
+      : `No chunks held in partition ${this.partitionNumber}, so no step can try anything.`);
     this.view.setText('waitNote', this.usingRealRandomx ? 'Real rules: a solution here would be a real one.' : 'Stand-in RandomX: solutions would not be real.');
   }
 
