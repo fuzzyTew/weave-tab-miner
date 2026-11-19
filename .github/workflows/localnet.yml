@@ -93,7 +93,13 @@ jobs:
 
       - name: Mine blocks with this library and post them to the node
         if: inputs.mode == 'post'
-        run: node scripts/localnet-post.mjs "${{ inputs.blocks }}"
+        # The node serves /reward_history and /block_time_history only for blocks it has
+        # made or taken in since starting, not for the snapshot's tip, so its own miner
+        # makes the first block and this library builds on that one.
+        run: |
+          erl -name post@127.0.0.1 -setcookie localnet -noshell -eval \
+            "io:format(\"~p~n\", [rpc:call('main-localnet@127.0.0.1', ar_localnet, mine_one_block, [])]), halt()."
+          node scripts/localnet-post.mjs "${{ inputs.blocks }}"
 
       - name: Show the localnet log
         if: always()

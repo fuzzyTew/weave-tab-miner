@@ -41,8 +41,31 @@ class LocalnetBlockPoster {
     Object.assign(this, { blockCount, client });
   }
 
+  /**
+   * The tip with its reward and block-time histories. The node serves those only for blocks
+   * it made or took in since starting (not the snapshot's tip), so this waits, up to
+   * ACCEPT_TIMEOUT_MS, for a tip that has them.
+   */
+  async tipWithHistories() {
+    const started = Date.now();
+    for (;;) {
+      const tip = await this.client.get(`/block/height/${await this.client.height()}`);
+      try {
+        return {
+          tip,
+          rewardHistory: await this.client.get(`/reward_history/${tip.indep_hash}`, 'bytes'),
+          blockTimeHistory: await this.client.get(`/block_time_history/${tip.indep_hash}`, 'bytes'),
+        };
+      } catch (error) {
+        if (Date.now() - started > LocalnetBlockPoster.ACCEPT_TIMEOUT_MS) throw new Error(`no histories for tip ${tip.height}`, { cause: error });
+        console.log(`tip ${tip.height}: histories not served yet (${error.cause?.message ?? error.message}); waiting`);
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+    }
+  }
+
   async chainState() {
-    const tip = await this.client.get(`/block/height/${await this.client.height()}`);
+    const { tip, rewardHistory, blockTimeHistory } = await this.tipWithHistories();
     const accounts = await this.client.walletList(tip.wallet_list);
     // Node's SHA-384 is synchronous, which makes hashing the whole account tree much faster.
     const accountTree = new AccountTree({ sha384: (bytes) => new Uint8Array(createHash('sha384').update(bytes).digest()) });
@@ -54,8 +77,8 @@ class LocalnetBlockPoster {
     console.log(`tip ${tip.height} (${tip.indep_hash.slice(0, 12)}…): ${accounts.length} accounts, root ${root === tip.wallet_list ? 'matches' : 'DIFFERS from'} the tip's`);
     return new ChainState({
       block: tip,
-      rewardHistory: RewardHistory.fromBinary(await this.client.get(`/reward_history/${tip.indep_hash}`, 'bytes')),
-      blockTimeHistory: BlockTimeHistory.fromBinary(await this.client.get(`/block_time_history/${tip.indep_hash}`, 'bytes')),
+      rewardHistory: RewardHistory.fromBinary(rewardHistory),
+      blockTimeHistory: BlockTimeHistory.fromBinary(blockTimeHistory),
       accountTree,
     });
   }
