@@ -143,6 +143,12 @@ class PageCheck {
     await bridgeContext.close();
     server.close();
 
+    // The one-button start: offline here, it must stop at the live block and say why.
+    await page.click('#quickStartButton');
+    await page.waitForFunction(() => /✗|Mining\./.test(document.getElementById('quickStartStages').textContent), null, { timeout: 180000 }).catch(() => {});
+    const stages = await this.text(page, '#quickStartStages');
+    this.check('the one-button start reports each stage and where it stopped', /✓ Mining for /.test(stages) && /✗|Mining\./.test(stages), stages.slice(0, 160));
+
     await page.setViewportSize({ width: 400, height: 900 });
     this.check('no sideways scroll at phone width', !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)));
     await page.setViewportSize({ width: 1200, height: 1000 });

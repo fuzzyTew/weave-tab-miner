@@ -3,7 +3,8 @@
 // src/. Each section of the page has a panel module beside this one:
 //   sources-panel.js  gateways, nodes, VDF servers     holding-panel.js  packed data
 //   mining-panel.js   mining and the expected wait     records-panel.js  wallet and records
-//   page-view.js, step-explorer.js, resources.js       display helpers and embedded data
+//   quick-start-panel.js  the one-button start         page-view.js, step-explorer.js,
+//   resources.js          display helpers and embedded data
 import { Bytes } from '../../src/core/bytes.js';
 import { StubEntropySource } from '../../src/mining/packing.js';
 import { MiningIdentity } from '../../src/mining/identity.js';
@@ -21,6 +22,7 @@ import { HoldingPanel } from './holding-panel.js';
 import { SourcesPanel } from './sources-panel.js';
 import { MiningPanel } from './mining-panel.js';
 import { RecordsPanel } from './records-panel.js';
+import { QuickStartPanel } from './quick-start-panel.js';
 
 class BrowserNodeApp {
   /**
@@ -77,6 +79,11 @@ class BrowserNodeApp {
   async generateIdentity() {
     this.view.setText('identityStatus', 'Generating a 4096-bit key…');
     await this.setIdentity(MiningIdentity.fromWallet(await ArweaveWallet.generate()), 'new key made in this tab and never saved; it can sign transactions');
+  }
+
+  /** The shared key's address, from the key file the page carries. */
+  sharedKeyAddress() {
+    return BundledResources.publicKey().address;
   }
 
   async useSharedKey() {
@@ -152,6 +159,7 @@ class BrowserNodeApp {
   bind() {
     const onClick = (id, handler) => this.view.elements[id].addEventListener('click', () => handler.call(this));
     onClick('generateButton', this.generateIdentity);
+    onClick('quickStartButton', this.quickStart);
     onClick('sharedKeyButton', this.useSharedKey);
     onClick('verifySampleButton', this.verifyAgainstSample);
     onClick('bringChunksButton', this.bringChunksFromWebsite);
@@ -199,7 +207,7 @@ class BrowserNodeApp {
 
 // Each page section's logic lives in its own panel class; their methods join the app's,
 // running with `this` as the app, so panels share its state (view, gateway, storage…).
-for (const panel of [SourcesPanel, HoldingPanel, MiningPanel, RecordsPanel]) {
+for (const panel of [SourcesPanel, HoldingPanel, MiningPanel, RecordsPanel, QuickStartPanel]) {
   for (const name of Object.getOwnPropertyNames(panel.prototype)) {
     if (name !== 'constructor') Object.defineProperty(BrowserNodeApp.prototype, name, Object.getOwnPropertyDescriptor(panel.prototype, name));
   }
