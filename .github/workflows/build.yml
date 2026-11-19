@@ -68,6 +68,9 @@ jobs:
       - name: Check block ids, signatures and signing against the localnet's blocks
         run: node test/block-hash.test.mjs localnet_fixtures && node test/block-signer.test.mjs localnet_fixtures
 
+      - name: Assemble whole blocks and compare them with the localnet's
+        run: node test/block-assembler.test.mjs localnet_fixtures
+
       - name: Check ANS-104 data items against arbundles' output
         run: node test/data-item.test.mjs
 

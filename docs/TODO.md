@@ -4,7 +4,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 
 | Task | State |
 |---|---|
-| Turn a solution into a block | 4 of 7 steps done, each checked against a real node's blocks |
+| Turn a solution into a block | 5 of 7 steps done, each checked against a real node's blocks |
 | Check what peers and gateways say | not started; the page trusts the first answer |
 | Reach networks that block Arweave | partly: gathered sources, seeds, a source test |
 | Hold more data | mostly done; storage, not memory, is the limit |
@@ -13,7 +13,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Network-agnostic design | tried and reverted; plan below |
 
 <details>
-<summary><b>Turn a solution into a block</b> — 4 of 7 steps done</summary>
+<summary><b>Turn a solution into a block</b> — 5 of 7 steps done</summary>
 
 A found solution cannot become a block yet: nothing assembles, signs or sends one. These are
 the steps, in order. Each is checked against blocks a real node made, saved on the
@@ -39,7 +39,10 @@ height 2,069,866 with their parents' state, captured).
        (`test/block-hash.test.mjs`). `src/block-signer.js` signs with an RSA key through
        `DoubleSigningGuard` (`test/block-signer.test.mjs`). Not yet: signing with
        secp256k1 keys, and blocks that carry a double-signing proof.
-5. [ ] Rebuild each saved localnet block from its parent, field by field, until all match.
+5. [x] Whole blocks: `src/block-assembler.js` assembles each saved block from the first
+       parent's state and the block's mining solution, advancing the state with its own
+       blocks; every field matches the node's, and with the node's signature so does the
+       id (`test/block-assembler.test.mjs`).
 6. [ ] Localnet acceptance: a manual workflow posts several blocks our code built in a row
        (`POST /block_announcement`, then `POST /block2`) and reports what the node accepted.
        The localnet skips difficulty and lets a block choose its recall chunks, so every
