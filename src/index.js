@@ -17,6 +17,7 @@ export * from './block-fields.js';
 export * from './block-hash.js';
 export * from './block-signer.js';
 export * from './block-assembler.js';
+export * from './block-binary.js';
 export * from './peers.js';
 export * from './vdf-client.js';
 export * from './citations.js';
