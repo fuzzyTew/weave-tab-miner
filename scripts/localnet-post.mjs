@@ -32,9 +32,10 @@ class MapStorage {
 }
 
 class LocalnetBlockPoster {
-  // The localnet's seeded data sits in the first 21 MiB of the weave; chunks are taken from
-  // the first 20 MiB so a whole chunk is always there.
+  // The localnet seeds about 21 MiB of data near the start of the weave, with gaps (the
+  // node answers 404 there), so chunks are drawn from the first 20 MiB until one is held.
   static SEEDED_BYTES = 20 * 1024 * 1024;
+  static CHUNK_DRAWS = 40;
   static ACCEPT_TIMEOUT_MS = 120000;
 
   constructor({ blockCount, client = new LocalnetClient() }) {
@@ -86,6 +87,20 @@ class LocalnetBlockPoster {
     return { h0Hasher: new RandomxH0Hasher(host), entropySource: new RandomxSquaredEntropySource(host) };
   }
 
+  /** A chunk-aligned recall byte the node holds data at, with that chunk's JSON. */
+  async heldChunk() {
+    const chunkSize = ConsensusConstants.DATA_CHUNK_SIZE;
+    for (let draw = 0; draw < LocalnetBlockPoster.CHUNK_DRAWS; draw++) {
+      const recallByte = BigInt(randomInt(LocalnetBlockPoster.SEEDED_BYTES / chunkSize)) * BigInt(chunkSize);
+      try {
+        return { recallByte, chunkJson: await this.client.get(`/chunk/${recallByte + 1n}`) };
+      } catch (error) {
+        console.log(`chunk at ${recallByte}: ${error.message}`);
+      }
+    }
+    throw new Error(`no held chunk in ${LocalnetBlockPoster.CHUNK_DRAWS} draws`);
+  }
+
   async waitForTip(indepHash) {
     const started = Date.now();
     while (Date.now() - started < LocalnetBlockPoster.ACCEPT_TIMEOUT_MS) {
@@ -104,9 +119,7 @@ class LocalnetBlockPoster {
     const { h0Hasher, entropySource } = this.randomx();
     let accepted = 0;
     for (let index = 0; index < this.blockCount; index++) {
-      const chunkSize = ConsensusConstants.DATA_CHUNK_SIZE;
-      const recallByte = BigInt(randomInt(LocalnetBlockPoster.SEEDED_BYTES / chunkSize)) * BigInt(chunkSize);
-      const chunkJson = await this.client.get(`/chunk/${recallByte + 1n}`);
+      const { recallByte, chunkJson } = await this.heldChunk();
       const solution = await OneChunkSolution.build({
         addressBytes: wallet.addressBytes, vdfInfo: VdfInfo.sameStepAsParent(state.block),
         seed: Bytes.fromBase64Url(state.block.nonce_limiter_info.seed), recallByte, chunkJson,
