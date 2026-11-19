@@ -14,6 +14,8 @@ export * from './account-tree.js';
 export * from './rewards.js';
 export * from './block-history.js';
 export * from './block-fields.js';
+export * from './block-hash.js';
+export * from './block-signer.js';
 export * from './peers.js';
 export * from './vdf-client.js';
 export * from './citations.js';
