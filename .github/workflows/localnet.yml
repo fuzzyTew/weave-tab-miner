@@ -1,8 +1,11 @@
 # Starts an Arweave localnet (a private chain started from the snapshot in Arweave's
-# repository), has its own miner make a few blocks, and commits each block with its
-# parent's state to the localnet-fixtures branch. The block builder is checked against
-# those blocks offline. Manual only: building Arweave takes a while, so it stays out of
-# the per-push checks.
+# repository). Two modes:
+#   capture — the node's own miner makes a few blocks, and each is committed with its
+#             parent's state to the localnet-fixtures branch; the block builder is checked
+#             against those blocks offline.
+#   post    — this library mines blocks itself and posts them (scripts/localnet-post.mjs);
+#             the run passes when the node takes every one as its new tip.
+# Manual only: building Arweave takes a while, so it stays out of the per-push checks.
 name: Localnet fixtures
 
 on:

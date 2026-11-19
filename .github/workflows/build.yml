@@ -74,6 +74,9 @@ jobs:
       - name: Encode blocks to the binary nodes accept, compared with the localnet's
         run: node test/block-binary.test.mjs localnet_fixtures
 
+      - name: Build one-chunk solutions (real RandomX packing) and compare them with the localnet's
+        run: node test/block-solution.test.mjs localnet_fixtures
+
       - name: Check ANS-104 data items against arbundles' output
         run: node test/data-item.test.mjs
 
