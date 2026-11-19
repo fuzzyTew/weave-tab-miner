@@ -8,7 +8,7 @@ import {
 import { ArweaveGateway } from '../../src/gateway.js';
 import { ArweaveWallet } from '../../src/wallet.js';
 import { DataTransaction } from '../../src/transaction.js';
-import { ArweaveTransactionNetwork, AutonomiNetwork, RecordMirror, TurboNetwork } from '../../src/networks.js';
+import { DataItem, TurboUploader } from '../../src/bundle.js';
 import { ChunkFetcher } from '../../src/chunk-fetcher.js';
 import { ChunkShareBridge } from '../../src/chunk-share.js';
 import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/randomx.js';
@@ -1164,75 +1164,74 @@ class BrowserNodeApp {
     return new TextEncoder().encode(this.view.elements.recordInput.value);
   }
 
-  /** Every storage network the page knows, each with a checkbox; Turbo chosen by default. */
-  buildNetworkChoices() {
-    this.storageNetworks = [new ArweaveTransactionNetwork({ gateway: this.gateway }), new TurboNetwork(), new AutonomiNetwork()];
-    const container = this.view.elements.networkChoices;
-    container.replaceChildren(...this.storageNetworks.map((network, index) => {
-      const label = document.createElement('label');
-      label.className = 'choice';
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.dataset.networkIndex = String(index);
-      box.checked = network instanceof TurboNetwork;
-      box.disabled = !network.reachable;
-      label.append(box, ` ${network.name} — ${network.howItKeepsData}${network.reachable ? '' : ` (${network.unreachableNote()})`}`);
-      return label;
-    }));
-  }
-
-  chosenNetworks() {
-    return [...this.view.elements.networkChoices.querySelectorAll('input:checked')].map((box) => this.storageNetworks[Number(box.dataset.networkIndex)]);
-  }
-
-  showNetworkResults(lines) {
-    this.view.elements.networkResults.replaceChildren(...lines.map((line) => {
-      const item = document.createElement('li');
-      item.append(line.text);
-      if (line.link) {
-        const anchor = document.createElement('a');
-        anchor.href = line.link;
-        anchor.target = '_blank';
-        anchor.rel = 'noopener';
-        anchor.textContent = line.link;
-        item.append(' ', anchor);
-      }
-      return item;
-    }));
-  }
-
   async quoteRecord() {
     const byteCount = this.recordBytes().length;
-    this.showNetworkResults([{ text: `Asking for prices for ${byteCount} bytes…` }]);
-    const quotes = await new RecordMirror(this.storageNetworks).compare(byteCount);
-    this.showNetworkResults(quotes.map((quote) => ({ text: `${quote.network.name}: ${quote.available ? quote.cost : 'not available'} — ${quote.note}` })));
+    try {
+      const winston = await this.gateway.priceWinston(byteCount);
+      this.view.setText('recordStatus', `${byteCount} bytes would cost ${PageView.formatAr(winston)} right now.`);
+      return winston;
+    } catch (error) {
+      this.view.setText('recordStatus', 'Could not get a price; nothing answered.');
+      this.view.log(error.message.split('\n')[0], 'error');
+      return null;
+    }
   }
 
-  /** Stores the record on every chosen network, one after another; each result stands alone. */
   async sendRecord() {
     const wallet = this.identity?.wallet;
     if (!wallet) {
-      this.view.setText('recordStatus', 'Storing needs a key to sign with: use the shared key, generate one, or load a keyfile in Identity. An address alone cannot sign.');
+      this.view.setText('recordStatus', 'Sending needs a key: generate one or load a keyfile in Identity. An address alone cannot sign.');
       return;
     }
-    const networks = this.chosenNetworks();
-    if (!networks.length) {
-      this.view.setText('recordStatus', 'Choose at least one network above.');
+    const rewardWinston = await this.quoteRecord();
+    if (rewardWinston === null) return;
+    try {
+      const anchor = await this.gateway.transactionAnchor();
+      const transaction = await new DataTransaction({
+        data: this.recordBytes(), anchor, rewardWinston,
+        tags: [['Content-Type', 'text/plain; charset=utf-8'], ['App-Name', 'Weave-Tab-Miner']],
+      }).sign(wallet);
+      this.view.setText('recordStatus', `Signed ${transaction.id}. Sending…`);
+      const reply = await this.gateway.postTransaction(transaction.toJson());
+      this.view.setText('recordStatus', `Sent to ${this.gateway.lastAnsweredBy}, which replied "${reply.slice(0, 80)}". It should be readable at arweave.net/${transaction.id} within minutes.`);
+      this.view.elements.recordLink.href = `https://arweave.net/${transaction.id}`;
+      this.view.elements.recordLink.textContent = `arweave.net/${transaction.id}`;
+      this.view.log(`record transaction ${transaction.id} sent`, 'good');
+    } catch (error) {
+      const lacksFunds = /balance|funds|insufficient/i.test(error.message);
+      this.view.setText('recordStatus', lacksFunds ? 'Refused: this key has no AR to pay the fee yet.' : `Not sent: ${error.message.split('\n')[0]}`);
+      this.view.log(error.message.split('\n')[0], 'error');
+    }
+  }
+
+  /**
+   * The record as an ANS-104 item signed by this key, handed to Turbo's free tier. The id
+   * is fixed by the signature here, so it can be looked up on any gateway once bundled.
+   */
+  async sendRecordFree() {
+    const wallet = this.identity?.wallet;
+    if (!wallet) {
+      this.view.setText('recordStatus', 'Storing needs a key to sign with: generate one or load a keyfile in Identity. It needs no AR.');
       return;
     }
-    const record = { data: this.recordBytes(), tags: [['Content-Type', 'text/plain; charset=utf-8'], ['App-Name', 'Weave-Tab-Miner']], wallet };
-    const lines = networks.map((network) => ({ text: `${network.name}: signing and sending…` }));
-    this.showNetworkResults(lines);
-    const results = await new RecordMirror(networks).storeEverywhere(record, (result) => {
-      const index = networks.indexOf(result.network);
-      lines[index] = result.ok
-        ? { text: `${result.network.name}: stored as ${result.id} (${result.note}). Readable soon at`, link: result.link }
-        : { text: `${result.network.name}: not stored — ${/balance|funds|insufficient/i.test(result.note) ? 'this key has no AR to pay the fee yet' : result.note}` };
-      this.showNetworkResults(lines);
-      this.view.log(`record on ${result.network.name}: ${result.ok ? result.id : result.note}`, result.ok ? 'good' : 'error');
-    });
-    const stored = results.filter((result) => result.ok).length;
-    this.view.setText('recordStatus', `Stored on ${stored} of ${results.length} chosen network${results.length === 1 ? '' : 's'}.`);
+    const data = this.recordBytes();
+    if (data.length > TurboUploader.FREE_BYTES - 2048) {
+      this.view.setText('recordStatus', `${data.length} bytes is too big for Turbo's free tier (100 KiB including about 1 KiB of signature and tags).`);
+      return;
+    }
+    try {
+      const item = await new DataItem({ data, tags: [['Content-Type', 'text/plain; charset=utf-8'], ['App-Name', 'Weave-Tab-Miner']] }).sign(wallet);
+      this.view.setText('recordStatus', `Signed item ${item.id}. Sending to Turbo…`);
+      const receipt = await new TurboUploader().upload(item);
+      if (receipt.id !== item.id) throw new Error(`Turbo answered for a different id, ${receipt.id}`);
+      this.view.setText('recordStatus', `Turbo accepted ${item.id}${receipt.winc === '0' ? ' for free' : ` and charged ${receipt.winc} winc`}. It should be readable at arweave.net/${item.id} soon, and in a block once Turbo bundles it.`);
+      this.view.elements.recordLink.href = `https://arweave.net/${item.id}`;
+      this.view.elements.recordLink.textContent = `arweave.net/${item.id}`;
+      this.view.log(`Turbo receipt: ${JSON.stringify(receipt).slice(0, 400)}`, 'good');
+    } catch (error) {
+      this.view.setText('recordStatus', `Not stored: ${error.message.split('\n')[0]}`);
+      this.view.log(error.message.split('\n')[0], 'error');
+    }
   }
 
   // ---- odds ----
@@ -1296,6 +1295,7 @@ class BrowserNodeApp {
     onClick('walletButton', this.lookUpWallet);
     onClick('quoteButton', this.quoteRecord);
     onClick('sendButton', this.sendRecord);
+    onClick('freeSendButton', this.sendRecordFree);
     this.view.elements.partitionInput.addEventListener('change', () => {
       this.partitionChosenByPerson = true;
       this.refreshSummary();
@@ -1307,7 +1307,6 @@ class BrowserNodeApp {
   async run() {
     this.bind();
     new RunYourself(this.view).show();
-    this.buildNetworkChoices();
     this.restoreSeeds();
     this.view.setText('peerStatus', this.describeGatheredSources());
     this.view.elements.bringChunksButton.hidden = location.protocol !== 'file:';
