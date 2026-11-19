@@ -44,7 +44,7 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
 | `src/chunk-fetcher.js` | Fetching many chunks at once, with progress and a stop |
 | `src/chunk-share.js` | Moving saved chunks between copies of the page |
 | `src/signing-guard.js` | Refuses to sign two competing blocks with one key |
-| `src/account-tree.js`, `src/rewards.js`, `src/block-history.js`, `src/block-fields.js` | Block building: the account tree root, released rewards, the history hashes, and the plain fields |
+| `src/account-tree.js`, `src/rewards.js`, `src/block-history.js`, `src/block-fields.js`, `src/block-hash.js`, `src/block-signer.js` | Block building: the account tree root, released rewards, history hashes, plain fields, the block id, and guarded signing |
 | `src/gateway.js`, `src/peers.js` | HTTP to gateways and nodes; finding and testing sources |
 | `src/vdf-client.js` | Reading steps from VDF servers (GET /vdf) |
 | `src/wallet.js`, `src/transaction.js`, `src/bundle.js` | Keys, signed transactions, ANS-104 items for Turbo |

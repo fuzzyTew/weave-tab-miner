@@ -90,8 +90,11 @@ height 2,069,866 with their parents' state, captured).
        (`test/block-fields.test.mjs`). Stubs that refuse rather than guess: price
        adjustment heights (every 50 blocks), difficulty retargets, redenomination, and
        transactions' fees.
-4. [ ] Signature preimage and block hash (`indep_hash`), signed with the miner's key
-       (RSA or secp256k1 ECDSA, both accepted since 2.9), through `DoubleSigningGuard`.
+4. [x] Signature preimage and block hash: `src/block-hash.js` rebuilds each saved block's
+       id from its JSON, and its secp256k1 signature verifies with its own key
+       (`test/block-hash.test.mjs`). `src/block-signer.js` signs with an RSA key through
+       `DoubleSigningGuard` (`test/block-signer.test.mjs`). Not yet: signing with
+       secp256k1 keys, and blocks that carry a double-signing proof.
 5. [ ] Rebuild each saved localnet block from its parent, field by field, until all match.
 6. [ ] Localnet acceptance: a manual workflow posts several blocks our code built in a row
        (`POST /block_announcement`, then `POST /block2`) and reports what the node accepted.
