@@ -684,6 +684,31 @@ class BrowserNodeApp {
 
   // ---- a person's own sources ----
 
+  static MIXED_CONTENT_STORAGE_KEY = 'weave-tab-miner.mixed-content-allowed';
+
+  /** Restores and follows the "insecure content allowed" box; hidden where it does not apply. */
+  setUpMixedContentChoice() {
+    const { mixedContentCheckbox, mixedContentChoice } = this.view.elements;
+    mixedContentChoice.hidden = location.protocol !== 'https:';
+    try {
+      mixedContentCheckbox.checked = localStorage.getItem(BrowserNodeApp.MIXED_CONTENT_STORAGE_KEY) === 'yes';
+    } catch {
+      // Storage refused: the box starts unticked each visit.
+    }
+    PeerAccess.allowMixedContent(mixedContentCheckbox.checked);
+    mixedContentCheckbox.addEventListener('change', () => {
+      PeerAccess.allowMixedContent(mixedContentCheckbox.checked);
+      try {
+        localStorage.setItem(BrowserNodeApp.MIXED_CONTENT_STORAGE_KEY, mixedContentCheckbox.checked ? 'yes' : 'no');
+      } catch {
+        // Not remembered; applies to this visit.
+      }
+      this.view.setText('peerStatus', mixedContentCheckbox.checked
+        ? 'Plain-http nodes and VDF servers will be tried. If they fail, the browser may still be blocking them: check the site setting.'
+        : this.describeGatheredSources());
+    });
+  }
+
   static SEEDS_STORAGE_KEY = 'weave-tab-miner.seeds';
 
   /** The typed seed list, remembered in this browser only; storage may be refused. */
@@ -1323,6 +1348,7 @@ class BrowserNodeApp {
   async run() {
     this.bind();
     new RunYourself(this.view).show();
+    this.setUpMixedContentChoice();
     this.restoreSeeds();
     this.view.setText('peerStatus', this.describeGatheredSources());
     this.view.elements.bringChunksButton.hidden = location.protocol !== 'file:';
