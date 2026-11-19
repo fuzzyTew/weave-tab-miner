@@ -52,7 +52,7 @@ height 2,069,866 with their parents' state, captured).
        tip. Small chunks are zero-padded to 256 KiB, as the node proves them.
 7. [ ] Mainnet: the same, after a real solution. Needs: VDF steps between the parent's and
        the block's (`VdfInfo` only builds the localnet's same-step info), two-chunk
-       solutions, secp256k1 signing (mainnet blocks use it), and the stubbed fields
+       solutions, secp256k1 signing (optional; RSA keys also mine), and the stubbed fields
        (price adjustments every 50 blocks, retargets) — `NextBlockFields` throws at those.
 
 To continue in a new conversation with Claude, a prompt like this works:
