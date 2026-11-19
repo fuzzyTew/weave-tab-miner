@@ -16,7 +16,12 @@ export class VdfInfo {
    * between listed — not built yet.
    */
   static sameStepAsParent(parent) {
-    return JSON.parse(JSON.stringify(parent.nonce_limiter_info));
+    // The parent's step, output, steps ("checkpoints") and last-step checkpoints, with the
+    // parent's output as this block's prev_output (ar_block_pre_validator requires
+    // prev_output to be the parent's output on any step).
+    const info = JSON.parse(JSON.stringify(parent.nonce_limiter_info));
+    info.prev_output = info.output;
+    return info;
   }
 }
 
