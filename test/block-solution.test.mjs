@@ -35,16 +35,24 @@ class BlockSolutionTest {
         console.log(`SKIP  block ${child.height}: a two-chunk solution`);
         continue;
       }
-      const solution = await OneChunkSolution.build({
-        addressBytes: MiningIdentity.fromAddress(child.reward_addr).addressBytes,
-        vdfInfo: child.nonce_limiter_info, seed: Bytes.fromBase64Url(parent.block.nonce_limiter_info.seed),
-        recallByte: BigInt(child.recall_byte), nonce: Number(Bytes.toBigInt(Bytes.fromBase64Url(child.nonce))),
-        chunkJson: { chunk: child.poa.unpacked_chunk, data_path: child.poa.data_path, tx_path: child.poa.tx_path },
-        h0Hasher, entropySource,
-      });
-      const differing = BlockSolutionTest.COMPARED_FIELDS.filter((field) => JSON.stringify(solution[field]) !== JSON.stringify(child[field]));
-      if (differing.length) this.failures++;
-      console.log(`${differing.length ? 'FAIL' : 'PASS'}  block ${child.height}: one-chunk solution fields match the node's${differing.length ? ' — differ: ' + differing.join(', ') : ''}`);
+      // The block holds the chunk zero-padded to 256 KiB; GET /chunk serves a small chunk
+      // without the padding, so the chunk is also tried with trailing zeros cut off.
+      const padded = Bytes.fromBase64Url(child.poa.unpacked_chunk);
+      let dataLength = padded.length;
+      while (dataLength && !padded[dataLength - 1]) dataLength--;
+      const chunks = { 'padded chunk': padded, ...(dataLength < padded.length ? { [`${dataLength}-byte chunk as served`]: padded.subarray(0, dataLength) } : {}) };
+      for (const [chunkName, chunk] of Object.entries(chunks)) {
+        const solution = await OneChunkSolution.build({
+          addressBytes: MiningIdentity.fromAddress(child.reward_addr).addressBytes,
+          vdfInfo: child.nonce_limiter_info, seed: Bytes.fromBase64Url(parent.block.nonce_limiter_info.seed),
+          recallByte: BigInt(child.recall_byte), nonce: Number(Bytes.toBigInt(Bytes.fromBase64Url(child.nonce))),
+          chunkJson: { chunk: Bytes.toBase64Url(chunk), data_path: child.poa.data_path, tx_path: child.poa.tx_path },
+          h0Hasher, entropySource,
+        });
+        const differing = BlockSolutionTest.COMPARED_FIELDS.filter((field) => JSON.stringify(solution[field]) !== JSON.stringify(child[field]));
+        if (differing.length) this.failures++;
+        console.log(`${differing.length ? 'FAIL' : 'PASS'}  block ${child.height}, ${chunkName}: one-chunk solution fields match the node's${differing.length ? ' — differ: ' + differing.join(', ') : ''}`);
+      }
     }
     process.exitCode = this.failures ? 1 : 0;
   }

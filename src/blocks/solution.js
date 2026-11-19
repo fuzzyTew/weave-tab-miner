@@ -35,10 +35,23 @@ export class OneChunkSolution {
    * allows (a block there names its recall byte). On mainnet the range comes from H0 and
    * the solution must also pass the difficulty, which callers check.
    */
+  /**
+   * A chunk as replica 2.9 packs and proves it: a small chunk (under 256 KiB, as at the end
+   * of a transaction's data) is zero-padded to 256 KiB, and the padded bytes are the
+   * block's unpacked_chunk and what unpacked_chunk_hash covers.
+   */
+  static padded(unpacked) {
+    const size = ConsensusConstants.DATA_CHUNK_SIZE;
+    if (unpacked.length > size) throw new Error(`chunk is ${unpacked.length} bytes, over ${size}`);
+    if (unpacked.length === size) return unpacked;
+    const padded = new Uint8Array(size);
+    padded.set(unpacked);
+    return padded;
+  }
+
   static async build({ addressBytes, vdfInfo, seed, recallByte, chunkJson, nonce, h0Hasher, entropySource }) {
     const size = ConsensusConstants.SUB_CHUNK_SIZE;
-    const unpacked = Bytes.fromBase64Url(chunkJson.chunk);
-    if (unpacked.length !== ConsensusConstants.DATA_CHUNK_SIZE) throw new Error(`chunk is ${unpacked.length} bytes; only full 256 KiB chunks are handled`);
+    const unpacked = OneChunkSolution.padded(Bytes.fromBase64Url(chunkJson.chunk));
 
     // Pack just the proven sub-chunk: it needs one 8 MiB entropy, not a whole chunk's 32.
     const endOffset = Replica29Layout.bucketEndOffsetForByte(recallByte);
@@ -56,7 +69,7 @@ export class OneChunkSolution {
       recall_byte: recallByte.toString(),
       partition_number: partitionNumber,
       nonce_limiter_info: vdfInfo,
-      poa: { option: '1', tx_path: chunkJson.tx_path, data_path: chunkJson.data_path, chunk: Bytes.toBase64Url(packedSubChunk), unpacked_chunk: chunkJson.chunk },
+      poa: { option: '1', tx_path: chunkJson.tx_path, data_path: chunkJson.data_path, chunk: Bytes.toBase64Url(packedSubChunk), unpacked_chunk: Bytes.toBase64Url(unpacked) },
       poa2: { option: '1', tx_path: '', data_path: '', chunk: '' },
       chunk_hash: Bytes.toBase64Url(Sha256.hash(packedSubChunk)),
       unpacked_chunk_hash: Bytes.toBase64Url(Sha256.hash(unpacked)),
