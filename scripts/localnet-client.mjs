@@ -12,8 +12,23 @@ export class LocalnetClient {
     this.baseUrl = baseUrl;
   }
 
+  /**
+   * fetch, tried once more when the connection was closed under it: the node closes idle
+   * keep-alive connections, and fetch may reuse one after a long pause on this side (such
+   * as hashing the account tree) and fail with "other side closed".
+   */
+  async fetchRetryingClosed(url, options) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      if (error.cause?.code !== 'UND_ERR_SOCKET') throw error;
+      console.log(`${url}: ${error.cause.message}; trying once more`);
+      return fetch(url, options);
+    }
+  }
+
   async get(path, readAs = 'json') {
-    const response = await fetch(this.baseUrl + path, { headers: { 'x-network': LocalnetClient.NETWORK_NAME }, signal: AbortSignal.timeout(60000) });
+    const response = await this.fetchRetryingClosed(this.baseUrl + path, { headers: { 'x-network': LocalnetClient.NETWORK_NAME }, signal: AbortSignal.timeout(60000) });
     if (!response.ok) throw new Error(`GET ${path}: HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
     return readAs === 'bytes' ? new Uint8Array(await response.arrayBuffer()) : readAs === 'text' ? response.text() : response.json();
   }
@@ -31,7 +46,7 @@ export class LocalnetClient {
     const wallets = [];
     let cursor = '';
     for (;;) {
-      const response = await fetch(`${this.baseUrl}/wallet_list/${rootHash}${cursor ? `/${cursor}` : ''}`, {
+      const response = await this.fetchRetryingClosed(`${this.baseUrl}/wallet_list/${rootHash}${cursor ? `/${cursor}` : ''}`, {
         headers: { 'x-network': LocalnetClient.NETWORK_NAME, 'content-type': 'application/json' }, signal: AbortSignal.timeout(120000),
       });
       if (!response.ok) throw new Error(`wallet_list page after "${cursor}": HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
@@ -44,7 +59,7 @@ export class LocalnetClient {
 
   /** POST /block2: a block in binary, announced by its id. Resolves { status, text }. */
   async postBlock(blockBinary, indepHash) {
-    const response = await fetch(`${this.baseUrl}/block2`, {
+    const response = await this.fetchRetryingClosed(`${this.baseUrl}/block2`, {
       method: 'POST', body: blockBinary, signal: AbortSignal.timeout(60000),
       headers: { 'x-network': LocalnetClient.NETWORK_NAME, 'arweave-block-hash': indepHash, 'content-type': 'application/octet-stream' },
     });

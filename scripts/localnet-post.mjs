@@ -41,11 +41,7 @@ class LocalnetBlockPoster {
     Object.assign(this, { blockCount, client });
   }
 
-  /**
-   * The tip with its reward and block-time histories. The node serves those only for blocks
-   * it made or took in since starting (not the snapshot's tip), so this waits, up to
-   * ACCEPT_TIMEOUT_MS, for a tip that has them.
-   */
+  /** The tip with its reward and block-time histories, waiting up to ACCEPT_TIMEOUT_MS for them. */
   async tipWithHistories() {
     const started = Date.now();
     for (;;) {
