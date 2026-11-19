@@ -13,8 +13,18 @@ export class PeerAccess {
    * report a mixed-content block as such (the request just fails), so this is decided up
    * front from how the page was loaded.
    */
+  static mixedContentAllowed = false;
+
+  /**
+   * Set when the person says their browser allows insecure content for this site (a
+   * per-site browser setting), so plain-http nodes are tried even from an https page.
+   */
+  static allowMixedContent(allowed) {
+    PeerAccess.mixedContentAllowed = Boolean(allowed);
+  }
+
   static blockedReason(pageLocation = globalThis.location) {
-    if (pageLocation?.protocol === 'https:') {
+    if (pageLocation?.protocol === 'https:' && !PeerAccess.mixedContentAllowed) {
       return 'this page was loaded over https, and browsers block https pages from calling Arweave nodes, which use plain http';
     }
     return null;
@@ -229,13 +239,15 @@ export class SourceGatherer {
    * Returns { gatheredAt, gateways, nodes, vdfServers }; each entry { url, milliseconds,
    * height }. Every candidate, and the known public VDF servers, are also asked for /vdf.
    */
-  async gather({ keepGateways = 150, keepNodes = 150 } = {}) {
+  async gather({ keepGateways = 150, keepNodes = 150, extraVdfCandidates = [] } = {}) {
     const { gatewayUrls, nodeUrls } = await this.gatherCandidates();
     const tested = async (urls) => this.tester.testAll(urls, { concurrency: 24, checkVdf: true });
     const entry = ({ url, milliseconds, height }) => ({ url, milliseconds, height });
     const gatewayResults = await tested(gatewayUrls);
     const nodeResults = await tested(nodeUrls);
-    const publicVdfResults = await tested(VdfServerClient.PUBLIC_SERVER_URLS);
+    // extraVdfCandidates: e.g. the public servers by IP address, which browsers never force
+    // to https (as they may a name under a domain that asked for HSTS).
+    const publicVdfResults = await tested([...VdfServerClient.PUBLIC_SERVER_URLS, ...extraVdfCandidates]);
     const gateways = gatewayResults.filter((result) => result.ok).slice(0, keepGateways).map(entry);
     const nodes = nodeResults.filter((result) => result.ok).slice(0, keepNodes).map(entry);
     const vdfServers = [...publicVdfResults, ...gatewayResults, ...nodeResults].filter((result) => result.vdf).map(entry);
