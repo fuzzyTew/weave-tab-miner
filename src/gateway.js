@@ -98,6 +98,24 @@ export class ArweaveGateway {
   }
 
   /**
+   * The address's latest transaction as the nodes record it (GET /wallet/{address}/last_tx,
+   * part of the node protocol, unlike GraphQL), with its confirmation if it has one:
+   * { id, confirmedAtHeight } — id null if it never sent a base-layer transaction.
+   * Data items sent through bundlers do not appear here.
+   */
+  async latestSentTransaction(address) {
+    const id = (await this.request(`/wallet/${address}/last_tx`, { readAs: 'text' })).trim();
+    if (!id) return { id: null, confirmedAtHeight: null };
+    try {
+      const status = await this.request(`/tx/${id}/status`);
+      return { id, confirmedAtHeight: status.block_height ?? null };
+    } catch {
+      // Pending or not yet seen by the answering source: shown without a height.
+      return { id, confirmedAtHeight: null };
+    }
+  }
+
+  /**
    * Recent transactions sent from and to an address, via the gateway's GraphQL index.
    * Mining rewards are not transactions, so they show only in the balance.
    */
