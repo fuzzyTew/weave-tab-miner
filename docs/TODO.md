@@ -78,8 +78,12 @@ height 2,069,866 with their parents' state, captured).
 2. [x] Rolling hashes: `src/block-history.js` computes `reward_history_hash`,
        `block_time_history_hash` and `hash_list_merkle` from the parent alone, matching all
        three saved blocks (`test/block-history.test.mjs`).
-3. [ ] Small fields: height, previous block, timestamp, `previous_solution_hash`, the
-       cumulative difficulty pair, the reward, and carried-over prices and pools.
+3. [x] Plain fields: `src/block-fields.js` computes all 24 (height, links, cumulative
+       difficulty, the reward from exact-integer inflation and the endowment, pools and
+       prices carried) for empty blocks, matching all three saved blocks
+       (`test/block-fields.test.mjs`). Stubs that refuse rather than guess: price
+       adjustment heights (every 50 blocks), difficulty retargets, redenomination, and
+       transactions' fees.
 4. [ ] Signature preimage and block hash (`indep_hash`), signed with the miner's key
        (RSA or secp256k1 ECDSA, both accepted since 2.9), through `DoubleSigningGuard`.
 5. [ ] Rebuild each saved localnet block from its parent, field by field, until all match.
