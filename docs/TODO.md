@@ -51,9 +51,13 @@ or a peer list of other malicious nodes. Each item below says what to check and 
       to WebAssembly, `fetch()`-like) through Snowflake WebSocket bridges, or webtor-rs.
       Off by default: it is several MB, slow to start, and bridges or gateways may block it
       too. Plug it in as a `fetch` the gateway and peer classes take.
-- [ ] Storage networks share one interface (src/networks.js: StorageNetwork, RecordMirror).
-      Autonomi is a stub waiting for a libp2p transport; add others the same way, each
-      naming the transport it needs.
+- [ ] Network-agnostic design (tried and reverted: a storage-network interface used by
+      one page section only, while everything else stayed Arweave code). Done properly it
+      would reorganize the library by network, e.g. `src/core/` (keys, records, transports,
+      storage in the browser), `src/networks/arweave/` (gateway, peers, transactions,
+      bundles, mining, packing, VDF, block building) and `src/networks/<other>/`, with
+      the page choosing networks through `core` interfaces throughout: identity,
+      balances and history, storing and reading records. Mining stays per network.
 - [ ] Beyond HTTP: Tor would also let a page reach any TCP port, so clients for other
       storage networks could be written, prices compared and data mirrored. libp2p in the
       browser (WebRTC, WebTransport) reaches libp2p networks such as Autonomi. Chrome's

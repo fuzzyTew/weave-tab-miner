@@ -13,7 +13,7 @@ class SingleFileBuilder {
    * conflicting top-level names; a name clash would show up as a SyntaxError on load.
    */
   static LIBRARY_ORDER = [
-    'src/miner.js', 'src/gateway.js', 'src/wallet.js', 'src/transaction.js', 'src/bundle.js', 'src/networks.js', 'src/randomx.js',
+    'src/miner.js', 'src/gateway.js', 'src/wallet.js', 'src/transaction.js', 'src/bundle.js', 'src/randomx.js',
     'src/storage.js', 'src/chunk-fetcher.js', 'src/chunk-share.js', 'src/signing-guard.js', 'src/peers.js', 'src/vdf-client.js', 'src/citations.js',
   ];
   static RANDOMX_BUNDLE = 'vendor/randomx-arweave/randomx-arweave.iife.js';
