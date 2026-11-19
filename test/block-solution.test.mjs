@@ -1,0 +1,52 @@
+// test/block-solution.test.mjs — OneChunkSolution against the saved localnet blocks: from a
+// block's unpacked chunk, recall byte, nonce and VDF info, our packing, H0 (real RandomX)
+// and H1 must give the node's solution fields. Two-chunk blocks are skipped (not built
+// here). The localnet leaves hash_preimage as zeros, so that field is not compared.
+// Fixtures as in test/account-tree.test.mjs.
+// Run: node test/block-solution.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { runInThisContext } from 'node:vm';
+import { OneChunkSolution } from '../src/block-solution.js';
+import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/randomx.js';
+import { Bytes, MiningIdentity } from '../src/miner.js';
+
+class BlockSolutionTest {
+  static COMPARED_FIELDS = ['nonce', 'hash', 'recall_byte', 'partition_number', 'poa', 'chunk_hash', 'unpacked_chunk_hash', 'packing_difficulty', 'replica_format'];
+
+  constructor(fixturesDirectory) {
+    this.fixturesDirectory = fixturesDirectory;
+    this.failures = 0;
+  }
+
+  async run() {
+    if (!existsSync(this.fixturesDirectory)) {
+      console.log(`SKIP  no localnet fixtures at ${this.fixturesDirectory}`);
+      return;
+    }
+    // The RandomX bundle is a classic script defining RandomxArweave; evaluate it as a page would.
+    runInThisContext(readFileSync(new URL('../vendor/randomx-arweave/randomx-arweave.iife.js', import.meta.url), 'utf8') + '\nglobalThis.RandomxArweave = RandomxArweave;');
+    const host = new RandomxDirectHost(globalThis.RandomxArweave);
+    const h0Hasher = new RandomxH0Hasher(host);
+    const entropySource = new RandomxSquaredEntropySource(host);
+    for (const name of readdirSync(this.fixturesDirectory).filter((file) => file.startsWith('block_')).sort()) {
+      const { parent, child } = JSON.parse(readFileSync(`${this.fixturesDirectory}/${name}`, 'utf8'));
+      if (child.recall_byte2 !== undefined && child.recall_byte2 !== null) {
+        console.log(`SKIP  block ${child.height}: a two-chunk solution`);
+        continue;
+      }
+      const solution = await OneChunkSolution.build({
+        addressBytes: MiningIdentity.fromAddress(child.reward_addr).addressBytes,
+        vdfInfo: child.nonce_limiter_info, seed: Bytes.fromBase64Url(parent.block.nonce_limiter_info.seed),
+        recallByte: BigInt(child.recall_byte), nonce: Number(Bytes.toBigInt(Bytes.fromBase64Url(child.nonce))),
+        chunkJson: { chunk: child.poa.unpacked_chunk, data_path: child.poa.data_path, tx_path: child.poa.tx_path },
+        h0Hasher, entropySource,
+      });
+      const differing = BlockSolutionTest.COMPARED_FIELDS.filter((field) => JSON.stringify(solution[field]) !== JSON.stringify(child[field]));
+      if (differing.length) this.failures++;
+      console.log(`${differing.length ? 'FAIL' : 'PASS'}  block ${child.height}: one-chunk solution fields match the node's${differing.length ? ' — differ: ' + differing.join(', ') : ''}`);
+    }
+    process.exitCode = this.failures ? 1 : 0;
+  }
+}
+
+new BlockSolutionTest(process.argv[2] ?? 'localnet_fixtures').run();
