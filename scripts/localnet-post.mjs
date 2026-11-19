@@ -1,0 +1,114 @@
+// scripts/localnet-post.mjs — mines blocks with this library and posts them to a running
+// Arweave localnet, several in a row, and reports what the node accepted. Step 6 of
+// docs/TODO.md "Turn a solution into a block". Run by the localnet workflow:
+//   node scripts/localnet-post.mjs <blocks to post>
+//
+// A localnet skips the difficulty check and lets a block name its recall chunk, so every
+// attempt can be a block: the script picks a chunk from the localnet's seeded data, packs
+// its proven sub-chunk for a fresh RSA key, and builds the block on the tip's own VDF step
+// (which a localnet allows). Everything else is checked by the node as on mainnet.
+import { readFileSync } from 'node:fs';
+import { runInThisContext } from 'node:vm';
+import { createHash, randomInt } from 'node:crypto';
+import { LocalnetClient } from './localnet-client.mjs';
+import { Bytes } from '../src/core/bytes.js';
+import { ConsensusConstants } from '../src/core/constants.js';
+import { AccountTree } from '../src/blocks/account-tree.js';
+import { RewardHistory } from '../src/blocks/rewards.js';
+import { BlockTimeHistory } from '../src/blocks/history.js';
+import { BlockAssembler, ChainState } from '../src/blocks/assembler.js';
+import { OneChunkSolution, VdfInfo } from '../src/blocks/solution.js';
+import { BlockSigner } from '../src/blocks/signer.js';
+import { DoubleSigningGuard } from '../src/blocks/signing-guard.js';
+import { BlockBinary } from '../src/blocks/binary.js';
+import { ArweaveWallet } from '../src/wallet/wallet.js';
+import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
+
+class MapStorage {
+  /** The getItem/setItem part of localStorage, in memory: the guard's records for this run. */
+  constructor() { this.items = new Map(); }
+  getItem(key) { return this.items.get(key) ?? null; }
+  setItem(key, value) { this.items.set(key, value); }
+}
+
+class LocalnetBlockPoster {
+  // The localnet's seeded data sits in the first 21 MiB of the weave; chunks are taken from
+  // the first 20 MiB so a whole chunk is always there.
+  static SEEDED_BYTES = 20 * 1024 * 1024;
+  static ACCEPT_TIMEOUT_MS = 120000;
+
+  constructor({ blockCount, client = new LocalnetClient() }) {
+    Object.assign(this, { blockCount, client });
+  }
+
+  async chainState() {
+    const tip = await this.client.get(`/block/height/${await this.client.height()}`);
+    const accounts = await this.client.walletList(tip.wallet_list);
+    // Node's SHA-384 is synchronous, which makes hashing the whole account tree much faster.
+    const accountTree = new AccountTree({ sha384: (bytes) => new Uint8Array(createHash('sha384').update(bytes).digest()) });
+    for (const json of accounts) {
+      const { addressBytes, account } = AccountTree.accountFromJson(json);
+      accountTree.insert(addressBytes, account);
+    }
+    const root = Bytes.toBase64Url(await accountTree.rootHash());
+    console.log(`tip ${tip.height} (${tip.indep_hash.slice(0, 12)}…): ${accounts.length} accounts, root ${root === tip.wallet_list ? 'matches' : 'DIFFERS from'} the tip's`);
+    return new ChainState({
+      block: tip,
+      rewardHistory: RewardHistory.fromBinary(await this.client.get(`/reward_history/${tip.indep_hash}`, 'bytes')),
+      blockTimeHistory: BlockTimeHistory.fromBinary(await this.client.get(`/block_time_history/${tip.indep_hash}`, 'bytes')),
+      accountTree,
+    });
+  }
+
+  randomx() {
+    // The RandomX bundle is a classic script defining RandomxArweave; evaluate it as a page would.
+    runInThisContext(readFileSync(new URL('../vendor/randomx-arweave/randomx-arweave.iife.js', import.meta.url), 'utf8') + '\nglobalThis.RandomxArweave = RandomxArweave;');
+    const host = new RandomxDirectHost(globalThis.RandomxArweave);
+    return { h0Hasher: new RandomxH0Hasher(host), entropySource: new RandomxSquaredEntropySource(host) };
+  }
+
+  async waitForTip(indepHash) {
+    const started = Date.now();
+    while (Date.now() - started < LocalnetBlockPoster.ACCEPT_TIMEOUT_MS) {
+      const tip = await this.client.get(`/block/height/${await this.client.height()}`);
+      if (tip.indep_hash === indepHash) return true;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    return false;
+  }
+
+  async run() {
+    const wallet = await ArweaveWallet.generate();
+    const signer = new BlockSigner({ wallet, guard: new DoubleSigningGuard({ storage: new MapStorage() }) });
+    console.log(`mining as ${wallet.address}`);
+    const state = await this.chainState();
+    const { h0Hasher, entropySource } = this.randomx();
+    let accepted = 0;
+    for (let index = 0; index < this.blockCount; index++) {
+      const chunkSize = ConsensusConstants.DATA_CHUNK_SIZE;
+      const recallByte = BigInt(randomInt(LocalnetBlockPoster.SEEDED_BYTES / chunkSize)) * BigInt(chunkSize);
+      const chunkJson = await this.client.get(`/chunk/${recallByte + 1n}`);
+      const solution = await OneChunkSolution.build({
+        addressBytes: wallet.addressBytes, vdfInfo: VdfInfo.sameStepAsParent(state.block),
+        seed: Bytes.fromBase64Url(state.block.nonce_limiter_info.seed), recallByte, chunkJson,
+        nonce: randomInt(32), h0Hasher, entropySource,
+      });
+      const timestamp = Math.max(Math.floor(Date.now() / 1000), Number(state.block.timestamp));
+      const block = await BlockAssembler.assemble({ state, solution, rewardAddress: wallet.address, rewardKey: Bytes.toBase64Url(wallet.ownerBytes), timestamp });
+      const signed = await signer.sign(block);
+      const reply = await this.client.postBlock(BlockBinary.encode(signed), signed.indep_hash);
+      console.log(`block ${signed.height} (${signed.indep_hash.slice(0, 12)}…, chunk at ${recallByte}): POST /block2 → ${reply.status} ${reply.text}`);
+      if (!(await this.waitForTip(signed.indep_hash))) {
+        console.log(`block ${signed.height} did not become the tip within ${LocalnetBlockPoster.ACCEPT_TIMEOUT_MS / 1000} s; the node log below says why`);
+        break;
+      }
+      accepted++;
+      console.log(`block ${signed.height} accepted: it is the localnet's tip`);
+      BlockAssembler.advance(state, signed);
+    }
+    console.log(`${accepted} of ${this.blockCount} blocks accepted`);
+    process.exitCode = accepted === this.blockCount ? 0 : 1;
+  }
+}
+
+await new LocalnetBlockPoster({ blockCount: Number(process.argv[2] ?? 3) }).run();

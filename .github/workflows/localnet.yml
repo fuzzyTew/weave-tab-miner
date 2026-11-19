@@ -8,8 +8,13 @@ name: Localnet fixtures
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: "capture: the node mines blocks and they are saved as fixtures; post: this library mines blocks and posts them to the node"
+        type: choice
+        options: [capture, post]
+        default: capture
       blocks:
-        description: Blocks to mine and save
+        description: Blocks to mine (and save, or post)
         default: '3'
 
 permissions:
@@ -76,17 +81,23 @@ jobs:
           echo "localnet did not start; its log:"; tail -200 .tmp/localnet.log; exit 1
 
       - name: Mine and save blocks
+        if: inputs.mode == 'capture'
         env:
           LOCALNET_MINE_COMMAND: >-
             erl -name capture@127.0.0.1 -setcookie localnet -noshell -eval
             "io:format(\"~p~n\", [rpc:call('main-localnet@127.0.0.1', ar_localnet, mine_one_block, [])]), halt()."
         run: node scripts/localnet-capture.mjs localnet_fixtures "${{ inputs.blocks }}"
 
+      - name: Mine blocks with this library and post them to the node
+        if: inputs.mode == 'post'
+        run: node scripts/localnet-post.mjs "${{ inputs.blocks }}"
+
       - name: Show the localnet log
         if: always()
         run: tail -300 arweave/.tmp/localnet.log || true
 
       - name: Commit the fixtures to the localnet-fixtures branch
+        if: inputs.mode == 'capture'
         run: |
           git config user.name "localnet workflow"
           git config user.email "actions@users.noreply.github.com"
