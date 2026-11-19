@@ -33,7 +33,8 @@ class MapStorage {
 
 class LocalnetBlockPoster {
   // The localnet seeds about 21 MiB of data near the start of the weave, with gaps (the
-  // node answers 404 there), so chunks are drawn from the first 20 MiB until one is held.
+  // node answers 404 there) and small chunks, so chunks are drawn from the first 20 MiB until a
+  // full one is held.
   static SEEDED_BYTES = 20 * 1024 * 1024;
   static CHUNK_DRAWS = 40;
   static ACCEPT_TIMEOUT_MS = 120000;
@@ -87,13 +88,17 @@ class LocalnetBlockPoster {
     return { h0Hasher: new RandomxH0Hasher(host), entropySource: new RandomxSquaredEntropySource(host) };
   }
 
-  /** A chunk-aligned recall byte the node holds data at, with that chunk's JSON. */
+  /** A chunk-aligned recall byte the node holds a full chunk at, with that chunk's JSON. */
   async heldChunk() {
     const chunkSize = ConsensusConstants.DATA_CHUNK_SIZE;
     for (let draw = 0; draw < LocalnetBlockPoster.CHUNK_DRAWS; draw++) {
       const recallByte = BigInt(randomInt(LocalnetBlockPoster.SEEDED_BYTES / chunkSize)) * BigInt(chunkSize);
       try {
-        return { recallByte, chunkJson: await this.client.get(`/chunk/${recallByte + 1n}`) };
+        const chunkJson = await this.client.get(`/chunk/${recallByte + 1n}`);
+        // OneChunkSolution handles full chunks only; the seeded data also holds small ones.
+        const chunkBytes = Bytes.fromBase64Url(chunkJson.chunk).length;
+        if (chunkBytes === chunkSize) return { recallByte, chunkJson };
+        console.log(`chunk at ${recallByte}: ${chunkBytes} bytes, not a full chunk`);
       } catch (error) {
         console.log(`chunk at ${recallByte}: ${error.message}`);
       }
