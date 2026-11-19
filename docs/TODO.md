@@ -4,7 +4,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 
 | Task | State |
 |---|---|
-| Turn a solution into a block | 5 of 7 steps done, each checked against a real node's blocks |
+| Turn a solution into a block | 6 of 7 steps done: a localnet takes our blocks; mainnet left |
 | Check what peers and gateways say | not started; the page trusts the first answer |
 | Reach networks that block Arweave | partly: gathered sources, seeds, a source test |
 | Hold more data | mostly done; storage, not memory, is the limit |
@@ -13,7 +13,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Network-agnostic design | tried and reverted; plan below |
 
 <details>
-<summary><b>Turn a solution into a block</b> — 5 of 7 steps done</summary>
+<summary><b>Turn a solution into a block</b> — 6 of 7 steps done</summary>
 
 A found solution cannot become a block yet: nothing assembles, signs or sends one. These are
 the steps, in order. Each is checked against blocks a real node made, saved on the
@@ -43,13 +43,17 @@ height 2,069,866 with their parents' state, captured).
        parent's state and the block's mining solution, advancing the state with its own
        blocks; every field matches the node's, and with the node's signature so does the
        id (`test/block-assembler.test.mjs`).
-6. [ ] Localnet acceptance. Done: `src/blocks/binary.js` encodes a block to the binary
+6. [x] Localnet acceptance: `src/blocks/binary.js` encodes a block to the binary
        `POST /block2` takes, identical byte for byte to the node's own
-       (`test/block-binary.test.mjs`). Left: a manual workflow posts several blocks our code built in a row
-       (`POST /block_announcement`, then `POST /block2`) and reports what the node accepted.
-       The localnet skips difficulty and lets a block choose its recall chunks, so every
-       step can make a block.
-7. [ ] Mainnet: the same, after a real solution.
+       (`test/block-binary.test.mjs`). The "Localnet fixtures" workflow's `post` mode
+       (`scripts/localnet-post.mjs`) mines with a fresh RSA key, packs one sub-chunk with
+       real RandomX (`src/blocks/solution.js`, `test/block-solution.test.mjs`), builds each
+       block on its parent's VDF step and posts it; the node took 3 of 3 in a row as its
+       tip. Small chunks are zero-padded to 256 KiB, as the node proves them.
+7. [ ] Mainnet: the same, after a real solution. Needs: VDF steps between the parent's and
+       the block's (`VdfInfo` only builds the localnet's same-step info), two-chunk
+       solutions, secp256k1 signing (mainnet blocks use it), and the stubbed fields
+       (price adjustments every 50 blocks, retargets) — `NextBlockFields` throws at those.
 
 To continue in a new conversation with Claude, a prompt like this works:
 
