@@ -71,6 +71,9 @@ jobs:
       - name: Assemble whole blocks and compare them with the localnet's
         run: node test/block-assembler.test.mjs localnet_fixtures
 
+      - name: Encode blocks to the binary nodes accept, compared with the localnet's
+        run: node test/block-binary.test.mjs localnet_fixtures
+
       - name: Check ANS-104 data items against arbundles' output
         run: node test/data-item.test.mjs
 

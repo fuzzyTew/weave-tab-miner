@@ -43,7 +43,9 @@ height 2,069,866 with their parents' state, captured).
        parent's state and the block's mining solution, advancing the state with its own
        blocks; every field matches the node's, and with the node's signature so does the
        id (`test/block-assembler.test.mjs`).
-6. [ ] Localnet acceptance: a manual workflow posts several blocks our code built in a row
+6. [ ] Localnet acceptance. Done: `src/block-binary.js` encodes a block to the binary
+       `POST /block2` takes, identical byte for byte to the node's own
+       (`test/block-binary.test.mjs`). Left: a manual workflow posts several blocks our code built in a row
        (`POST /block_announcement`, then `POST /block2`) and reports what the node accepted.
        The localnet skips difficulty and lets a block choose its recall chunks, so every
        step can make a block.
