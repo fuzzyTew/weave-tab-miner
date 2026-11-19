@@ -1141,18 +1141,34 @@ class BrowserNodeApp {
     const address = this.view.elements.walletAddressInput.value.trim();
     this.view.setText('walletStatus', `Looking up ${address.slice(0, 8)}…`);
     try {
-      const [balance, reserved, history] = await Promise.allSettled([
+      const [balance, reserved, history, latestSent] = await Promise.allSettled([
         this.gateway.balanceWinston(address), this.gateway.reservedRewardsWinston(address), this.gateway.transactionHistory(address),
+        this.gateway.latestSentTransaction(address),
       ]);
       this.view.setText('walletBalance', balance.status === 'fulfilled' ? PageView.formatAr(balance.value) : 'unavailable');
       this.view.setText('walletReserved', reserved.status === 'fulfilled' ? PageView.formatAr(reserved.value) : 'unavailable from these gateways');
+      // From the node protocol itself, so it does not depend on a gateway's index.
+      if (latestSent.status === 'fulfilled') {
+        const { id, confirmedAtHeight } = latestSent.value;
+        const element = this.view.elements.walletLatestSent;
+        element.replaceChildren();
+        if (!id) {
+          element.textContent = 'none (bundled items do not show here)';
+        } else {
+          const link = document.createElement('a');
+          Object.assign(link, { href: `https://arweave.net/tx/${id}`, target: '_blank', rel: 'noopener', textContent: id });
+          element.append(link, confirmedAtHeight ? `, in block ${confirmedAtHeight.toLocaleString()}` : ', not confirmed yet');
+        }
+      } else {
+        this.view.setText('walletLatestSent', 'unavailable');
+      }
       if (history.status === 'fulfilled') {
         this.view.fillHistory('walletSent', history.value.sent, 'nothing sent');
         this.view.fillHistory('walletReceived', history.value.received, 'nothing received');
       }
-      const failed = [balance, reserved, history].filter((result) => result.status === 'rejected');
+      const failed = [balance, reserved, history, latestSent].filter((result) => result.status === 'rejected');
       for (const result of failed) this.view.log(result.reason.message.split('\n')[0], 'error');
-      this.view.setText('walletStatus', failed.length === 3 ? 'Nothing answered.' : `Checked at ${new Date().toLocaleTimeString()}.`);
+      this.view.setText('walletStatus', failed.length === 4 ? 'Nothing answered.' : `Checked at ${new Date().toLocaleTimeString()}.`);
     } catch (error) {
       this.view.setText('walletStatus', `Lookup failed: ${error.message}`);
     }
