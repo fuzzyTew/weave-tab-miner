@@ -1,6 +1,6 @@
 // src/block-fields.js — the plain fields of the next block, computed from its parent: height,
 // links to the parent, cumulative difficulty, the reward, and the pools and prices carried
-// forward. Step 3 of docs/TODO.md "Building blocks". Empty blocks only (no transactions).
+// forward. Step 3 of docs/TODO.md "Turn a solution into a block". Empty blocks only (no transactions).
 import { BlockTimeHistory } from './block-history.js';
 
 export class Inflation {

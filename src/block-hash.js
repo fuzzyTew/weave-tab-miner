@@ -1,6 +1,6 @@
 // src/block-hash.js — the hash a miner signs and the block's id (ar_block.erl
 // generate_signed_hash and indep_hash, from fork 2.9), built from block JSON as nodes serve
-// it. Step 4 of docs/TODO.md "Building blocks".
+// it. Step 4 of docs/TODO.md "Turn a solution into a block".
 import { Bytes, Sha256 } from './miner.js';
 
 export class SegmentWriter {

@@ -1,6 +1,6 @@
 // src/block-history.js — the three hashes a block carries over its predecessors: the reward
 // history hash, the block-time history hash, and the block-index hash
-// (`hash_list_merkle`). Step 2 of docs/TODO.md "Building blocks".
+// (`hash_list_merkle`). Step 2 of docs/TODO.md "Turn a solution into a block".
 import { Bytes, Sha256 } from './miner.js';
 import { DeepHash } from './transaction.js';
 

@@ -1,6 +1,6 @@
 // src/account-tree.js — Arweave's account tree and its root hash (a block's `wallet_list`),
 // ported from the node: ar_patricia_tree_core.erl (insert, compute_hash) with the account
-// hashing of ar_block.erl wallet_list_hash_fun. Step 1 of docs/TODO.md "Building blocks".
+// hashing of ar_block.erl wallet_list_hash_fun. Step 1 of docs/TODO.md "Turn a solution into a block".
 //
 // A Patricia tree (also called a radix tree) stores keys by their shared beginnings: each
 // node holds the bytes its keys have in common, and branches where they differ.
