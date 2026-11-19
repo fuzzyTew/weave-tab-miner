@@ -1,7 +1,9 @@
 // test/held-storage.test.mjs — HeldStorage keeping chunks on disk: only `residentLimit`
 // saved chunks stay in memory, any can be read back when a step needs it, and chunks not
 // yet saved are never dropped. Run: node test/held-storage.test.mjs
-import { ConsensusConstants, HeldStorage, Replica29Layout } from '../src/miner.js';
+import { ConsensusConstants } from '../src/core/constants.js';
+import { HeldStorage } from '../src/mining/held-storage.js';
+import { Replica29Layout } from '../src/mining/packing.js';
 
 class HeldStorageTest {
   run() {

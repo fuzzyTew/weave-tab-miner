@@ -2,8 +2,8 @@
 // delays (scaled down to milliseconds) and missing chunks: it delivers exactly the chunks
 // wanted, never runs more requests at once than allowed, skips missing ones, batches as
 // asked, and stops starting requests when told. Run: node test/chunk-fetcher.test.mjs
-import { ChunkFetcher } from '../src/chunk-fetcher.js';
-import { Bytes } from '../src/miner.js';
+import { ChunkFetcher } from '../src/network/chunk-fetcher.js';
+import { Bytes } from '../src/core/bytes.js';
 
 class FakeGateway {
   /** Answers chunkJson after 1–5 ms; positions divisible by `missingEvery` have no chunk. */

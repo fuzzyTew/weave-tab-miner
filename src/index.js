@@ -1,23 +1,42 @@
 // src/index.js — the library's public entry point: `import { Miner } from 'weave-tab-miner'`.
-// Each module can also be imported on its own, e.g. 'weave-tab-miner/bundle'.
-export * from './miner.js';
-export * from './gateway.js';
-export * from './wallet.js';
-export * from './transaction.js';
-export * from './bundle.js';
-export * from './randomx.js';
-export * from './storage.js';
-export * from './chunk-fetcher.js';
-export * from './chunk-share.js';
-export * from './signing-guard.js';
-export * from './account-tree.js';
-export * from './rewards.js';
-export * from './block-history.js';
-export * from './block-fields.js';
-export * from './block-hash.js';
-export * from './block-signer.js';
-export * from './block-assembler.js';
-export * from './block-binary.js';
-export * from './peers.js';
-export * from './vdf-client.js';
-export * from './citations.js';
+// Modules can also be imported one at a time by path, e.g. 'weave-tab-miner/wallet/bundle'.
+// Folders, by area (README.md "Layout" describes each file):
+//   core/     bytes, SHA-256, constants, formatting, source citations
+//   mining/   VDF, difficulty, packing, the per-step hashes, held storage, the miner, odds, RandomX
+//   blocks/   building a block: account tree, rewards, history hashes, fields, solution, hash, signing, binary
+//   network/  gateways, peers and sources, VDF servers, fetching chunks
+//   storage/  packed chunks in the browser, and moving them between copies of the page
+//   wallet/   keys, transactions, ANS-104 data items for bundlers
+export * from './blocks/account-tree.js';
+export * from './blocks/assembler.js';
+export * from './blocks/binary.js';
+export * from './blocks/fields.js';
+export * from './blocks/hash.js';
+export * from './blocks/history.js';
+export * from './blocks/rewards.js';
+export * from './blocks/signer.js';
+export * from './blocks/signing-guard.js';
+export * from './blocks/solution.js';
+export * from './core/bytes.js';
+export * from './core/citations.js';
+export * from './core/constants.js';
+export * from './core/pretty-number.js';
+export * from './core/sha256.js';
+export * from './mining/difficulty.js';
+export * from './mining/held-storage.js';
+export * from './mining/identity.js';
+export * from './mining/miner.js';
+export * from './mining/mining-math.js';
+export * from './mining/odds.js';
+export * from './mining/packing.js';
+export * from './mining/randomx.js';
+export * from './mining/vdf.js';
+export * from './network/chunk-fetcher.js';
+export * from './network/gateway.js';
+export * from './network/peers.js';
+export * from './network/vdf-client.js';
+export * from './storage/chunk-share.js';
+export * from './storage/chunk-store.js';
+export * from './wallet/bundle.js';
+export * from './wallet/transaction.js';
+export * from './wallet/wallet.js';

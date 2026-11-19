@@ -2,7 +2,7 @@
 // accounts written by ar.io's own encoder (@ar.io/solana-contracts 4.x), saved in
 // test/fixtures/solana-gateway-accounts.json. Run: node test/solana-registry.test.mjs
 import { readFileSync } from 'node:fs';
-import { SolanaGatewayRegistry } from '../src/peers.js';
+import { SolanaGatewayRegistry } from '../src/network/peers.js';
 
 class SolanaRegistryTest {
   run() {

@@ -6,9 +6,10 @@
 // Run: node test/block-solution.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
-import { OneChunkSolution } from '../src/block-solution.js';
-import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/randomx.js';
-import { Bytes, MiningIdentity } from '../src/miner.js';
+import { OneChunkSolution } from '../src/blocks/solution.js';
+import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
+import { Bytes } from '../src/core/bytes.js';
+import { MiningIdentity } from '../src/mining/identity.js';
 
 class BlockSolutionTest {
   static COMPARED_FIELDS = ['nonce', 'hash', 'recall_byte', 'partition_number', 'poa', 'chunk_hash', 'unpacked_chunk_hash', 'packing_difficulty', 'replica_format'];

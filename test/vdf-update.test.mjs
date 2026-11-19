@@ -2,8 +2,8 @@
 // ar_serialize.erl (nonce_limiter_update_to_binary format 2). No live VDF server was
 // reachable when this was written, so this tests the layout, not a real server's reply.
 // Run: node test/vdf-update.test.mjs
-import { Bytes } from '../src/miner.js';
-import { VdfUpdate } from '../src/vdf-client.js';
+import { Bytes } from '../src/core/bytes.js';
+import { VdfUpdate } from '../src/network/vdf-client.js';
 
 class VdfUpdateTest {
   static encodeInt(value) {

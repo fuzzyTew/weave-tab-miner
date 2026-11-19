@@ -4,10 +4,15 @@ import { readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  Bytes, Sha256, ConsensusConstants, Replica29Layout, MiningIdentity, HeldStorage, Miner, VdfSession,
-} from '../src/miner.js';
-import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/randomx.js';
+import { Bytes } from '../src/core/bytes.js';
+import { Sha256 } from '../src/core/sha256.js';
+import { ConsensusConstants } from '../src/core/constants.js';
+import { Replica29Layout } from '../src/mining/packing.js';
+import { MiningIdentity } from '../src/mining/identity.js';
+import { HeldStorage } from '../src/mining/held-storage.js';
+import { Miner } from '../src/mining/miner.js';
+import { VdfSession } from '../src/mining/vdf.js';
+import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 
 class RandomxBlockTests {
   constructor(directory) {

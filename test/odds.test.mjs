@@ -2,7 +2,10 @@
 // back to the expected wait, and the range-hit chance matches the simple cases worked out
 // by hand (one chunk; a contiguous run; chunks spread out). Run: node test/odds.test.mjs
 import { readFileSync } from 'node:fs';
-import { ConsensusConstants, HeldStorage, SolutionOdds, VdfSession } from '../src/miner.js';
+import { ConsensusConstants } from '../src/core/constants.js';
+import { HeldStorage } from '../src/mining/held-storage.js';
+import { SolutionOdds } from '../src/mining/odds.js';
+import { VdfSession } from '../src/mining/vdf.js';
 
 class OddsTest {
   constructor() {

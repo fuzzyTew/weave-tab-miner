@@ -22,9 +22,9 @@ class TransactionCrossCheck {
   }
 
   async run() {
-    const { Bytes } = await import(this.moduleUrl('miner.js'));
-    const { ArweaveWallet } = await import(this.moduleUrl('wallet.js'));
-    const { DataMerkle, DataTransaction } = await import(this.moduleUrl('transaction.js'));
+    const { Bytes } = await import(this.moduleUrl('core/bytes.js'));
+    const { ArweaveWallet } = await import(this.moduleUrl('wallet/wallet.js'));
+    const { DataMerkle, DataTransaction } = await import(this.moduleUrl('wallet/transaction.js'));
 
     // The 256 KiB + 100 size forces the even split of the last two chunks.
     for (const size of [1, 1000, 262144, 262244, 600000, 786432, 1048576 + 5]) {

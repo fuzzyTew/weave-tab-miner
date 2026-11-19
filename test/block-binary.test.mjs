@@ -3,7 +3,7 @@
 // (GET /block2/height). Fixtures as in test/account-tree.test.mjs.
 // Run: node test/block-binary.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { BlockBinary } from '../src/block-binary.js';
+import { BlockBinary } from '../src/blocks/binary.js';
 
 class BlockBinaryTest {
   constructor(fixturesDirectory) {

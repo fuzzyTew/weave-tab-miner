@@ -3,9 +3,9 @@
 // test/account-tree.test.mjs.
 // Run: node test/block-fields.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { BlockTimeHistory } from '../src/block-history.js';
-import { NextBlockFields } from '../src/block-fields.js';
-import { Bytes } from '../src/miner.js';
+import { BlockTimeHistory } from '../src/blocks/history.js';
+import { NextBlockFields } from '../src/blocks/fields.js';
+import { Bytes } from '../src/core/bytes.js';
 
 class BlockFieldsTest {
   constructor(fixturesDirectory) {

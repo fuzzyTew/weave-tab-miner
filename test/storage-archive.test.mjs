@@ -1,6 +1,6 @@
 // test/storage-archive.test.mjs — round-trips packed chunks through PackedChunkArchive and
 // checks that damaged or foreign files are refused. Run: node test/storage-archive.test.mjs
-import { PackedChunkArchive } from '../src/storage.js';
+import { PackedChunkArchive } from '../src/storage/chunk-store.js';
 
 class ArchiveTest {
   async run() {

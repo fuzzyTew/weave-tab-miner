@@ -1,21 +1,27 @@
 // apps/browser/app.js — the page's controller. Mining, RandomX, storage, network, wallet and
 // transaction logic live in the library under src/; this file only wires the
 // page's controls and displays to them.
-import {
-  Bytes, ConsensusConstants, Replica29Layout, MiningIdentity, ChunkPacker, StubEntropySource,
-  StubH0Hasher, HeldStorage, Miner, VdfSession, SolutionOdds, PrettyNumber,
-} from '../../src/miner.js';
-import { ArweaveGateway } from '../../src/gateway.js';
-import { ArweaveWallet } from '../../src/wallet.js';
-import { DataTransaction } from '../../src/transaction.js';
-import { DataItem, TurboUploader } from '../../src/bundle.js';
-import { ChunkFetcher } from '../../src/chunk-fetcher.js';
-import { ChunkShareBridge } from '../../src/chunk-share.js';
-import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/randomx.js';
-import { PackedChunkStore, PackedChunkArchive } from '../../src/storage.js';
-import { PeerAccess, PeerDirectory, GatewayDirectory, SourceTester } from '../../src/peers.js';
-import { VdfServerClient, VdfUpdate } from '../../src/vdf-client.js';
-import { SourceCitations } from '../../src/citations.js';
+import { Bytes } from '../../src/core/bytes.js';
+import { ConsensusConstants } from '../../src/core/constants.js';
+import { Replica29Layout, ChunkPacker, StubEntropySource } from '../../src/mining/packing.js';
+import { MiningIdentity } from '../../src/mining/identity.js';
+import { StubH0Hasher } from '../../src/mining/mining-math.js';
+import { HeldStorage } from '../../src/mining/held-storage.js';
+import { Miner } from '../../src/mining/miner.js';
+import { VdfSession } from '../../src/mining/vdf.js';
+import { SolutionOdds } from '../../src/mining/odds.js';
+import { PrettyNumber } from '../../src/core/pretty-number.js';
+import { ArweaveGateway } from '../../src/network/gateway.js';
+import { ArweaveWallet } from '../../src/wallet/wallet.js';
+import { DataTransaction } from '../../src/wallet/transaction.js';
+import { DataItem, TurboUploader } from '../../src/wallet/bundle.js';
+import { ChunkFetcher } from '../../src/network/chunk-fetcher.js';
+import { ChunkShareBridge } from '../../src/storage/chunk-share.js';
+import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/mining/randomx.js';
+import { PackedChunkStore, PackedChunkArchive } from '../../src/storage/chunk-store.js';
+import { PeerAccess, PeerDirectory, GatewayDirectory, SourceTester } from '../../src/network/peers.js';
+import { VdfServerClient, VdfUpdate } from '../../src/network/vdf-client.js';
+import { SourceCitations } from '../../src/core/citations.js';
 
 class BundledResources {
   /**

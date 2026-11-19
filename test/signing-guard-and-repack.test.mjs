@@ -1,8 +1,10 @@
 // test/signing-guard-and-repack.test.mjs — DoubleSigningGuard against the node's rule, and
 // ChunkPacker.repackChunks against packing the plain data directly (stand-in entropy, which
 // exercises the same XOR logic quickly). Run: node test/signing-guard-and-repack.test.mjs
-import { DoubleSigningGuard } from '../src/signing-guard.js';
-import { Bytes, ChunkPacker, MiningIdentity, StubEntropySource } from '../src/miner.js';
+import { DoubleSigningGuard } from '../src/blocks/signing-guard.js';
+import { Bytes } from '../src/core/bytes.js';
+import { ChunkPacker, StubEntropySource } from '../src/mining/packing.js';
+import { MiningIdentity } from '../src/mining/identity.js';
 
 class MapStorage {
   /** The getItem/setItem part of localStorage, in memory. */

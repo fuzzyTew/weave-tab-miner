@@ -3,8 +3,8 @@
 // test/account-tree.test.mjs.
 // Run: node test/block-history.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { BlockHistoryHashes, BlockTimeHistory } from '../src/block-history.js';
-import { Bytes } from '../src/miner.js';
+import { BlockHistoryHashes, BlockTimeHistory } from '../src/blocks/history.js';
+import { Bytes } from '../src/core/bytes.js';
 
 class BlockHistoryTest {
   constructor(fixturesDirectory) {

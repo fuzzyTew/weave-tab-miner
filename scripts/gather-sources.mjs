@@ -4,8 +4,8 @@
 //   node scripts/gather-sources.mjs [data/sources.json]
 import { readFileSync, writeFileSync } from 'node:fs';
 import { lookup } from 'node:dns/promises';
-import { SourceGatherer } from '../src/peers.js';
-import { VdfServerClient } from '../src/vdf-client.js';
+import { SourceGatherer } from '../src/network/peers.js';
+import { VdfServerClient } from '../src/network/vdf-client.js';
 
 class GatherSourcesApp {
   constructor(outputPath = new URL('../data/sources.json', import.meta.url)) {

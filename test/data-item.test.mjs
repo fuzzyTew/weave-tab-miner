@@ -2,8 +2,8 @@
 // (test/fixtures/data-item.json): ours must verify its signature, derive the same id, and lay out
 // every unsigned byte the same way. Run: node test/data-item.test.mjs
 import { readFileSync } from 'node:fs';
-import { Bytes } from '../src/miner.js';
-import { DataItem } from '../src/bundle.js';
+import { Bytes } from '../src/core/bytes.js';
+import { DataItem } from '../src/wallet/bundle.js';
 
 class DataItemTest {
   run() {

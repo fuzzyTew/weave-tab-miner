@@ -7,12 +7,12 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
-import { AccountTree } from '../src/account-tree.js';
-import { RewardHistory } from '../src/rewards.js';
-import { BlockTimeHistory } from '../src/block-history.js';
-import { BlockAssembler, ChainState } from '../src/block-assembler.js';
-import { BlockHash } from '../src/block-hash.js';
-import { Bytes } from '../src/miner.js';
+import { AccountTree } from '../src/blocks/account-tree.js';
+import { RewardHistory } from '../src/blocks/rewards.js';
+import { BlockTimeHistory } from '../src/blocks/history.js';
+import { BlockAssembler, ChainState } from '../src/blocks/assembler.js';
+import { BlockHash } from '../src/blocks/hash.js';
+import { Bytes } from '../src/core/bytes.js';
 
 class BlockAssemblerTest {
   // Set by the signer, not the assembler.

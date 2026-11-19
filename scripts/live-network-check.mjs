@@ -2,12 +2,14 @@
 // real gateways and nodes, and reports which answer and whether the answers parse. Meant for
 // a machine that can reach Arweave (GitHub's runners can; the machine this was written on
 // could not). Run: node scripts/live-network-check.mjs
-import {
-  Bytes, ConsensusConstants, Difficulty, Replica29Layout, VdfChain, VdfSession,
-} from '../src/miner.js';
-import { ArweaveGateway } from '../src/gateway.js';
-import { GatewayDirectory, PeerDirectory, SolanaGatewayRegistry } from '../src/peers.js';
-import { VdfServerClient, VdfUpdate } from '../src/vdf-client.js';
+import { Bytes } from '../src/core/bytes.js';
+import { ConsensusConstants } from '../src/core/constants.js';
+import { Difficulty } from '../src/mining/difficulty.js';
+import { Replica29Layout } from '../src/mining/packing.js';
+import { VdfChain, VdfSession } from '../src/mining/vdf.js';
+import { ArweaveGateway } from '../src/network/gateway.js';
+import { GatewayDirectory, PeerDirectory, SolanaGatewayRegistry } from '../src/network/peers.js';
+import { VdfServerClient, VdfUpdate } from '../src/network/vdf-client.js';
 
 class LiveNetworkCheck {
   /**

@@ -7,9 +7,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
-import { AccountTree } from '../src/account-tree.js';
-import { RewardHistory } from '../src/rewards.js';
-import { Bytes } from '../src/miner.js';
+import { AccountTree } from '../src/blocks/account-tree.js';
+import { RewardHistory } from '../src/blocks/rewards.js';
+import { Bytes } from '../src/core/bytes.js';
 
 class AccountTreeTest {
   constructor(fixturesDirectory) {

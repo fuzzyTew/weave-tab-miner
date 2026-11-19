@@ -5,8 +5,8 @@
 // Run: node test/block-hash.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createHash, createPublicKey, verify } from 'node:crypto';
-import { BlockHash } from '../src/block-hash.js';
-import { Bytes } from '../src/miner.js';
+import { BlockHash } from '../src/blocks/hash.js';
+import { Bytes } from '../src/core/bytes.js';
 
 class BlockHashTest {
   /** SPKI header for a compressed secp256k1 public key, so Node's crypto can read one. */

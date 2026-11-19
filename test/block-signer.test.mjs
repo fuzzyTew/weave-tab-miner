@@ -4,11 +4,11 @@
 // test/account-tree.test.mjs.
 // Run: node test/block-signer.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { BlockSigner } from '../src/block-signer.js';
-import { BlockHash } from '../src/block-hash.js';
-import { DoubleSigningGuard } from '../src/signing-guard.js';
-import { ArweaveWallet } from '../src/wallet.js';
-import { Bytes } from '../src/miner.js';
+import { BlockSigner } from '../src/blocks/signer.js';
+import { BlockHash } from '../src/blocks/hash.js';
+import { DoubleSigningGuard } from '../src/blocks/signing-guard.js';
+import { ArweaveWallet } from '../src/wallet/wallet.js';
+import { Bytes } from '../src/core/bytes.js';
 
 class MapStorage {
   /** The getItem/setItem part of localStorage, in memory. */

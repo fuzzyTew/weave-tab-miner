@@ -1,11 +1,18 @@
-// Checks src/miner.js against Node's own SHA-256 and a real mainnet block (height 2040257).
+// Checks src/mining/ against Node's own SHA-256 and a real mainnet block (height 2040257).
 // Run: node test/against-block.test.mjs [block.json]   (default: data/sample-block.json)
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import {
-  Bytes, Sha256, VdfChain, Difficulty, Replica29Layout, ConsensusConstants, MiningMath,
-  MiningIdentity, ChunkPacker, StubEntropySource, StubH0Hasher, HeldStorage, Miner, VdfSession, SolutionOdds,
-} from '../src/miner.js';
+import { Bytes } from '../src/core/bytes.js';
+import { Sha256 } from '../src/core/sha256.js';
+import { VdfChain, VdfSession } from '../src/mining/vdf.js';
+import { Difficulty } from '../src/mining/difficulty.js';
+import { Replica29Layout, ChunkPacker, StubEntropySource } from '../src/mining/packing.js';
+import { ConsensusConstants } from '../src/core/constants.js';
+import { MiningMath, StubH0Hasher } from '../src/mining/mining-math.js';
+import { MiningIdentity } from '../src/mining/identity.js';
+import { HeldStorage } from '../src/mining/held-storage.js';
+import { Miner } from '../src/mining/miner.js';
+import { SolutionOdds } from '../src/mining/odds.js';
 
 class BlockTests {
   constructor(blockPath) {

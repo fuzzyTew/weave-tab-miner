@@ -9,13 +9,18 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  Bytes, ConsensusConstants, Replica29Layout, MiningIdentity, ChunkPacker, StubEntropySource,
-  StubH0Hasher, HeldStorage, Miner, VdfSession, VdfChain, SolutionOdds,
-} from '../../src/miner.js';
-import { ArweaveGateway } from '../../src/gateway.js';
-import { VdfServerClient, VdfUpdate } from '../../src/vdf-client.js';
-import { RandomxBundle, RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/randomx.js';
+import { Bytes } from '../../src/core/bytes.js';
+import { ConsensusConstants } from '../../src/core/constants.js';
+import { Replica29Layout, ChunkPacker, StubEntropySource } from '../../src/mining/packing.js';
+import { MiningIdentity } from '../../src/mining/identity.js';
+import { StubH0Hasher } from '../../src/mining/mining-math.js';
+import { HeldStorage } from '../../src/mining/held-storage.js';
+import { Miner } from '../../src/mining/miner.js';
+import { VdfSession, VdfChain } from '../../src/mining/vdf.js';
+import { SolutionOdds } from '../../src/mining/odds.js';
+import { ArweaveGateway } from '../../src/network/gateway.js';
+import { VdfServerClient, VdfUpdate } from '../../src/network/vdf-client.js';
+import { RandomxBundle, RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/mining/randomx.js';
 
 class CommandLineOptions {
   /**

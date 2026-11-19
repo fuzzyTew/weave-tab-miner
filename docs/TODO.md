@@ -20,30 +20,30 @@ the steps, in order. Each is checked against blocks a real node made, saved on t
 `localnet-fixtures` branch by the manual "Localnet fixtures" workflow (3 blocks from
 height 2,069,866 with their parents' state, captured).
 
-1. [x] Account tree root: `src/account-tree.js` rebuilds `wallet_list` from the saved
+1. [x] Account tree root: `src/blocks/account-tree.js` rebuilds `wallet_list` from the saved
        304,143 accounts exactly as `ar_patricia_tree` does and matches the parent's root;
-       releasing each block's oldest locked reward (`src/rewards.js`) matches all three
+       releasing each block's oldest locked reward (`src/blocks/rewards.js`) matches all three
        children's roots (`test/account-tree.test.mjs`). Transactions' account changes and
        redenomination are not handled yet (empty blocks need neither).
-2. [x] Rolling hashes: `src/block-history.js` computes `reward_history_hash`,
+2. [x] Rolling hashes: `src/blocks/history.js` computes `reward_history_hash`,
        `block_time_history_hash` and `hash_list_merkle` from the parent alone, matching all
        three saved blocks (`test/block-history.test.mjs`).
-3. [x] Plain fields: `src/block-fields.js` computes all 24 (height, links, cumulative
+3. [x] Plain fields: `src/blocks/fields.js` computes all 24 (height, links, cumulative
        difficulty, the reward from exact-integer inflation and the endowment, pools and
        prices carried) for empty blocks, matching all three saved blocks
        (`test/block-fields.test.mjs`). Stubs that refuse rather than guess: price
        adjustment heights (every 50 blocks), difficulty retargets, redenomination, and
        transactions' fees.
-4. [x] Signature preimage and block hash: `src/block-hash.js` rebuilds each saved block's
+4. [x] Signature preimage and block hash: `src/blocks/hash.js` rebuilds each saved block's
        id from its JSON, and its secp256k1 signature verifies with its own key
-       (`test/block-hash.test.mjs`). `src/block-signer.js` signs with an RSA key through
+       (`test/block-hash.test.mjs`). `src/blocks/signer.js` signs with an RSA key through
        `DoubleSigningGuard` (`test/block-signer.test.mjs`). Not yet: signing with
        secp256k1 keys, and blocks that carry a double-signing proof.
-5. [x] Whole blocks: `src/block-assembler.js` assembles each saved block from the first
+5. [x] Whole blocks: `src/blocks/assembler.js` assembles each saved block from the first
        parent's state and the block's mining solution, advancing the state with its own
        blocks; every field matches the node's, and with the node's signature so does the
        id (`test/block-assembler.test.mjs`).
-6. [ ] Localnet acceptance. Done: `src/block-binary.js` encodes a block to the binary
+6. [ ] Localnet acceptance. Done: `src/blocks/binary.js` encodes a block to the binary
        `POST /block2` takes, identical byte for byte to the node's own
        (`test/block-binary.test.mjs`). Left: a manual workflow posts several blocks our code built in a row
        (`POST /block_announcement`, then `POST /block2`) and reports what the node accepted.
