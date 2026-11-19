@@ -47,7 +47,7 @@ grouped by area; each file holds one concern and opens with a line saying what i
 | `src/network/` | `gateway.js` HTTP to gateways and nodes · `peers.js` finding and testing sources · `vdf-client.js` VDF servers · `chunk-fetcher.js` fetching chunks in parallel |
 | `src/storage/` | `chunk-store.js` packed chunks in IndexedDB, export and import · `chunk-share.js` moving chunks between copies of the page |
 | `src/wallet/` | `wallet.js` RSA keys · `transaction.js` signed transactions · `bundle.js` ANS-104 items for Turbo |
-| `apps/browser/` | The page: `index.html` and its controller `app.js` |
+| `apps/browser/` | The page: `index.html`; `app.js` (startup, identity, RandomX, wiring) and one panel module per page section — `sources-panel.js`, `holding-panel.js`, `mining-panel.js`, `records-panel.js` — whose methods join the app's; `page-view.js`, `step-explorer.js`, `resources.js` |
 | `apps/node/miner.mjs` | Server mode, same library |
 | `scripts/` | The single-file build (follows imports, so new modules need no list), source gathering, the live network check, localnet capture |
 | `test/` | Tests (`*.test.mjs`, run by `npm test`), the page check, and `fixtures/` |
