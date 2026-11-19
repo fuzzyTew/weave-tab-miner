@@ -43,6 +43,12 @@ or a peer list of other malicious nodes. Each item below says what to check and 
 - [ ] After sending a transaction, confirm it from a different source than the one it was
       sent to.
 - [ ] Check a transaction anchor (`/tx_anchor`) is a recent block or transaction we know of.
+- [ ] History from peers instead of GraphQL, which has not been reliable: (1) remember what
+      this page sent and confirm each with `GET /tx/{id}/status` (or the bundle holding a
+      data item, once Turbo reports it); (2) follow `GET /wallet/{address}/last_tx` and
+      older transactions' `last_tx` anchors where they chain; (3) scan blocks from a known
+      height (when the key was made), reading each block's transactions' headers, and
+      parsing bundles to see data items. GraphQL would become a hint to check, not the source.
 - [ ] Compare a wallet's history across sources. GraphQL "received" for the same address
       gave 0 on arweave.net and 2 on turbo-gateway.com: show both and say which is behind.
 
