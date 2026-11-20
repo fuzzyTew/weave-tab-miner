@@ -3,6 +3,7 @@
 import { Bytes } from '../../src/core/bytes.js';
 import { ConsensusConstants } from '../../src/core/constants.js';
 import { Miner } from '../../src/mining/miner.js';
+import { VdfSession } from '../../src/mining/vdf.js';
 import { SolutionOdds } from '../../src/mining/odds.js';
 import { PeerAccess } from '../../src/network/peers.js';
 import { VdfServerClient, VdfUpdate } from '../../src/network/vdf-client.js';
@@ -86,6 +87,31 @@ export class MiningPanel {
     if (this.view.elements.vdfModeLocal.checked) this.runLocalVdf();
     else if (this.view.elements.vdfModeServer.checked) this.runVdfServer();
     else this.runReplay();
+    if (this.blockOrigin === 'live') this.followTip();
+  }
+
+  static TIP_POLL_MS = 60_000; // blocks come about every 2 minutes
+
+  /**
+   * Fetches the current block every TIP_POLL_MS while mining, so the difficulty and the
+   * weave bound follow the chain instead of the block loaded at the start; the latest VDF
+   * server update's seeds are kept on top.
+   */
+  async followTip() {
+    if (!this.running) return;
+    try {
+      const block = await this.gateway.currentBlock();
+      if (Number(block.height) > Number(this.block.height)) {
+        this.block = block;
+        this.session = VdfSession.fromBlock(block);
+        if (this.latestVdfUpdate) this.session = this.session.withVdfUpdate(this.latestVdfUpdate);
+        this.view.setText('networkHeight', this.session.height.toLocaleString());
+        this.view.log(`following the chain: now on block ${this.session.height}`);
+      }
+    } catch (error) {
+      this.view.log(`could not check for a new block: ${error.message.split('\n')[0]}`, 'warn');
+    }
+    if (this.running) this.tipTimer = setTimeout(() => this.followTip(), MiningPanel.TIP_POLL_MS);
   }
 
   /**
@@ -112,6 +138,7 @@ export class MiningPanel {
     this.running = false;
     clearTimeout(this.replayTimer);
     clearTimeout(this.serverTimer);
+    clearTimeout(this.tipTimer);
     this.view.elements.startButton.disabled = false;
     this.view.elements.stopButton.disabled = true;
   }
@@ -156,6 +183,8 @@ export class MiningPanel {
       try {
         const pollStarted = performance.now();
         let update = await client.latest();
+        this.latestVdfUpdate = update;
+        this.session = this.session.withVdfUpdate(update);
         this.pollMs.push(performance.now() - pollStarted);
         if (this.pollMs.length > 20) this.pollMs.shift();
         // An update holds only the server's newest 2 steps, so a slow poll leaves a gap;
