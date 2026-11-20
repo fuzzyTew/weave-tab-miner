@@ -28,7 +28,7 @@ class MainnetBlocksTest {
   static RETARGETS_CHECKED = 6;
   static ADJUSTMENTS_CHECKED = 2;
   static VDF_BLOCKS_CHECKED = 40;
-  static BLOCKS_FOLLOWED = 6;
+  static BLOCKS_FOLLOWED = 12;
 
   constructor(gateways) {
     this.gateways = gateways.length ? gateways : MainnetBlocksTest.DEFAULT_GATEWAYS;
@@ -185,7 +185,7 @@ class MainnetBlocksTest {
     const histories = await this.histories(start, [node.baseUrl]);
     if (!histories) return;
     const state = new ChainState({ block: start, accountTree, rewardHistory: histories.parentRewardHistory, blockTimeHistory: histories.parentBlockTimeHistory });
-    const follower = new ChainFollower({ state, fetchTransaction: (id) => this.get(`/tx/${id}`) });
+    const follower = new ChainFollower({ state, fetchTransaction: (id) => this.get(`/tx/${id}`, 'json', [...this.gateways, node.baseUrl]) });
     let republished = false;
     for (let height = start.height + 1; height <= tip; height++) {
       const block = await this.block(height);
