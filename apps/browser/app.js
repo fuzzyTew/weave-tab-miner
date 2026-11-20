@@ -23,6 +23,8 @@ import { SourcesPanel } from './sources-panel.js';
 import { MiningPanel } from './mining-panel.js';
 import { RecordsPanel } from './records-panel.js';
 import { QuickStartPanel } from './quick-start-panel.js';
+import { PublishingPanel } from './publishing-panel.js';
+import { VdfStepRecord } from '../../src/network/vdf-client.js';
 
 class BrowserNodeApp {
   /**
@@ -47,6 +49,8 @@ class BrowserNodeApp {
     this.lastMinedStep = -1;
     this.vdfWorker = null;
     this.peerUrls = [];
+    this.vdfSteps = new VdfStepRecord(); // steps a published block lists since its parent
+    this.follower = null; // the light client's chain state, once ready (PublishingPanel)
   }
 
   // ---- RandomX ----
@@ -207,7 +211,7 @@ class BrowserNodeApp {
 
 // Each page section's logic lives in its own panel class; their methods join the app's,
 // running with `this` as the app, so panels share its state (view, gateway, storage…).
-for (const panel of [SourcesPanel, HoldingPanel, MiningPanel, RecordsPanel, QuickStartPanel]) {
+for (const panel of [SourcesPanel, HoldingPanel, MiningPanel, RecordsPanel, QuickStartPanel, PublishingPanel]) {
   for (const name of Object.getOwnPropertyNames(panel.prototype)) {
     if (name !== 'constructor') Object.defineProperty(BrowserNodeApp.prototype, name, Object.getOwnPropertyDescriptor(panel.prototype, name));
   }

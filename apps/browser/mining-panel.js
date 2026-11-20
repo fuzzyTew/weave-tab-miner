@@ -53,7 +53,7 @@ export class MiningPanel {
     } else if (isSampleReplay) {
       detail = `This is block ${this.session.height.toLocaleString()}'s own solution, found again from scratch with real RandomX: the same hash its miner found. It is already on chain, so it earns nothing now.`;
     } else {
-      detail = 'Real rules throughout. Turning this into a block also needs a signed block built around it, which this page does not do yet.';
+      detail = 'Real rules throughout: the tab is building a block around it and posting it to nodes (see "Publishing" below the mining buttons).';
     }
     this.view.elements.solutionBanner.hidden = false;
     this.view.setText('solutionTitle', title);
@@ -63,6 +63,7 @@ export class MiningPanel {
     // Test mode and stand-ins stop so the solution can be looked at; with real rules the
     // tab keeps mining, since every step is another chance.
     if (this.isTestMode || !this.usingRealRandomx || isSampleReplay) this.stop();
+    else this.publishSolution(report);
   }
 
   async start() {
@@ -88,6 +89,7 @@ export class MiningPanel {
     else if (this.view.elements.vdfModeServer.checked) this.runVdfServer();
     else this.runReplay();
     if (this.blockOrigin === 'live') this.followTip();
+    if (!this.follower) this.prepareToPublish();
   }
 
   static TIP_POLL_MS = 60_000; // blocks come about every 2 minutes
@@ -107,6 +109,7 @@ export class MiningPanel {
         if (this.latestVdfUpdate) this.session = this.session.withVdfUpdate(this.latestVdfUpdate);
         this.view.setText('networkHeight', this.session.height.toLocaleString());
         this.view.log(`following the chain: now on block ${this.session.height}`);
+        this.followToTip(block);
       }
     } catch (error) {
       this.view.log(`could not check for a new block: ${error.message.split('\n')[0]}`, 'warn');
@@ -178,11 +181,13 @@ export class MiningPanel {
       return;
     }
     this.view.setText('vdfStatus', `Getting VDF steps from ${client.serverUrl}.`);
+    this.vdfClient = client;
     const poll = async () => {
       if (!this.running) return;
       try {
         const pollStarted = performance.now();
         let update = await client.latest();
+        this.vdfSteps.add(update);
         this.latestVdfUpdate = update;
         this.session = this.session.withVdfUpdate(update);
         this.pollMs.push(performance.now() - pollStarted);
@@ -193,6 +198,7 @@ export class MiningPanel {
         if (this.lastMinedStep >= 0 && fresh.length && fresh[0][0] > this.lastMinedStep + 1) {
           try {
             update = await client.session();
+            this.vdfSteps.add(update);
             fresh = VdfUpdate.steps(update, this.lastMinedStep);
             this.gapsFilled++;
           } catch (error) {
