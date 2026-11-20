@@ -2,6 +2,8 @@
 // gateways pass on: account lists by root, and the reward and block-time histories a block
 // is built from. (From ar_http_iface_middleware.erl; gateways answered 404 for the
 // histories when checked.) Nodes speak plain http on port 1984.
+import { Bytes } from '../core/bytes.js';
+import { ErlangAtom, ErlangTerm } from './erlang-term.js';
 
 export class NodeClient {
   /**
@@ -40,21 +42,32 @@ export class NodeClient {
   }
 
   /**
-   * Every account of a wallet-list root, page by page. Pages come as JSON only when the
-   * request says content-type: application/json (otherwise Erlang's term format); each
-   * holds up to 2,500 accounts and a next_cursor until the last. `onPage(count)` reports
-   * progress.
+   * Every account of a wallet-list root, page by page, in GET /wallet_list's JSON shape
+   * ({ address, balance, last_tx, denomination?, mining_permission? }). Pages are read in
+   * Erlang's term format (ErlangTerm), because asking for JSON takes a content-type header
+   * that a browser may not send there. Each page holds up to 2,500 accounts and a
+   * next_cursor until the last. `onPage(count)` reports progress.
    */
   async walletList(rootHash, { onPage = () => {} } = {}) {
     const wallets = [];
     let cursor = '';
     for (;;) {
-      const page = await this.get(`/wallet_list/${rootHash}${cursor ? `/${cursor}` : ''}`, 'json', { 'content-type': 'application/json' });
-      wallets.push(...page.wallets);
+      const page = ErlangTerm.decode(await this.get(`/wallet_list/${rootHash}${cursor ? `/${cursor}` : ''}`, 'bytes'));
+      for (const entry of page.get('wallets')) wallets.push(NodeClient.walletJson(entry));
       onPage(wallets.length);
-      if (!page.next_cursor) return wallets;
-      cursor = page.next_cursor;
+      const next = page.get('next_cursor');
+      if (next instanceof ErlangAtom) return wallets; // the atom `last`
+      cursor = Bytes.toBase64Url(next);
     }
+  }
+
+  /** One {Address, {Balance, LastTX[, Denomination, MiningPermission]}} as JSON would give it. */
+  static walletJson(entry) {
+    const [address, value] = entry.elements;
+    const [balance, lastTx, denomination, miningPermission] = value.elements;
+    const json = { address: Bytes.toBase64Url(address), balance: balance.toString(), last_tx: Bytes.toBase64Url(lastTx) };
+    if (denomination !== undefined) Object.assign(json, { denomination: Number(denomination), mining_permission: miningPermission.name === 'true' });
+    return json;
   }
 
   async rewardHistory(blockHash) {
@@ -65,11 +78,16 @@ export class NodeClient {
     return this.get(`/block_time_history/${blockHash}`, 'bytes');
   }
 
-  /** POST /block2: a block in binary, announced by its id. Resolves { status, text }. */
-  async postBlock(blockBinary, indepHash) {
+  /**
+   * POST /block2: a block in binary. Sent as text/plain with no block-hash header (the
+   * node reads neither): any other content type or a custom header would make a browser
+   * ask CORS permission first, which nodes do not grant for /block2. Resolves
+   * { status, text }.
+   */
+  async postBlock(blockBinary) {
     const response = await this.fetchRetryingClosed(`${this.baseUrl}/block2`, {
       method: 'POST', body: blockBinary, signal: AbortSignal.timeout(this.timeoutMs),
-      headers: { ...this.headers, 'arweave-block-hash': indepHash, 'content-type': 'application/octet-stream' },
+      headers: { ...this.headers, 'content-type': 'text/plain' },
     });
     return { status: response.status, text: (await response.text()).slice(0, 300) };
   }

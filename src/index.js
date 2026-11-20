@@ -39,6 +39,7 @@ export * from './mining/packing.js';
 export * from './mining/randomx.js';
 export * from './mining/vdf.js';
 export * from './network/chunk-fetcher.js';
+export * from './network/erlang-term.js';
 export * from './network/gateway.js';
 export * from './network/node-client.js';
 export * from './network/peers.js';

@@ -148,7 +148,7 @@ class LocalnetBlockPoster {
       const timestamp = Math.max(Math.floor(Date.now() / 1000), Number(state.block.timestamp));
       const block = await BlockAssembler.assemble({ state, solution, rewardAddress: wallet.address, rewardKey: Bytes.toBase64Url(wallet.ownerBytes), timestamp });
       const signed = await signer.sign(block);
-      const reply = await this.client.postBlock(BlockBinary.encode(signed), signed.indep_hash);
+      const reply = await this.client.postBlock(BlockBinary.encode(signed));
       console.log(`block ${signed.height} (${signed.indep_hash.slice(0, 12)}…, VDF step ${vdfInfo.global_step_number}, chunk at ${recallByte}${second ? ` and ${second.recallByte}` : ''}): POST /block2 → ${reply.status} ${reply.text}`);
       if (!(await this.waitForTip(signed.indep_hash))) {
         console.log(`block ${signed.height} did not become the tip within ${LocalnetBlockPoster.ACCEPT_TIMEOUT_MS / 1000} s; the node log below says why`);

@@ -56,6 +56,9 @@ jobs:
       - name: Apply transactions to accounts, and undo changes
         run: node test/account-changes.test.mjs
 
+      - name: Read Erlang-format account pages, as browsers must
+        run: node test/erlang-term.test.mjs
+
       - name: Check the wait estimate's arithmetic
         run: node test/odds.test.mjs
 

@@ -66,7 +66,7 @@ export class BlockPublisher {
     this.log(`posting block ${signed.height} (${signed.indep_hash.slice(0, 12)}…) to ${this.nodes.length} nodes`);
     const replies = await Promise.all(this.nodes.map(async (node) => {
       try {
-        return { node: node.baseUrl, ...(await node.postBlock(binary, signed.indep_hash)) };
+        return { node: node.baseUrl, ...(await node.postBlock(binary)) };
       } catch (error) {
         return { node: node.baseUrl, status: 0, text: error.cause?.message ?? error.message };
       }
