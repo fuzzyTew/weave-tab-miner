@@ -2,8 +2,10 @@
 
 An Arweave (replica 2.9) mining node that runs in a browser tab, or in Node, built
 library-first. It uses Arweave's real RandomX, compiled to WebAssembly, for H0 and for
-packing, and is checked against mainnet block 2,040,257: replaying that block's VDF steps,
-it finds the block's own solution again.
+packing; follows the chain as a light client; and turns a real solution into a signed block
+posted to nodes. Checked against mainnet: it finds block 2,040,257's own solution again,
+its account state matches each new block's root, and a real block rebuilt from its
+solution comes out with the same id.
 
 ## Use it
 
@@ -12,9 +14,10 @@ Python needed.
 
     npm run build
 
-The page opens on the sample block, mining for the address that won it. **Start mining**
-replays the block's last 15 VDF steps and finds its solution. For live mining: load the live
-block, pick an identity, fetch and pack chunks, and choose a VDF source.
+**Start mining for the shared account** does everything: finds sources, loads the live
+block, fetches and packs data toward "Storage to use", takes VDF steps from every server
+that answers, and gets ready to publish. The sample block (bundled, for networks that block
+Arweave) replays its own solution with "Verify against the sample".
 
 - **RandomX** needs a 512 MiB cache. If the browser cannot allocate it (a 32-bit browser,
   low memory), the page says so and falls back to SHA-256 stand-ins that find nothing real.
@@ -26,9 +29,12 @@ block, pick an identity, fetch and pack chunks, and choose a VDF source.
 - **Peers**: nodes allow browsers (CORS) but speak plain http, which https pages may not
   call. From the downloaded file, **Find peers** tries nodes first, gateways as fallback;
   an https copy says why it uses gateways only.
-- **VDF**: a public VDF server keeps the network's pace of a step a second, if one answers.
-  Computing steps in the tab is about 20 times slower. (Steps read from the latest block
-  are no use: a new block must use steps after the latest block's own step.)
+- **VDF**: the network makes about one step a second; each public VDF server measured
+  about 0.6, some in bursts, so the page polls every server that answers and merges their
+  steps. Computing steps in the tab is about 20 times slower, too slow to publish.
+- **Publishing** needs Arweave nodes directly (plain http): the downloaded copy, or an https
+  copy with insecure content allowed for the site. Each visit reads all accounts (about
+  300,000) from a node once, then follows each block.
 - **What limits the wait** shows the expected time to a solution and what limits it most.
 - **Step explorer** shows every value of a mining step, each linked to the line of the
   Arweave node source (commit `18d402c`) that defines it.
@@ -72,5 +78,6 @@ As a library: `import { Miner, DataItem } from 'weave-tab-miner'`, or one module
                                      # (PLAYWRIGHT_CHANNEL=chrome to use an installed Chrome)
 
 `scripts/live-network-check.mjs` tries every live request the page makes against real gateways and
-nodes; the GitHub workflow runs it on each push (it reports without blocking the build). A
-found solution is not yet turned into a signed block.
+nodes; the GitHub workflow runs it on each push (it reports without blocking the build),
+with `test/mainnet-blocks.test.mjs`'s quick checks. Daily, the workflow also follows mainnet
+from every account, rebuilds a real block from its solution, and measures the VDF's pace.
