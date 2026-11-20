@@ -86,6 +86,16 @@ class BrowserNodeApp {
   }
 
   /** The shared key's address, from the key file the page carries. */
+  /**
+   * An error nothing else handled: logged with its cause and where it came from, so a
+   * person can retry or report it, and mining state is not left looking busy.
+   */
+  reportUnexpected(where, error) {
+    const message = error?.message ?? String(error);
+    this.view.log(`${where} failed: ${message}. Reloading the page is safe (held chunks are kept); if it happens again, the line above helps report it.`, 'error');
+    console.error(error);
+  }
+
   sharedKeyAddress() {
     return BundledResources.publicKey().address;
   }
@@ -161,7 +171,12 @@ class BrowserNodeApp {
   }
 
   bind() {
-    const onClick = (id, handler) => this.view.elements[id].addEventListener('click', () => handler.call(this));
+    // A failing action says so in the activity log, with its cause, instead of failing silently.
+    const onClick = (id, handler) => this.view.elements[id].addEventListener('click', () => {
+      Promise.resolve().then(() => handler.call(this)).catch((error) => this.reportUnexpected(`"${this.view.elements[id].textContent.trim()}"`, error));
+    });
+    window.addEventListener('unhandledrejection', (event) => this.reportUnexpected('a background task', event.reason));
+    window.addEventListener('error', (event) => this.reportUnexpected('the page', event.error ?? event.message));
     onClick('generateButton', this.generateIdentity);
     onClick('quickStartButton', this.quickStart);
     onClick('sharedKeyButton', this.useSharedKey);
@@ -197,6 +212,7 @@ class BrowserNodeApp {
     this.bind();
     new RunYourself(this.view).show();
     this.setUpMixedContentChoice();
+    this.setUpStorageSlider();
     this.restoreSeeds();
     this.view.setText('peerStatus', this.describeGatheredSources());
     this.view.elements.bringChunksButton.hidden = location.protocol !== 'file:';
