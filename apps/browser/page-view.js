@@ -51,27 +51,40 @@ export class PageView {
     return `${whole}${fraction ? '.' + fraction : ''} AR`;
   }
 
+  /**
+   * Adds a step to the table, newest first. Steps whose ranges held no data (most of
+   * them) share one row at the top that updates in place with their count, so the table
+   * shows the steps where something happened.
+   */
   addStepRow(report, source, onSelect) {
-    const row = document.createElement('tr');
-    const result = report.solution ? `found: ${report.solution.kind}` : report.noncesTried ? 'no pass' : 'no data held in range';
+    const body = this.elements.stepRows;
+    const empty = !report.solution && !report.noncesTried;
+    let row = empty && body.firstChild?.dataset.emptyRun ? body.firstChild : null;
+    const runLength = row ? Number(row.dataset.emptyRun) + 1 : 1;
+    const result = report.solution ? `found: ${report.solution.kind}` : report.noncesTried ? 'no pass'
+      : runLength > 1 ? `no data held in range, ${runLength.toLocaleString()} steps in a row` : 'no data held in range';
     const cells = [
       report.stepNumber.toLocaleString(), source, PageView.shortHex(report.h0, 10),
       report.range1Start.toLocaleString(), report.range2Start.toLocaleString(),
       String(report.noncesTried), String(report.h2Tried), result,
     ];
-    for (const text of cells) {
+    if (!row) {
+      row = document.createElement('tr');
+      row.tabIndex = 0;
+      row.title = 'Show this step in the explorer';
+      row.addEventListener('click', () => row.onSelect());
+      row.addEventListener('keydown', (event) => { if (event.key === 'Enter') row.onSelect(); });
+      if (report.solution) row.className = 'row-solution';
+      body.prepend(row);
+      while (body.children.length > 60) body.lastChild.remove();
+    }
+    row.onSelect = onSelect;
+    row.replaceChildren(...cells.map((text) => {
       const cell = document.createElement('td');
       cell.textContent = text;
-      row.append(cell);
-    }
-    row.tabIndex = 0;
-    row.title = 'Show this step in the explorer';
-    row.addEventListener('click', onSelect);
-    row.addEventListener('keydown', (event) => { if (event.key === 'Enter') onSelect(); });
-    if (report.solution) row.className = 'row-solution';
-    const body = this.elements.stepRows;
-    body.prepend(row);
-    while (body.children.length > 60) body.lastChild.remove();
+      return cell;
+    }));
+    if (empty) row.dataset.emptyRun = String(runLength);
   }
 
   fillHistory(listId, transactions, emptyText) {
