@@ -9,10 +9,11 @@ export class ChainState {
   /**
    * What a node keeps about the tip that the next block is computed from: the block itself
    * (JSON as nodes serve it), its reward history and block-time history, and the account
-   * tree at that block. `advance` moves it to a new block in place.
+   * tree at that block. `advance` moves it to a new block in place. `difficultyRetargets`
+   * is false for a localnet, whose difficulty stays fixed.
    */
-  constructor({ block, rewardHistory, blockTimeHistory, accountTree }) {
-    Object.assign(this, { block, rewardHistory, blockTimeHistory, accountTree });
+  constructor({ block, rewardHistory, blockTimeHistory, accountTree, difficultyRetargets = true }) {
+    Object.assign(this, { block, rewardHistory, blockTimeHistory, accountTree, difficultyRetargets });
   }
 }
 
@@ -35,7 +36,9 @@ export class BlockAssembler {
    */
   static async assemble({ state, solution, rewardAddress, rewardKey, timestamp }) {
     const parent = state.block;
-    const fields = NextBlockFields.compute({ parent, parentBlockTimeHistory: state.blockTimeHistory, timestamp });
+    const fields = NextBlockFields.compute({
+      parent, parentBlockTimeHistory: state.blockTimeHistory, parentRewardHistory: state.rewardHistory, timestamp, difficultyRetargets: state.difficultyRetargets,
+    });
     const block = {
       ...fields,
       ...Object.fromEntries(BlockAssembler.SOLUTION_FIELDS.filter((name) => name in solution).map((name) => [name, solution[name]])),

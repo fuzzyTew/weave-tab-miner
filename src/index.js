@@ -3,11 +3,12 @@
 // Folders, by area (README.md "Layout" describes each file):
 //   core/     bytes, SHA-256, constants, formatting, source citations
 //   mining/   VDF, difficulty, packing, the per-step hashes, held storage, the miner, odds, RandomX
-//   blocks/   building a block: account tree, rewards, history hashes, fields, solution, VDF info, hash, signing, binary
+//   blocks/   building a block: account tree, rewards, history hashes, fields, adjustments, solution, VDF info, hash, signing, binary
 //   network/  gateways, peers and sources, VDF servers, fetching chunks
 //   storage/  packed chunks in the browser, and moving them between copies of the page
 //   wallet/   keys, transactions, ANS-104 data items for bundlers
 export * from './blocks/account-tree.js';
+export * from './blocks/adjustments.js';
 export * from './blocks/assembler.js';
 export * from './blocks/binary.js';
 export * from './blocks/fields.js';

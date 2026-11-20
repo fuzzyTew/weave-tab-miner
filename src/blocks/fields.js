@@ -2,6 +2,7 @@
 // links to the parent, cumulative difficulty, the reward, and the pools and prices carried
 // forward. Step 3 of docs/TODO.md "Turn a solution into a block". Empty blocks only (no transactions).
 import { BlockTimeHistory } from './history.js';
+import { DifficultyRetarget, PriceAdjustment } from './adjustments.js';
 
 export class Inflation {
   /**
@@ -49,7 +50,6 @@ export class NextBlockFields {
   static MAX_DIFF = 1n << 256n;
   static N_REPLICATIONS = 20n; // from fork 2.6
   static GIB = 1n << 30n;
-  static PRICE_ADJUSTMENT_FREQUENCY = 50;
   static RESET_KRYDER_PLUS_LATCH_THRESHOLD = 10_000_000_000_000_000n; // 10,000 AR (ar_pricing.hrl)
 
   /**
@@ -89,19 +89,20 @@ export class NextBlockFields {
 
   /**
    * Fields of an empty block on `parent` (block JSON as nodes serve it), as strings and
-   * numbers in the same JSON form. `timestamp` is the miner's clock, in seconds.
+   * numbers in the same JSON form. `timestamp` is the miner's clock, in seconds. The
+   * parent's reward and block-time histories price storage at adjustment heights.
+   * `difficultyRetargets` is false on a localnet, whose difficulty never changes.
    *
-   * STUBS, which throw rather than guess: a price adjustment height (every 50 blocks,
-   * ar_pricing:recalculate_price_per_gib_minute), a difficulty retarget
-   * (`isRetargetHeight`, supplied by the caller), and redenomination.
+   * STUBS, which throw rather than guess: price adjustments during the 2.7.2 price
+   * transition (all in the past), and redenomination.
    */
-  static compute({ parent, parentBlockTimeHistory, timestamp, isRetargetHeight = () => false }) {
+  static compute({ parent, parentBlockTimeHistory, parentRewardHistory, timestamp, difficultyRetargets = true }) {
     const height = parent.height + 1;
-    if (height % NextBlockFields.PRICE_ADJUSTMENT_FREQUENCY === 0) throw new Error(`height ${height} adjusts prices, which is not implemented yet`);
-    if (isRetargetHeight(height)) throw new Error(`height ${height} retargets difficulty, which is not implemented yet`);
     if (Number(parent.redenomination_height) > parent.height) throw new Error('a scheduled redenomination is not implemented yet');
+    const { diff: newDiff, last_retarget } = DifficultyRetarget.fields({ height, parent, timestamp, difficultyRetargets });
+    const prices = PriceAdjustment.fields({ height, parent, parentRewardHistory, parentBlockTimeHistory });
 
-    const diff = BigInt(parent.diff);
+    const diff = BigInt(newDiff);
     const rewardFields = NextBlockFields.reward({
       height,
       weaveSize: BigInt(parent.weave_size),
@@ -117,8 +118,8 @@ export class NextBlockFields {
       previous_block: parent.indep_hash,
       previous_solution_hash: parent.hash,
       timestamp,
-      last_retarget: parent.last_retarget,
-      diff: parent.diff,
+      last_retarget,
+      diff: newDiff,
       previous_cumulative_diff: parent.cumulative_diff,
       cumulative_diff: (BigInt(parent.cumulative_diff) + NextBlockFields.MAX_DIFF / (NextBlockFields.MAX_DIFF - diff)).toString(),
       reward: rewardFields.reward.toString(),
@@ -128,10 +129,10 @@ export class NextBlockFields {
       kryder_plus_rate_multiplier: rewardFields.kryderMultiplier.toString(),
       denomination: parent.denomination,
       redenomination_height: parent.redenomination_height,
-      price_per_gib_minute: parent.price_per_gib_minute,
-      scheduled_price_per_gib_minute: parent.scheduled_price_per_gib_minute,
-      usd_to_ar_rate: parent.usd_to_ar_rate,
-      scheduled_usd_to_ar_rate: parent.scheduled_usd_to_ar_rate,
+      price_per_gib_minute: prices.price_per_gib_minute,
+      scheduled_price_per_gib_minute: prices.scheduled_price_per_gib_minute,
+      usd_to_ar_rate: prices.usd_to_ar_rate,
+      scheduled_usd_to_ar_rate: prices.scheduled_usd_to_ar_rate,
       weave_size: parent.weave_size,
       block_size: '0',
       tx_root: '',
