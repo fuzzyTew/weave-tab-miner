@@ -77,8 +77,8 @@ class MainnetBlocksTest {
     return this.blocks.get(height);
   }
 
-  async histories(parent) {
-    const sources = [...this.gateways, ...await this.peers()];
+  async histories(parent, preferred = []) {
+    const sources = [...preferred, ...await this.peers(), ...this.gateways];
     try {
       return {
         parentRewardHistory: RewardHistory.fromBinary(await this.get(`/reward_history/${parent.indep_hash}`, 'bytes', sources)),
@@ -177,11 +177,9 @@ class MainnetBlocksTest {
     const root = Bytes.toBase64Url(await accountTree.rootHash());
     this.report(`${accounts.length} accounts from ${node.baseUrl} hash to block ${start.height}'s root`, root === start.wallet_list, `in ${((Date.now() - started) / 1000).toFixed(0)} s`);
     if (root !== start.wallet_list) return;
-    const state = new ChainState({
-      block: start, accountTree,
-      rewardHistory: RewardHistory.fromBinary(await node.rewardHistory(start.indep_hash)),
-      blockTimeHistory: BlockTimeHistory.fromBinary(await node.blockTimeHistory(start.indep_hash)),
-    });
+    const histories = await this.histories(start, [node.baseUrl]);
+    if (!histories) return;
+    const state = new ChainState({ block: start, accountTree, rewardHistory: histories.parentRewardHistory, blockTimeHistory: histories.parentBlockTimeHistory });
     const follower = new ChainFollower({ state, fetchTransaction: (id) => this.get(`/tx/${id}`) });
     for (let height = start.height + 1; height <= tip; height++) {
       const block = await this.block(height);
