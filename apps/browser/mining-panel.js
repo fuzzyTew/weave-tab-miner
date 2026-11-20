@@ -11,7 +11,7 @@ import { PageView } from './page-view.js';
 
 export class MiningPanel {
   static REPLAY_STEP_INTERVAL_MS = 1000; // the network's VDF pace, about one step per second
-  static MAX_STEP_BACKLOG = 2; // VDF-server steps mined per poll at most; older ones are skipped
+  static MAX_STEP_BACKLOG = 8; // VDF-server steps mined per poll at most; older ones are skipped
   // ---- mining ----
 
   get isTestMode() {
@@ -76,6 +76,9 @@ export class MiningPanel {
     this.holdScreenAwake();
     this.pace.reset();
     this.stepsSkipped = 0;
+    this.stepsMissed = 0;
+    this.gapsFilled = 0;
+    this.pollMs = [];
     this.lastMinedStep = -1; // a VDF server's backlog from before this start is stale
     this.view.elements.solutionBanner.hidden = true;
     this.view.elements.startButton.disabled = true;
@@ -151,11 +154,25 @@ export class MiningPanel {
     const poll = async () => {
       if (!this.running) return;
       try {
-        const update = await client.latest();
-        // A server sends its whole session (up to 1,200 steps). Steps well behind the
-        // newest are stale, so only the newest few are mined: at the start, and whenever
-        // mining falls behind; the skipped ones are counted for the pace report.
-        const fresh = VdfUpdate.steps(update, this.lastMinedStep);
+        const pollStarted = performance.now();
+        let update = await client.latest();
+        this.pollMs.push(performance.now() - pollStarted);
+        if (this.pollMs.length > 20) this.pollMs.shift();
+        // An update holds only the server's newest 2 steps, so a slow poll leaves a gap;
+        // the whole session fills it (those steps are seconds old, still worth mining).
+        let fresh = VdfUpdate.steps(update, this.lastMinedStep);
+        if (this.lastMinedStep >= 0 && fresh.length && fresh[0][0] > this.lastMinedStep + 1) {
+          try {
+            update = await client.session();
+            fresh = VdfUpdate.steps(update, this.lastMinedStep);
+            this.gapsFilled++;
+          } catch (error) {
+            this.view.log(`VDF server session: ${error.message}`, 'warn');
+          }
+          if (fresh.length && fresh[0][0] > this.lastMinedStep + 1) this.stepsMissed += fresh[0][0] - this.lastMinedStep - 1;
+        }
+        // Steps well behind the newest are stale, so only the newest few are mined: at the
+        // start, and whenever mining falls behind; the skipped ones are counted.
         const kept = fresh.slice(-MiningPanel.MAX_STEP_BACKLOG);
         if (this.lastMinedStep >= 0) this.stepsSkipped += fresh.length - kept.length;
         for (const [stepNumber, output] of kept) {
@@ -216,7 +233,7 @@ export class MiningPanel {
     const seconds = SolutionOdds.expectedSecondsPerSolution(odds);
     this.view.setText('expectedWait', PageView.formatDuration(seconds));
     const { fullSpeedSeconds, factors } = SolutionOdds.waitBreakdown({ ...odds, quotaBytes: this.storageQuotaBytes });
-    const pace = this.running ? `Measured pace: ${stepsPerSecond.toFixed(2)} steps a second. ${this.pace.describe(SolutionOdds.NETWORK_STEPS_PER_SECOND)}${this.stepsSkipped ? ` ${this.stepsSkipped.toLocaleString()} steps were skipped while mining fell behind.` : ''}` : 'Assumes the network\'s pace of one step a second until mining starts.';
+    const pace = this.running ? `Measured pace: ${stepsPerSecond.toFixed(2)} steps a second. ${this.pace.describe(SolutionOdds.NETWORK_STEPS_PER_SECOND)}${this.vdfServerNote()}` : 'Assumes the network\'s pace of one step a second until mining starts.';
     this.view.setText('limitHeadline', `A miner holding the whole partition and the whole weave would wait about ${PageView.formatDuration(fullSpeedSeconds)}. Each shortfall below multiplies that; they compound. ${pace}`);
     this.view.fillLimits(factors);
     const hitChance = SolutionOdds.heldRangeHitChance(odds);
@@ -224,6 +241,17 @@ export class MiningPanel {
       ? `Range 1 touches a chunk this tab holds about once every ${PageView.formatDuration(1 / (hitChance * stepsPerSecond))} (${(hitChance * 100).toPrecision(2)}% of steps). Each held chunk in range gives ${ConsensusConstants.noncesPerRecallRange / (ConsensusConstants.recallRangeSize / ConsensusConstants.DATA_CHUNK_SIZE)} tries. Spreading chunks out makes touches more frequent but smaller, and holding them side by side makes them rarer but larger; the expected wait above is the same either way.`
       : `No chunks held in partition ${this.partitionNumber}, so no step can try anything.`);
     this.view.setText('waitNote', this.usingRealRandomx ? 'Real rules: a solution here would be a real one.' : 'Stand-in RandomX: solutions would not be real.');
+  }
+
+  /** How the VDF server kept up: poll time, gaps between polls, and steps lost or skipped. */
+  vdfServerNote() {
+    if (!this.pollMs?.length) return '';
+    const meanPoll = this.pollMs.reduce((total, ms) => total + ms, 0) / this.pollMs.length;
+    const parts = [`Each VDF server request takes about ${Math.round(meanPoll)} ms`];
+    if (this.gapsFilled) parts.push(`${this.gapsFilled} gaps between requests were filled from the server's session`);
+    if (this.stepsMissed) parts.push(`${this.stepsMissed} steps were missed`);
+    if (this.stepsSkipped) parts.push(`${this.stepsSkipped} were skipped while mining fell behind`);
+    return ` ${parts.join('; ')}.`;
   }
 
   refreshPoolOdds() {
