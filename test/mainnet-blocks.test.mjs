@@ -17,6 +17,11 @@ import { ChainState } from '../src/blocks/assembler.js';
 import { ChainFollower } from '../src/blocks/chain-follower.js';
 import { NodeClient } from '../src/network/node-client.js';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { runInThisContext } from 'node:vm';
+import { BlockHash } from '../src/blocks/hash.js';
+import { BlockPublisher } from '../src/blocks/block-publisher.js';
+import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 
 class MainnetBlocksTest {
   static DEFAULT_GATEWAYS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
@@ -181,8 +186,13 @@ class MainnetBlocksTest {
     if (!histories) return;
     const state = new ChainState({ block: start, accountTree, rewardHistory: histories.parentRewardHistory, blockTimeHistory: histories.parentBlockTimeHistory });
     const follower = new ChainFollower({ state, fetchTransaction: (id) => this.get(`/tx/${id}`) });
+    let republished = false;
     for (let height = start.height + 1; height <= tip; height++) {
       const block = await this.block(height);
+      if (!republished && !block.txs.length && block.replica_format === 1) {
+        republished = true;
+        await this.republish(follower, block);
+      }
       try {
         const { transactionCount } = await follower.apply(block);
         const historiesMatch = Bytes.toBase64Url(state.blockTimeHistory.hash()) === block.block_time_history_hash;
@@ -191,6 +201,52 @@ class MainnetBlocksTest {
         this.report(`followed block ${height}`, false, error.message);
         return;
       }
+    }
+  }
+
+  /**
+   * BlockPublisher rebuilding a real mainnet block from its solution alone (an empty one,
+   * as the builder makes): chunks fetched from gateways and packed here with real RandomX,
+   * the block assembled on the followed state, and its id compared with the block's,
+   * with the block's own signature standing in for signing.
+   */
+  async republish(follower, block) {
+    if (!this.randomx) {
+      runInThisContext(readFileSync(new URL('../vendor/randomx-arweave/randomx-arweave.iife.js', import.meta.url), 'utf8') + '\nglobalThis.RandomxArweave = RandomxArweave;');
+      const host = new RandomxDirectHost(globalThis.RandomxArweave);
+      this.randomx = { h0Hasher: new RandomxH0Hasher(host), entropySource: new RandomxSquaredEntropySource(host) };
+    }
+    const twoChunks = block.recall_byte2 !== undefined && block.recall_byte2 !== null;
+    const info = block.nonce_limiter_info;
+    const report = {
+      stepNumber: Number(info.global_step_number),
+      trace: { seed: Bytes.fromBase64Url(info.seed).subarray(0, 32) },
+      solution: {
+        nonce: Number(Bytes.toBigInt(Bytes.fromBase64Url(block.nonce))), hash: Bytes.fromBase64Url(block.hash),
+        recallByte1: BigInt(block.recall_byte), ...(twoChunks ? { recallByte2: BigInt(block.recall_byte2) } : {}),
+      },
+    };
+    const posted = [];
+    const publisher = new BlockPublisher({
+      follower, ...this.randomx, fetchChunkJson: (offset) => this.get(`/chunk/${offset}`),
+      signer: {
+        wallet: { addressBytes: Bytes.fromBase64Url(block.reward_addr), address: block.reward_addr, ownerBytes: Bytes.fromBase64Url(block.reward_key) },
+        sign: async (built) => {
+          const signed = { ...built, signature: block.signature };
+          return { ...signed, indep_hash: Bytes.toBase64Url(await BlockHash.indepHash(signed)) };
+        },
+      },
+      nodes: [{ baseUrl: 'none', postBlock: async (binary) => { posted.push(binary); return { status: 200, text: '' }; } }],
+    });
+    const checkpoints = new Map([[report.stepNumber, info.last_step_checkpoints.map(Bytes.fromBase64Url).reverse()]]);
+    try {
+      const started = Date.now();
+      const { block: built } = await publisher.publish({ report, stepSource: new RecordedVdfSteps(RecordedVdfSteps.fromBlock(block).outputsByStep, undefined, checkpoints), timestamp: block.timestamp });
+      const differing = Object.keys(block).filter((field) => !['signature', 'indep_hash'].includes(field) && JSON.stringify(built[field]) !== JSON.stringify(block[field]));
+      this.report(`republished mainnet block ${block.height} from its solution: the same id (${((Date.now() - started) / 1000).toFixed(0)} s)`, built.indep_hash === block.indep_hash && posted.length === 1,
+        differing.length ? `differ: ${differing.map((field) => `${field} ${JSON.stringify(built[field])?.slice(0, 60)} vs ${JSON.stringify(block[field])?.slice(0, 60)}`).join('; ')}` : '');
+    } catch (error) {
+      this.report(`republished mainnet block ${block.height} from its solution`, false, error.stack.slice(0, 600));
     }
   }
 
