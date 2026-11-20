@@ -28,17 +28,20 @@ export class BlockSolution {
   }
 
   /**
-   * The `nonce`th sub-chunk of the chunk at `recallByte`, packed for `addressBytes`, with the
+   * The sub-chunk `nonce` picks in the chunk at `recallByte`, packed for `addressBytes`, with the
    * chunk's proof: { packedSubChunk, unpacked, poa }. Only that sub-chunk is packed, which
    * needs one 8 MiB entropy, not a whole chunk's 32.
    */
   static async provenSubChunk({ addressBytes, recallByte, chunkJson, nonce, entropySource }) {
     const size = ConsensusConstants.SUB_CHUNK_SIZE;
+    // Nonces run across a recall range's chunks, 32 sub-chunks each: the chunk is picked by
+    // the recall byte, the sub-chunk within it by the nonce's remainder.
+    const subChunkIndex = nonce % ConsensusConstants.SUB_CHUNK_COUNT;
     const unpacked = BlockSolution.padded(Bytes.fromBase64Url(chunkJson.chunk));
     const endOffset = Replica29Layout.bucketEndOffsetForByte(recallByte);
-    const entropy = await entropySource.entropy(Replica29Layout.entropyKey(addressBytes, endOffset, nonce * size));
+    const entropy = await entropySource.entropy(Replica29Layout.entropyKey(addressBytes, endOffset, subChunkIndex * size));
     const slice = entropy.subarray(Replica29Layout.sliceIndex(endOffset) * size, (Replica29Layout.sliceIndex(endOffset) + 1) * size);
-    const packedSubChunk = unpacked.subarray(nonce * size, (nonce + 1) * size).map((byte, index) => byte ^ slice[index]);
+    const packedSubChunk = unpacked.subarray(subChunkIndex * size, (subChunkIndex + 1) * size).map((byte, index) => byte ^ slice[index]);
     return {
       packedSubChunk, unpacked,
       poa: { option: '1', tx_path: chunkJson.tx_path, data_path: chunkJson.data_path, chunk: Bytes.toBase64Url(packedSubChunk), unpacked_chunk: Bytes.toBase64Url(unpacked) },
@@ -49,7 +52,8 @@ export class BlockSolution {
    * A solution from the chunk starting at `recallByte` (chunk-aligned, BigInt) and, for a
    * two-chunk solution, the one at `recallByte2`. `chunkJson` and `chunk2Json` are GET
    * /chunk's answers for them, unpacked ({ chunk, data_path, tx_path }, base64url). `nonce`
-   * (0–31) picks the sub-chunk in each. `seed` is the block's VDF seed (48 bytes);
+   * is the miner's (it counts sub-chunks across the recall range, so its remainder by 32
+   * picks the sub-chunk in each chunk). `seed` is the block's VDF seed (48 bytes);
    * `h0Hasher` and `entropySource` come from src/mining/randomx.js. With two chunks the
    * solution hash is H2, over H1 and the second sub-chunk (ar_block:compute_h2).
    *
