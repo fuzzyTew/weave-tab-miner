@@ -90,6 +90,7 @@ export class MiningPanel {
     else this.runReplay();
     if (this.blockOrigin === 'live') this.followTip();
     if (!this.follower) this.prepareToPublish();
+    this.fillStorageWhileMining();
   }
 
   static TIP_POLL_MS = 60_000; // blocks come about every 2 minutes
