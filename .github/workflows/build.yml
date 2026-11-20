@@ -93,7 +93,7 @@ jobs:
     # Tries every request the page makes against real gateways and nodes. The network can
     # be flaky, so a failure here is reported without blocking the build or Pages.
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

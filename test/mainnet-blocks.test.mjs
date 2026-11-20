@@ -1,7 +1,9 @@
 // test/mainnet-blocks.test.mjs — the block rules a localnet relaxes, checked against recent
 // mainnet blocks fetched live: difficulty retargets (every 10 heights), price adjustments
 // (every 50, when a gateway serves the parent's histories), and VDF info (seeds and bounds
-// across entropy reset lines, and one whole nonce_limiter_info). Needs the network, so it
+// across entropy reset lines, and one whole nonce_limiter_info), and following the chain
+// as a light client (every account from a node, then several blocks' transactions and
+// reward releases, each checked against the block's root). Needs the network, so it
 // runs in CI's live-network job; it prints SKIP when no gateway answers.
 // Run: node test/mainnet-blocks.test.mjs [gateway URL ...]
 import { Bytes } from '../src/core/bytes.js';
@@ -10,12 +12,18 @@ import { NextBlockFields } from '../src/blocks/fields.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { RecordedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
+import { AccountTree } from '../src/blocks/account-tree.js';
+import { ChainState } from '../src/blocks/assembler.js';
+import { ChainFollower } from '../src/blocks/chain-follower.js';
+import { NodeClient } from '../src/network/node-client.js';
+import { createHash } from 'node:crypto';
 
 class MainnetBlocksTest {
   static DEFAULT_GATEWAYS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
   static RETARGETS_CHECKED = 6;
   static ADJUSTMENTS_CHECKED = 2;
   static VDF_BLOCKS_CHECKED = 40;
+  static BLOCKS_FOLLOWED = 6;
 
   constructor(gateways) {
     this.gateways = gateways.length ? gateways : MainnetBlocksTest.DEFAULT_GATEWAYS;
@@ -138,6 +146,56 @@ class MainnetBlocksTest {
     console.log(`(${resets} of ${MainnetBlocksTest.VDF_BLOCKS_CHECKED} blocks crossed a reset line; seeds are checked on every block and reported when they cross or differ)`);
   }
 
+  /** A node from the gateways' peer list that serves account lists. */
+  async accountNode() {
+    for (const url of await this.peers()) {
+      const node = new NodeClient(url, { timeoutMs: 20000 });
+      try {
+        await node.height();
+        return node;
+      } catch (error) {
+        console.log(`none  node ${url}: ${error.cause?.message ?? error.message}`.slice(0, 200));
+      }
+    }
+    return null;
+  }
+
+  async follow(tip) {
+    const node = await this.accountNode();
+    if (!node) {
+      console.log('none  no node answered, so following the chain was not tried');
+      return;
+    }
+    const start = await this.block(tip - MainnetBlocksTest.BLOCKS_FOLLOWED);
+    const started = Date.now();
+    const accounts = await node.walletList(start.wallet_list);
+    const accountTree = new AccountTree({ sha384: (bytes) => new Uint8Array(createHash('sha384').update(bytes).digest()) });
+    for (const json of accounts) {
+      const { addressBytes, account } = AccountTree.accountFromJson(json);
+      accountTree.insert(addressBytes, account);
+    }
+    const root = Bytes.toBase64Url(await accountTree.rootHash());
+    this.report(`${accounts.length} accounts from ${node.baseUrl} hash to block ${start.height}'s root`, root === start.wallet_list, `in ${((Date.now() - started) / 1000).toFixed(0)} s`);
+    if (root !== start.wallet_list) return;
+    const state = new ChainState({
+      block: start, accountTree,
+      rewardHistory: RewardHistory.fromBinary(await node.rewardHistory(start.indep_hash)),
+      blockTimeHistory: BlockTimeHistory.fromBinary(await node.blockTimeHistory(start.indep_hash)),
+    });
+    const follower = new ChainFollower({ state, fetchTransaction: (id) => this.get(`/tx/${id}`) });
+    for (let height = start.height + 1; height <= tip; height++) {
+      const block = await this.block(height);
+      try {
+        const { transactionCount } = await follower.apply(block);
+        const historiesMatch = Bytes.toBase64Url(state.blockTimeHistory.hash()) === block.block_time_history_hash;
+        this.report(`followed block ${height} (${transactionCount} transactions): our root and block-time history hash are the block's`, historiesMatch);
+      } catch (error) {
+        this.report(`followed block ${height}`, false, error.message);
+        return;
+      }
+    }
+  }
+
   async run() {
     let tip;
     try {
@@ -147,7 +205,7 @@ class MainnetBlocksTest {
       return;
     }
     console.log(`checking mainnet blocks below ${tip}`);
-    for (const section of ['retargets', 'adjustments', 'vdf']) {
+    for (const section of ['retargets', 'adjustments', 'vdf', 'follow']) {
       try {
         await this[section](tip);
       } catch (error) {
