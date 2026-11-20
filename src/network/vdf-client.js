@@ -88,8 +88,13 @@ export class VdfServerClient {
     this.serverUrl = null;
   }
 
-  async fetchUpdate(baseUrl) {
-    const response = await fetch(`${baseUrl}/vdf`, { signal: AbortSignal.timeout(this.timeoutMs) });
+  /**
+   * GET /vdf: the server's latest update, which holds only its newest 2 steps
+   * (ar_nonce_limiter_server REGULAR_UPDATE_INCLUDE_STEPS_COUNT); `path` "/vdf/session"
+   * gets the whole current session instead, to fill a gap between polls.
+   */
+  async fetchUpdate(baseUrl, path = '/vdf') {
+    const response = await fetch(`${baseUrl}${path}`, { signal: AbortSignal.timeout(this.timeoutMs) });
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${(await response.text()).slice(0, 120)}`);
     // Some gateways answer unknown paths with their web app's HTML page and status 200
     // (turbo-gateway.com did in the live check), which is not a VDF update.
@@ -115,5 +120,11 @@ export class VdfServerClient {
   async latest() {
     if (!this.serverUrl) throw new Error('no VDF server found yet');
     return this.fetchUpdate(this.serverUrl);
+  }
+
+  /** The whole current session (every step since the last reset line). */
+  async session() {
+    if (!this.serverUrl) throw new Error('no VDF server found yet');
+    return this.fetchUpdate(this.serverUrl, '/vdf/session');
   }
 }
