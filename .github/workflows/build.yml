@@ -50,6 +50,9 @@ jobs:
       - name: Check the Solana gateway registry decoder against ar.io's encoder
         run: node test/solana-registry.test.mjs
 
+      - name: Detect whether plain-http addresses get through
+        run: node test/peer-access.test.mjs
+
       - name: Check the wait estimate's arithmetic
         run: node test/odds.test.mjs
 

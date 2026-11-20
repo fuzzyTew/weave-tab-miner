@@ -23,6 +23,27 @@ export class PeerAccess {
     PeerAccess.mixedContentAllowed = Boolean(allowed);
   }
 
+  /**
+   * Whether this browser lets this https page call plain-http addresses, found by trying:
+   * true when any of `probeUrls` (plain-http) answers at all. Requests use no-cors, so an
+   * opaque answer counts (the node need not send CORS headers); a blocked request fails
+   * at once, without reaching the network. False means blocked, or that no probe was
+   * reachable — the two look the same from here.
+   */
+  static async detectMixedContent(probeUrls, { timeoutMs = 6000 } = {}) {
+    const attempts = probeUrls.filter((url) => url.startsWith('http:')).map(async (url) => {
+      await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
+      return url;
+    });
+    if (!attempts.length) return false;
+    try {
+      await Promise.any(attempts);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   static blockedReason(pageLocation = globalThis.location) {
     if (pageLocation?.protocol === 'https:' && !PeerAccess.mixedContentAllowed) {
       return 'this page was loaded over https, and browsers block https pages from calling Arweave nodes, which use plain http';
