@@ -29,10 +29,6 @@ export class AccountTree {
     this.size = 0;
   }
 
-  static async webCryptoSha384(bytes) {
-    return new Uint8Array(await crypto.subtle.digest('SHA-384', bytes));
-  }
-
   static toByteString(bytes) {
     let text = '';
     for (const byte of bytes) text += String.fromCharCode(byte);
