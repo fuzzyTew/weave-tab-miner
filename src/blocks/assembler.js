@@ -30,9 +30,8 @@ export class BlockAssembler {
    * `rewardAddress` the miner's address (base64url) and `rewardKey` its public key;
    * `timestamp` the miner's clock in seconds.
    *
-   * Releasing the oldest locked reward changes `state.accountTree` in place (rehashing the
-   * whole tree each block would take seconds); call `advance` once the block is accepted,
-   * or rebuild the tree if it is not.
+   * The account tree is left as it was (the oldest locked reward is released only to work
+   * out the root, then put back), so a block that is never accepted costs nothing.
    */
   static async assemble({ state, solution, rewardAddress, rewardKey, timestamp }) {
     const parent = state.block;
@@ -50,9 +49,13 @@ export class BlockAssembler {
       strict_data_split_threshold: parent.strict_data_split_threshold,
     };
 
+    // The release is undone once the root is known: the state moves on only by following
+    // whichever block the network keeps (ChainFollower, or `advance`).
     const released = state.rewardHistory.releasedReward();
-    state.accountTree.applyReward(released.addressBytes, released.reward, Number(parent.denomination));
-    block.wallet_list = Bytes.toBase64Url(await state.accountTree.rootHash());
+    block.wallet_list = await state.accountTree.withUndoneChanges(async (tree) => {
+      tree.applyReward(released.addressBytes, released.reward, Number(parent.denomination));
+      return Bytes.toBase64Url(await tree.rootHash());
+    });
     block.reward_history_hash = Bytes.toBase64Url(BlockHistoryHashes.rewardHistoryHash(block, Bytes.fromBase64Url(parent.reward_history_hash)));
     block.block_time_history_hash = Bytes.toBase64Url(state.blockTimeHistory.withNewest(BlockTimeHistory.elementFor(block, parent)).hash());
     block.hash_list_merkle = Bytes.toBase64Url(await BlockHistoryHashes.hashListMerkle(parent));

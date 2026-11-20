@@ -1,7 +1,8 @@
 // test/block-assembler.test.mjs — whole blocks: starting from the first saved parent's state
 // only, assemble each saved localnet block in turn from its mining solution (advancing the
 // state with our own blocks, not the saved ones), and require every field to match the
-// node's block. With the node's signature added, our block's id must be the node's.
+// node's block. With the node's signature added, our block's id must be the node's. The
+// state moves on by following each block (ChainFollower), checking its root again.
 // Fixtures as in test/account-tree.test.mjs.
 // Run: node test/block-assembler.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ import { RewardHistory } from '../src/blocks/rewards.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { BlockAssembler, ChainState } from '../src/blocks/assembler.js';
 import { BlockHash } from '../src/blocks/hash.js';
+import { ChainFollower } from '../src/blocks/chain-follower.js';
 import { Bytes } from '../src/core/bytes.js';
 
 class BlockAssemblerTest {
@@ -60,7 +62,8 @@ class BlockAssemblerTest {
       this.report(`block ${child.height}: all ${fieldNames.size} fields match the node's`, differing.length === 0, differing.length ? `differ: ${differing.join(', ')}` : '');
       const id = Bytes.toBase64Url(await BlockHash.indepHash({ ...block, signature: child.signature }));
       this.report(`block ${child.height}: with the node's signature, the same id`, id === child.indep_hash);
-      BlockAssembler.advance(state, { ...block, signature: child.signature, indep_hash: id });
+      // Move on by following our own block, as a light client follows any block.
+      await new ChainFollower({ state, fetchTransaction: null }).apply({ ...block, signature: child.signature, indep_hash: id });
     }
     process.exitCode = this.failures ? 1 : 0;
   }

@@ -24,6 +24,7 @@ import { ComputedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
 import { BlockSigner } from '../src/blocks/signer.js';
 import { DoubleSigningGuard } from '../src/blocks/signing-guard.js';
 import { BlockBinary } from '../src/blocks/binary.js';
+import { ChainFollower } from '../src/blocks/chain-follower.js';
 import { ArweaveWallet } from '../src/wallet/wallet.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 
@@ -156,7 +157,7 @@ class LocalnetBlockPoster {
       // Retarget and price-adjustment heights are where the fields change; show them.
       const changed = ['diff', 'last_retarget', 'price_per_gib_minute', 'scheduled_price_per_gib_minute'].filter((field) => String(signed[field]) !== String(state.block[field]));
       console.log(`block ${signed.height} accepted: it is the localnet's tip${changed.length ? `; changed: ${changed.map((field) => `${field} ${state.block[field]} → ${signed[field]}`).join(', ')}` : ''}`);
-      BlockAssembler.advance(state, signed);
+      await new ChainFollower({ state, fetchTransaction: null }).apply(signed);
     }
     console.log(`${accepted} of ${this.blockCount} blocks accepted`);
     process.exitCode = accepted === this.blockCount ? 0 : 1;
