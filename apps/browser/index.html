@@ -73,6 +73,11 @@
   .quick-start-note { color: var(--muted); }
   .saved-addresses { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 0.85rem; }
   .saved-addresses li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere; }
+  .keep-copy { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  .keep-copy .stage-note, .keep-copy ul { margin: 0; }
+  .notes > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+  .notes[open] > summary { margin-bottom: 8px; }
+  details.more > summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
   .reminders { display: grid; gap: 10px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
   .reminder { border: 2px solid var(--warn); padding: 10px 14px; display: grid; gap: 6px; align-content: start; }
   .reminder h3 { margin: 0; font-size: 1rem; }
@@ -138,7 +143,7 @@
 <main class="page">
   <header style="display:grid; gap:6px">
     <h1>Weave Tab Miner</h1>
-    <p class="lede">An Arweave mining node that runs in this tab: it takes a mining address, packs chunks of the live weave to it, follows the VDF, and checks every nonce it can against the network difficulty. Given long enough, it would say "Solution found!"</p>
+    <p class="lede">Mine Arweave in a browser tab: hold a little of the weave, follow the network's clock (the VDF), and if a solution comes, the tab builds the block and sends it to the network.</p>
   </header>
 
   <section class="reminder share-request" id="shareRequest" hidden>
@@ -149,31 +154,38 @@
 
   <section class="quick-start" aria-labelledby="quickStartHeading">
     <h2 id="quickStartHeading">Mine with one button</h2>
-    <p class="stage-note">Mines for the shared key (or your own, if you chose one below): finds sources that answer here, loads the current block, fetches and packs some data if none is held, and picks a VDF source. Every step can be changed in the sections further down.</p>
+    <p class="stage-note">Finds sources that answer here, loads the current block, fetches some data if none is held, and starts. Each step shows below as it goes, with what to do if one fails. Everything can be changed in the sections further down.</p>
     <div class="row"><button id="quickStartButton" class="primary" type="button">Start mining for the shared account</button></div>
     <ol class="quick-start-stages" id="quickStartStages"></ol>
   </section>
 
-  <section class="reminders" aria-labelledby="remindersHeading">
-    <h2 id="remindersHeading" class="visually-hidden">Reminders</h2>
-    <div class="reminder">
-      <h3>Unfinished: turning a solution into a block</h3>
-      <p class="stage-note">A solution found here cannot yet be signed and sent as a block. The steps are in docs/TODO.md, "Turn a solution into a block". To continue with Claude, ask: “Continue the weave-tab-miner block builder (github.com/fuzzyTew/weave-tab-miner, docs/TODO.md "Turn a solution into a block"). Start at the first unchecked step, test it against the localnet-fixtures branch, and commit each step separately.”</p>
-    </div>
-    <div class="reminder">
-      <h3 id="runHeading">Keep a copy</h3>
+  <section class="keep-copy" aria-labelledby="runHeading">
+    <h2 id="runHeading" class="visually-hidden">Keep a copy</h2>
       <div class="row"><a id="downloadLink" class="button-link" download="weave-tab-miner.html" href="#">Download this page</a></div>
       <p class="stage-note" id="downloadNote"></p>
       <p class="stage-note" id="permawebNote"></p>
       <ul id="permawebLinks" class="permaweb-links"></ul>
-    </div>
-    <div class="reminder">
-      <h3>If this network blocks Arweave</h3>
-      <p class="stage-note">Try the source test below, another network, or a phone hotspot. Tor can also run inside a web page: <a href="https://www.npmjs.com/package/tor-js" target="_blank" rel="noopener">tor-js</a> and <a href="https://github.com/igor53627/webtor-rs" target="_blank" rel="noopener">webtor-rs</a> build it into WebAssembly and use Snowflake to get through blocks. This page does not include it yet (see TODO.md). On a shared or work network, ask before routing around its filter.</p>
-    </div>
-    <div class="reminder">
-      <h3>Other ways to keep data permanently</h3>
-      <p class="stage-note">A page can only speak HTTP and a few browser protocols. Tor would let it reach any TCP port, and libp2p in the browser reaches networks such as Autonomi, so one client could compare and mirror across these. Not built yet (see TODO.md).</p>
+  </section>
+
+  <details class="notes">
+    <summary>Notes: blocked networks, what is not finished, other ways to keep data</summary>
+    <div class="reminders">
+      <div class="reminder">
+        <h3>If this network blocks Arweave</h3>
+        <p class="stage-note">Try the source test below, another network, or a phone hotspot. Tor can also run inside a web page: <a href="https://www.npmjs.com/package/tor-js" target="_blank" rel="noopener">tor-js</a> and <a href="https://github.com/igor53627/webtor-rs" target="_blank" rel="noopener">webtor-rs</a> build it into WebAssembly and use Snowflake to get through blocks. This page does not include it yet (see TODO.md). On a shared or work network, ask before routing around its filter.</p>
+      </div>
+      <div class="reminder">
+        <h3>Not finished yet</h3>
+        <ul class="stage-note">
+          <li>Blocks this tab builds carry no transactions yet, so they earn the reward but store nobody's data.</li>
+          <li>Tabs sharing a key on different devices could both solve at one height; signing both would get the key banned. Rare; waits on tabs being able to talk to each other.</li>
+          <li>Each visit reads all accounts (about 300,000) from a node again before it can publish.</li>
+        </ul>
+        <p class="stage-note">The full list, with what is done, is docs/TODO.md. To continue with Claude, ask: “Continue weave-tab-miner (github.com/fuzzyTew/weave-tab-miner): pick the next task in docs/TODO.md, test it against real nodes, and commit each step separately.”</p>
+      </div>
+      <div class="reminder">
+        <h3>Other ways to keep data permanently</h3>
+        <p class="stage-note">A page can only speak HTTP and a few browser protocols. Tor would let it reach any TCP port, and libp2p in the browser reaches networks such as Autonomi, so one client could compare and mirror across these. Not built yet (see TODO.md).</p>
       <ul class="alternatives">
         <li><a href="https://www.arweave.org" target="_blank" rel="noopener">Arweave</a>: pay once; miners are paid to keep replicas, and one surviving copy can restore the rest.</li>
         <li><a href="https://ardrive.io" target="_blank" rel="noopener">ArDrive Turbo</a>: an Arweave bundler; items up to 100 KiB free, larger ones paid by card or crypto.</li>
@@ -184,8 +196,9 @@
         <li><a href="https://archive.org" target="_blank" rel="noopener">Internet Archive</a>: free, not a blockchain; one organization keeps it.</li>
         <li>Your own copies: several places you control, such as optical discs, checked from time to time.</li>
       </ul>
+      </div>
     </div>
-  </section>
+  </details>
 
   <div class="readouts" aria-live="polite">
     <div class="readout"><div class="readout-label">Block height</div><div class="readout-value" id="networkHeight">—</div></div>
@@ -196,13 +209,13 @@
     <div class="readout"><div class="readout-label">RandomX</div><div class="readout-value readout-small" id="randomxStatus">—</div></div>
   </div>
 
-  <section class="limits" aria-labelledby="limitsHeading">
-    <h2 id="limitsHeading">Why the wait is this long</h2>
+  <details class="limits notes">
+    <summary id="limitsHeading">Why the wait is this long, and the measured pace</summary>
     <p id="limitHeadline">—</p>
     <ol id="limitList"></ol>
     <p id="rangeHitNote">—</p>
     <p class="stage-note" id="waitNote"></p>
-  </section>
+  </details>
 
   <div class="banner" id="solutionBanner" hidden>
     <strong id="solutionTitle">Solution found!</strong>
@@ -213,7 +226,9 @@
     <section class="stage" aria-labelledby="identityHeading">
       <h2 id="identityHeading"><span class="stage-number">1</span>Identity</h2>
       <div class="row"><button id="sharedKeyButton" type="button">Use the shared key</button><button id="generateButton" type="button">Generate a key</button></div>
-      <p class="stage-note">The shared key comes with this page, so tabs can mine together without each needing a key. This page will never sign two competing blocks with any key, which would get its address banned.</p>
+      <details class="more"><summary>More about this</summary>
+        <p class="stage-note">The shared key comes with this page, so tabs can mine together without each needing a key. This page will never sign two competing blocks with any key, which would get its address banned.</p>
+      </details>
       <label for="addressInput">or use a mining address
         <input id="addressInput" type="text" spellcheck="false" autocomplete="off" placeholder="43-character address">
       </label>
@@ -253,20 +268,25 @@
       <label for="partitionInput">Partition (3.6 TB each)
         <input id="partitionInput" type="number" min="0" step="1">
       </label>
-      <label for="chunkCountInput">Chunks to fetch (256 KiB each)
-        <input id="chunkCountInput" type="number" min="1" max="4096" step="1" value="4">
+      <label for="storageTargetInput">Storage to use: <span id="storageTargetText">—</span>
+        <input id="storageTargetInput" type="range" min="0" max="2147483648" step="67108864" value="268435456">
       </label>
+      <meter id="storageFillMeter" min="0" max="1" value="0" title="How much of the storage set aside is filled"></meter>
       <div class="row"><button id="holdButton" type="button">Fetch and pack</button><button id="stopHoldButton" type="button" hidden>Stop early</button></div>
       <progress id="holdProgress" max="1" value="0" hidden></progress>
       <p class="stage-note" id="holdStatus">—</p>
       <p class="stage-note" id="packStatus"></p>
-      <p class="stage-note">With a live block, each browser gets its own randomly picked partition (kept between visits), and each fetch starts at a random position in it, so tabs sharing a key rarely hold the same data. A live block fetches chunks at one position in successive 3.5 GB sectors of your partition: they share their 32 packing entropies, so 1 or 1,024 of them cost the same packing time. Packed chunks are kept in this browser for this address.</p>
+      <details class="more"><summary>More about this</summary>
+        <p class="stage-note">With a live block, each browser gets its own randomly picked partition (kept between visits), and each fetch starts at a random position in it, so tabs sharing a key rarely hold the same data. A live block fetches chunks at one position in successive 3.5 GB sectors of your partition: they share their 32 packing entropies, so 1 or 1,024 of them cost the same packing time. Packed chunks are kept in this browser for this address.</p>
+      </details>
       <p class="stage-note" id="storageNote"></p>
       <div class="row">
         <button id="exportChunksButton" type="button">Export packed chunks</button>
         <label class="button-link" for="importChunksInput">Import packed chunks<input id="importChunksInput" type="file" accept=".bin,application/octet-stream" hidden></label>
       </div>
-      <p class="stage-note">Export saves this address's packed chunks to a file; import loads such a file in another browser or a copy opened from disk, with no packing again. Chunks saved for other addresses are repacked for this one when mining starts, so all storage counts.</p>
+      <details class="more"><summary>More about this</summary>
+        <p class="stage-note">Export saves this address's packed chunks to a file; import loads such a file in another browser or a copy opened from disk, with no packing again. Chunks saved for other addresses are repacked for this one when mining starts, so all storage counts.</p>
+      </details>
       <div class="row"><button id="bringChunksButton" type="button" hidden>Bring chunks from the website copy</button></div>
       <ul class="saved-addresses" id="savedAddresses"></ul>
     </section>
@@ -309,7 +329,9 @@
         <dt>Earnings at this block's reward</dt><dd id="poolEarnings">—</dd>
         <dt>One tab's first payout</dt><dd id="poolPayout">—</dd>
       </dl>
-      <p class="stage-note">The defaults are VirdPool's (ar.virdpool.com): 4% fee, 0.5 AR threshold, PPLNS. This assumes the pool's members together answer every range-2 lookup; a tab alone, trying one-chunk solutions only, waits about 100 times longer.</p>
+      <details class="more"><summary>More about this</summary>
+        <p class="stage-note">The defaults are VirdPool's (ar.virdpool.com): 4% fee, 0.5 AR threshold, PPLNS. This assumes the pool's members together answer every range-2 lookup; a tab alone, trying one-chunk solutions only, waits about 100 times longer.</p>
+      </details>
     </section>
 
     <section class="stage" aria-labelledby="walletHeading">
@@ -378,6 +400,9 @@
       <div class="stage">
         <span class="chip chip-real">Tested against mainnet</span>
         <ul>
+          <li>Following the chain: all 317,041 accounts, then each new block's transactions and reward, match every block's account root.</li>
+          <li>A real block rebuilt here from nothing but its solution comes out with the same block id.</li>
+          <li>VDF steps and seeds, difficulty retargets and price adjustments match recent mainnet blocks.</li>
           <li>Replaying block 2,040,257 with real RandomX finds its own solution again: the same nonce and hash.</li>
           <li>Packing that block's unpacked chunks reproduces its packed sub-chunks exactly.</li>
           <li>The VDF recomputes step 119,924,183 to the block's output.</li>
@@ -385,10 +410,9 @@
         </ul>
       </div>
       <div class="stage">
-        <span class="chip chip-stub">Not yet tested live</span>
+        <span class="chip chip-stub">Not yet seen on mainnet</span>
         <ul>
-          <li>Requests to gateways, peers and VDF servers: written from the node source, but the machine this was built on could not reach Arweave.</li>
-          <li>A found solution is not yet built into a signed block and sent.</li>
+          <li>Blocks built here were taken by an Arweave test network (a localnet), 37 in a row; none has reached mainnet yet, because that needs a real solution.</li>
           <li>If the 512 MiB RandomX cache cannot be allocated, the page falls back to SHA-256 stand-ins and says so.</li>
         </ul>
       </div>
