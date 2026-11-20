@@ -174,11 +174,32 @@ export class PackedChunkArchive {
 
   /** A Blob ready to download; `entries` is [[bucketEndOffset, Uint8Array], ...]. */
   static toBlob(address, entries) {
-    const header = { address, chunkSize: PackedChunkArchive.CHUNK_SIZE, bucketEndOffsets: entries.map(([offset]) => offset.toString()) };
-    for (const [offset, chunk] of entries) {
-      if (chunk.length !== PackedChunkArchive.CHUNK_SIZE) throw new Error(`chunk at ${offset} is ${chunk.length} bytes, not ${PackedChunkArchive.CHUNK_SIZE}`);
+    return new Blob([PackedChunkArchive.header(address, entries.map(([offset]) => offset)), ...entries.map(([offset, chunk]) => PackedChunkArchive.checkedChunk(offset, chunk))], { type: 'application/octet-stream' });
+  }
+
+  /** The archive's two header lines, for chunks at `offsets` in that order. */
+  static header(address, offsets) {
+    return `${PackedChunkArchive.FORMAT_LINE}\n${JSON.stringify({ address, chunkSize: PackedChunkArchive.CHUNK_SIZE, bucketEndOffsets: offsets.map(String) })}\n`;
+  }
+
+  static checkedChunk(offset, chunk) {
+    if (chunk?.length !== PackedChunkArchive.CHUNK_SIZE) throw new Error(`chunk at ${offset} is ${chunk?.length ?? 'missing'}, not ${PackedChunkArchive.CHUNK_SIZE} bytes`);
+    return chunk;
+  }
+
+  /**
+   * The archive as parts in order (the header, then batches of chunks as Blobs), reading
+   * `batchSize` chunks at a time through `readBatch(offsets)` → [[offset, chunk], ...], so a
+   * large archive never sits in memory whole. `onProgress(done, total)` follows it.
+   */
+  static async *parts(address, offsets, readBatch, { batchSize = 128, onProgress = () => {} } = {}) {
+    yield PackedChunkArchive.header(address, offsets);
+    for (let start = 0; start < offsets.length; start += batchSize) {
+      const wanted = offsets.slice(start, start + batchSize);
+      const byOffset = new Map((await readBatch(wanted)).map(([offset, chunk]) => [String(offset), chunk]));
+      yield new Blob(wanted.map((offset) => PackedChunkArchive.checkedChunk(offset, byOffset.get(String(offset)))));
+      onProgress(Math.min(start + batchSize, offsets.length), offsets.length);
     }
-    return new Blob([`${PackedChunkArchive.FORMAT_LINE}\n${JSON.stringify(header)}\n`, ...entries.map(([, chunk]) => chunk)], { type: 'application/octet-stream' });
   }
 
   static fileName(address, chunkCount) {
@@ -186,23 +207,35 @@ export class PackedChunkArchive {
   }
 
   /**
-   * Reads an archive back: { address, entries }. Reads the chunks one slice at a time, so a
-   * large file is not copied whole. Throws with the reason if the file is not an archive.
+   * Reads an archive back in batches: yields { address, entries } of up to `batchSize`
+   * chunks, one slice of the file at a time, so a large file is never held whole. Throws
+   * with the reason if the file is not an archive.
    */
-  static async fromBlob(blob) {
-    const headStart = new TextDecoder().decode(new Uint8Array(await blob.slice(0, 1 << 20).arrayBuffer()));
+  static async *batches(blob, { batchSize = 128 } = {}) {
+    const headStart = new TextDecoder().decode(new Uint8Array(await blob.slice(0, 1 << 24).arrayBuffer()));
     const firstBreak = headStart.indexOf('\n');
     const secondBreak = headStart.indexOf('\n', firstBreak + 1);
     if (headStart.slice(0, firstBreak) !== PackedChunkArchive.FORMAT_LINE || secondBreak < 0) throw new Error('not a packed chunk archive from this page');
     const header = JSON.parse(headStart.slice(firstBreak + 1, secondBreak));
     const dataStart = new TextEncoder().encode(headStart.slice(0, secondBreak + 1)).length;
     const expectedSize = dataStart + header.bucketEndOffsets.length * header.chunkSize;
-    if (blob.size !== expectedSize) throw new Error(`archive is ${blob.size} bytes; its header promises ${expectedSize}`);
-    const entries = [];
-    for (const [index, offset] of header.bucketEndOffsets.entries()) {
-      const start = dataStart + index * header.chunkSize;
-      entries.push([BigInt(offset), new Uint8Array(await blob.slice(start, start + header.chunkSize).arrayBuffer())]);
+    if (blob.size !== expectedSize) throw new Error(`archive is ${blob.size} bytes; its header promises ${expectedSize} (an unfinished download?)`);
+    for (let first = 0; first < header.bucketEndOffsets.length; first += batchSize) {
+      const offsets = header.bucketEndOffsets.slice(first, first + batchSize);
+      const start = dataStart + first * header.chunkSize;
+      const bytes = new Uint8Array(await blob.slice(start, start + offsets.length * header.chunkSize).arrayBuffer());
+      yield { address: header.address, entries: offsets.map((offset, index) => [BigInt(offset), bytes.slice(index * header.chunkSize, (index + 1) * header.chunkSize)]) };
     }
-    return { address: header.address, entries };
+  }
+
+  /** The whole archive read back: { address, entries }. For small archives; see `batches`. */
+  static async fromBlob(blob) {
+    let address = null;
+    const entries = [];
+    for await (const batch of PackedChunkArchive.batches(blob)) {
+      address = batch.address;
+      entries.push(...batch.entries);
+    }
+    return { address, entries };
   }
 }
