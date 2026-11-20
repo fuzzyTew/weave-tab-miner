@@ -10,10 +10,39 @@
 // such signature. It deters accidents only: anyone holding the key can still sign
 // whatever they like, and other tabs sharing the key keep their own records.
 
+export class MemoryStorage {
+  /**
+   * The getItem/setItem part of localStorage, kept in memory: for Node, and for pages where
+   * the browser refuses storage. Records kept here last only as long as the object.
+   */
+  constructor() {
+    this.items = new Map();
+  }
+
+  getItem(key) {
+    return this.items.get(key) ?? null;
+  }
+
+  setItem(key, value) {
+    this.items.set(key, String(value));
+  }
+
+  /** localStorage when the browser allows it, else a MemoryStorage. */
+  static browserOrMemory() {
+    try {
+      const storage = globalThis.localStorage;
+      storage.getItem('weave-tab-miner.storage-check');
+      return storage;
+    } catch {
+      return new MemoryStorage();
+    }
+  }
+}
+
 export class DoubleSigningGuard {
   /**
-   * `storage` is anything with getItem/setItem (localStorage in a page, a Map-backed
-   * stand-in elsewhere). Records are kept per address, newest last, up to `keepRecords`.
+   * `storage` is anything with getItem/setItem (localStorage in a page, MemoryStorage
+   * elsewhere). Records are kept per address, newest last, up to `keepRecords`.
    */
   static STORAGE_PREFIX = 'weave-tab-miner.signed-blocks.';
 

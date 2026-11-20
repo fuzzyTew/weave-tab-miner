@@ -10,7 +10,7 @@ import { ChainFollower } from '../../src/blocks/chain-follower.js';
 import { BlockTimeHistory } from '../../src/blocks/history.js';
 import { RewardHistory } from '../../src/blocks/rewards.js';
 import { BlockSigner } from '../../src/blocks/signer.js';
-import { DoubleSigningGuard } from '../../src/blocks/signing-guard.js';
+import { DoubleSigningGuard, MemoryStorage } from '../../src/blocks/signing-guard.js';
 import { ComputedVdfSteps, RecordedVdfSteps } from '../../src/blocks/vdf-info.js';
 import { NodeClient } from '../../src/network/node-client.js';
 import { PeerAccess } from '../../src/network/peers.js';
@@ -113,15 +113,7 @@ export class PublishingPanel {
 
   blockSigner() {
     if (!this.blockSignerFor || this.blockSignerFor.wallet !== this.identity.wallet) {
-      let storage;
-      try {
-        storage = localStorage;
-      } catch {
-        storage = new Map();
-        storage.getItem = (key) => storage.get(key) ?? null;
-        storage.setItem = (key, value) => storage.set(key, value);
-      }
-      this.blockSignerFor = new BlockSigner({ wallet: this.identity.wallet, guard: new DoubleSigningGuard({ storage }) });
+      this.blockSignerFor = new BlockSigner({ wallet: this.identity.wallet, guard: new DoubleSigningGuard({ storage: MemoryStorage.browserOrMemory() }) });
     }
     return this.blockSignerFor;
   }

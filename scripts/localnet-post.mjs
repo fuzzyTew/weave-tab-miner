@@ -22,19 +22,12 @@ import { BlockAssembler, ChainState } from '../src/blocks/assembler.js';
 import { BlockSolution } from '../src/blocks/solution.js';
 import { ComputedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
 import { BlockSigner } from '../src/blocks/signer.js';
-import { DoubleSigningGuard } from '../src/blocks/signing-guard.js';
+import { DoubleSigningGuard, MemoryStorage } from '../src/blocks/signing-guard.js';
 import { BlockBinary } from '../src/blocks/binary.js';
 import { ChainFollower } from '../src/blocks/chain-follower.js';
 import { NetworkRules } from '../src/blocks/network-rules.js';
 import { ArweaveWallet } from '../src/wallet/wallet.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
-
-class MapStorage {
-  /** The getItem/setItem part of localStorage, in memory: the guard's records for this run. */
-  constructor() { this.items = new Map(); }
-  getItem(key) { return this.items.get(key) ?? null; }
-  setItem(key, value) { this.items.set(key, value); }
-}
 
 class LocalnetBlockPoster {
   // The localnet seeds about 21 MiB of data near the start of the weave, with gaps (the
@@ -129,7 +122,7 @@ class LocalnetBlockPoster {
 
   async run() {
     const wallet = await ArweaveWallet.generate();
-    const signer = new BlockSigner({ wallet, guard: new DoubleSigningGuard({ storage: new MapStorage() }) });
+    const signer = new BlockSigner({ wallet, guard: new DoubleSigningGuard({ storage: new MemoryStorage() }) });
     console.log(`mining as ${wallet.address}`);
     const state = await this.chainState();
     const { h0Hasher, entropySource } = this.randomx();

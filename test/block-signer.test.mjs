@@ -6,16 +6,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { BlockSigner } from '../src/blocks/signer.js';
 import { BlockHash } from '../src/blocks/hash.js';
-import { DoubleSigningGuard } from '../src/blocks/signing-guard.js';
+import { DoubleSigningGuard, MemoryStorage } from '../src/blocks/signing-guard.js';
 import { ArweaveWallet } from '../src/wallet/wallet.js';
 import { Bytes } from '../src/core/bytes.js';
-
-class MapStorage {
-  /** The getItem/setItem part of localStorage, in memory. */
-  constructor() { this.items = new Map(); }
-  getItem(key) { return this.items.get(key) ?? null; }
-  setItem(key, value) { this.items.set(key, value); }
-}
 
 class BlockSignerTest {
   constructor(fixturesDirectory) {
@@ -36,7 +29,7 @@ class BlockSignerTest {
     const name = readdirSync(this.fixturesDirectory).filter((file) => file.startsWith('block_')).sort()[0];
     const { child } = JSON.parse(readFileSync(`${this.fixturesDirectory}/${name}`, 'utf8'));
     const wallet = await ArweaveWallet.generate();
-    const signer = new BlockSigner({ wallet, guard: new DoubleSigningGuard({ storage: new MapStorage() }) });
+    const signer = new BlockSigner({ wallet, guard: new DoubleSigningGuard({ storage: new MemoryStorage() }) });
 
     const signed = await signer.sign(child);
     const publicKey = await crypto.subtle.importKey('jwk', { kty: 'RSA', e: 'AQAB', n: signed.reward_key }, { name: 'RSA-PSS', hash: 'SHA-256' }, false, ['verify']);
