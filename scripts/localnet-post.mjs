@@ -90,6 +90,7 @@ class LocalnetBlockPoster {
       rewardHistory: RewardHistory.fromBinary(rewardHistory),
       blockTimeHistory: BlockTimeHistory.fromBinary(blockTimeHistory),
       accountTree,
+      difficultyRetargets: false,
     });
   }
 
@@ -149,7 +150,9 @@ class LocalnetBlockPoster {
         break;
       }
       accepted++;
-      console.log(`block ${signed.height} accepted: it is the localnet's tip`);
+      // Retarget and price-adjustment heights are where the fields change; show them.
+      const changed = ['diff', 'last_retarget', 'price_per_gib_minute', 'scheduled_price_per_gib_minute'].filter((field) => String(signed[field]) !== String(state.block[field]));
+      console.log(`block ${signed.height} accepted: it is the localnet's tip${changed.length ? `; changed: ${changed.map((field) => `${field} ${state.block[field]} → ${signed[field]}`).join(', ')}` : ''}`);
       BlockAssembler.advance(state, signed);
     }
     console.log(`${accepted} of ${this.blockCount} blocks accepted`);
