@@ -4,6 +4,7 @@
 // Run: node test/vdf-update.test.mjs
 import { Bytes } from '../src/core/bytes.js';
 import { VdfUpdate } from '../src/network/vdf-client.js';
+import { VdfSession } from '../src/mining/vdf.js';
 
 class VdfUpdateTest {
   static encodeInt(value) {
@@ -40,6 +41,10 @@ class VdfUpdateTest {
       ['difficulty', update.nextVdfDifficulty === 1_134_000n],
       ['upper bound', update.upperBound === 393_022_109_425_910n],
       ['25 checkpoints', update.checkpoints.length === 25 && update.checkpoints[24][0] === 124],
+      ['a session moved onto the update mines with its seed and bound', (() => {
+        const moved = new VdfSession({ seed: new Uint8Array(48), nextSeed: new Uint8Array(48), partitionUpperBound: 1n, networkDiff: 5n, height: 7 }).withVdfUpdate(update);
+        return moved.seed[0] === 9 && moved.partitionUpperBound === 393_022_109_425_910n && moved.networkDiff === 5n && moved.height === 7;
+      })()],
       ['newer steps, oldest first', fresh.length === 2 && fresh[0][0] === 119_924_199 && fresh[0][1][0] === 2 && fresh[1][1][0] === 3],
     ];
     let failures = 0;

@@ -90,6 +90,17 @@ export class VdfSession {
     });
   }
 
+  /**
+   * This session moved onto a VDF server's update (VdfUpdate.parse): its seeds and weave
+   * bound change at every entropy reset line, about every 20 minutes, and H0 must use the
+   * current ones or every solution is invalid.
+   * Approximation: the bound is the update's session bound; a node picks next_upper_bound
+   * for steps past the reset point within a session (get_active_partition_upper_bound).
+   */
+  withVdfUpdate(update) {
+    return new VdfSession({ ...this, seed: update.seed, nextSeed: update.nextSeed, partitionUpperBound: update.upperBound });
+  }
+
   /** [stepNumber, output] pairs, oldest first; only steps after `afterStepNumber` if given. */
   steps(afterStepNumber = -1) {
     return this.stepOutputsNewestFirst
