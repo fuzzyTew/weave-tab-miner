@@ -48,7 +48,7 @@ export class MiningMath {
     return { hash: Sha256.hash(h0, preimage), preimage };
   }
 
-  /** Assumption: compute_h2 receives H1's solution hash (not its preimage). */
+  /** compute_h2 takes H1's solution hash (not its preimage): matches localnet block 2,069,867 (test/block-solution.test.mjs). */
   static h2(h1Hash, subChunk2, h0) {
     const preimage = Sha256.hash(h1Hash, subChunk2);
     return { hash: Sha256.hash(h0, preimage), preimage };

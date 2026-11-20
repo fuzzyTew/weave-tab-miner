@@ -1,6 +1,6 @@
 // src/blocks/solution.js — a block's solution fields (BlockAssembler.SOLUTION_FIELDS) from one
-// held chunk: its sub-chunk packed for the miner, H0 and H1, and the proofs. Part of step 6
-// of docs/TODO.md "Turn a solution into a block".
+// or two held chunks: their proven sub-chunks packed for the miner, H0, H1 (and H2), and the
+// proofs. Step 6 of docs/TODO.md "Turn a solution into a block".
 import { Bytes } from '../core/bytes.js';
 import { ConsensusConstants } from '../core/constants.js';
 import { MiningMath } from '../mining/mining-math.js';
@@ -8,21 +8,11 @@ import { Replica29Layout } from '../mining/packing.js';
 import { Sha256 } from '../core/sha256.js';
 import { SegmentWriter } from './hash.js';
 
-export class OneChunkSolution {
+export class BlockSolution {
   /** Arweave's replica 2.9 packing, as block JSON names it. */
   static PACKING_DIFFICULTY = 10;
   static REPLICA_FORMAT = 1;
 
-  /**
-   * A one-chunk solution from the chunk starting at `recallByte` (chunk-aligned, BigInt):
-   * `chunkJson` is GET /chunk's answer for it, unpacked ({ chunk, data_path, tx_path },
-   * base64url). `nonce` (0–31) picks the sub-chunk. `seed` is the parent's VDF seed (48
-   * bytes); `h0Hasher` and `entropySource` come from src/mining/randomx.js.
-   *
-   * Approximation: the recall range is taken to start at this chunk, which only a localnet
-   * allows (a block there names its recall byte). On mainnet the range comes from H0 and
-   * the solution must also pass the difficulty, which callers check.
-   */
   /**
    * A chunk as replica 2.9 packs and proves it: a small chunk (under 256 KiB, as at the end
    * of a transaction's data) is zero-padded to 256 KiB, and the padded bytes are the
@@ -37,33 +27,59 @@ export class OneChunkSolution {
     return padded;
   }
 
-  static async build({ addressBytes, vdfInfo, seed, recallByte, chunkJson, nonce, h0Hasher, entropySource }) {
+  /**
+   * The `nonce`th sub-chunk of the chunk at `recallByte`, packed for `addressBytes`, with the
+   * chunk's proof: { packedSubChunk, unpacked, poa }. Only that sub-chunk is packed, which
+   * needs one 8 MiB entropy, not a whole chunk's 32.
+   */
+  static async provenSubChunk({ addressBytes, recallByte, chunkJson, nonce, entropySource }) {
     const size = ConsensusConstants.SUB_CHUNK_SIZE;
-    const unpacked = OneChunkSolution.padded(Bytes.fromBase64Url(chunkJson.chunk));
-
-    // Pack just the proven sub-chunk: it needs one 8 MiB entropy, not a whole chunk's 32.
+    const unpacked = BlockSolution.padded(Bytes.fromBase64Url(chunkJson.chunk));
     const endOffset = Replica29Layout.bucketEndOffsetForByte(recallByte);
     const entropy = await entropySource.entropy(Replica29Layout.entropyKey(addressBytes, endOffset, nonce * size));
     const slice = entropy.subarray(Replica29Layout.sliceIndex(endOffset) * size, (Replica29Layout.sliceIndex(endOffset) + 1) * size);
     const packedSubChunk = unpacked.subarray(nonce * size, (nonce + 1) * size).map((byte, index) => byte ^ slice[index]);
+    return {
+      packedSubChunk, unpacked,
+      poa: { option: '1', tx_path: chunkJson.tx_path, data_path: chunkJson.data_path, chunk: Bytes.toBase64Url(packedSubChunk), unpacked_chunk: Bytes.toBase64Url(unpacked) },
+    };
+  }
 
+  /**
+   * A solution from the chunk starting at `recallByte` (chunk-aligned, BigInt) and, for a
+   * two-chunk solution, the one at `recallByte2`. `chunkJson` and `chunk2Json` are GET
+   * /chunk's answers for them, unpacked ({ chunk, data_path, tx_path }, base64url). `nonce`
+   * (0–31) picks the sub-chunk in each. `seed` is the block's VDF seed (48 bytes);
+   * `h0Hasher` and `entropySource` come from src/mining/randomx.js. With two chunks the
+   * solution hash is H2, over H1 and the second sub-chunk (ar_block:compute_h2).
+   *
+   * Approximation: the recall ranges are taken to start at these chunks, which only a
+   * localnet allows (a block there names its recall bytes). On mainnet the ranges come from
+   * H0 and the solution must also pass the difficulty, which callers check.
+   */
+  static async build({ addressBytes, vdfInfo, seed, recallByte, chunkJson, recallByte2, chunk2Json, nonce, h0Hasher, entropySource }) {
+    const first = await BlockSolution.provenSubChunk({ addressBytes, recallByte, chunkJson, nonce, entropySource });
     const partitionNumber = Number(recallByte / ConsensusConstants.PARTITION_SIZE);
-    const h0 = await h0Hasher.hash(MiningMath.h0Preimage(Bytes.fromBase64Url(vdfInfo.output), partitionNumber, seed, addressBytes, OneChunkSolution.PACKING_DIFFICULTY));
-    const h1 = MiningMath.h1(h0, nonce, packedSubChunk);
+    const h0 = await h0Hasher.hash(MiningMath.h0Preimage(Bytes.fromBase64Url(vdfInfo.output), partitionNumber, seed, addressBytes, BlockSolution.PACKING_DIFFICULTY));
+    const h1 = MiningMath.h1(h0, nonce, first.packedSubChunk);
+    const second = recallByte2 === undefined ? null : await BlockSolution.provenSubChunk({ addressBytes, recallByte: recallByte2, chunkJson: chunk2Json, nonce, entropySource });
+    const solutionHash = second ? MiningMath.h2(h1.hash, second.packedSubChunk, h0) : h1;
     return {
       nonce: Bytes.toBase64Url(SegmentWriter.unsigned(nonce)),
-      hash: Bytes.toBase64Url(h1.hash),
-      hash_preimage: Bytes.toBase64Url(h1.preimage),
+      hash: Bytes.toBase64Url(solutionHash.hash),
+      hash_preimage: Bytes.toBase64Url(solutionHash.preimage),
       recall_byte: recallByte.toString(),
+      ...(second ? { recall_byte2: recallByte2.toString() } : {}),
       partition_number: partitionNumber,
       nonce_limiter_info: vdfInfo,
-      poa: { option: '1', tx_path: chunkJson.tx_path, data_path: chunkJson.data_path, chunk: Bytes.toBase64Url(packedSubChunk), unpacked_chunk: Bytes.toBase64Url(unpacked) },
-      poa2: { option: '1', tx_path: '', data_path: '', chunk: '' },
-      chunk_hash: Bytes.toBase64Url(Sha256.hash(packedSubChunk)),
-      unpacked_chunk_hash: Bytes.toBase64Url(Sha256.hash(unpacked)),
-      packing_difficulty: OneChunkSolution.PACKING_DIFFICULTY,
-      replica_format: OneChunkSolution.REPLICA_FORMAT,
+      poa: first.poa,
+      poa2: second ? second.poa : { option: '1', tx_path: '', data_path: '', chunk: '' },
+      chunk_hash: Bytes.toBase64Url(Sha256.hash(first.packedSubChunk)),
+      ...(second ? { chunk2_hash: Bytes.toBase64Url(Sha256.hash(second.packedSubChunk)) } : {}),
+      unpacked_chunk_hash: Bytes.toBase64Url(Sha256.hash(first.unpacked)),
+      ...(second ? { unpacked_chunk2_hash: Bytes.toBase64Url(Sha256.hash(second.unpacked)) } : {}),
+      packing_difficulty: BlockSolution.PACKING_DIFFICULTY,
+      replica_format: BlockSolution.REPLICA_FORMAT,
     };
   }
 }
-
