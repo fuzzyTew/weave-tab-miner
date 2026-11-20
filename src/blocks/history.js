@@ -45,7 +45,7 @@ export class BlockTimeHistory {
     return {
       blockInterval: BigInt(Math.max(1, Number(block.timestamp) - Number(parent.timestamp))),
       vdfInterval: BigInt(block.nonce_limiter_info.global_step_number) - BigInt(parent.nonce_limiter_info.global_step_number),
-      chunkCount: block.recall_byte2 === undefined ? 1n : 2n,
+      chunkCount: block.recall_byte2 === undefined || block.recall_byte2 === null ? 1n : 2n,
     };
   }
 
