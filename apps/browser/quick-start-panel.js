@@ -50,7 +50,7 @@ export class QuickStartPanel {
       }
       this.quickStartStage('Fetching the current block…');
       if (!(await this.loadLiveBlock())) {
-        this.quickStartStage('Could not reach Arweave from this network. See "If this network blocks Arweave" above: another network, a hotspot, or your own gateway in Network.', 'failed');
+        this.quickStartStage('Could not reach Arweave from this network. Open "Notes" above, under "If this network blocks Arweave": another network, a hotspot, or your own gateway in Network.', 'failed');
         return;
       }
       this.quickStartStage(`Current block ${this.session.height.toLocaleString()}, partition ${this.partitionNumber}`, 'done');
@@ -81,6 +81,8 @@ export class QuickStartPanel {
       }
       await this.start();
       this.quickStartStage('Mining. The wait and what limits it are under "Why the wait is this long".', 'done');
+      const blocker = this.publishBlocker();
+      this.quickStartStage(blocker ? `A solution would not be published: ${blocker}` : 'Getting ready to publish any solution as a block (see "Publishing" in Mine).', blocker ? 'note' : 'done');
     } catch (error) {
       this.quickStartStage(`Stopped: ${error.message.split('\n')[0]}`, 'failed');
       this.view.log(`quick start: ${error.message}`, 'error');
