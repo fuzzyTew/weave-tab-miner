@@ -62,6 +62,13 @@ jobs:
       - name: Check the library's SHA-384 against Node's
         run: node test/sha384.test.mjs
 
+      - name: Held storage, chunk fetching, archives, the signing guard and repacking
+        run: |
+          node test/held-storage.test.mjs
+          node test/chunk-fetcher.test.mjs
+          node test/storage-archive.test.mjs
+          node test/signing-guard-and-repack.test.mjs
+
       - name: Check the wait estimate's arithmetic
         run: node test/odds.test.mjs
 
@@ -148,6 +155,17 @@ jobs:
         env:
           PLAYWRIGHT_CHANNEL: chrome
         run: node test/check-page.cjs dist/weave-tab-miner.html
+
+      - name: Screenshot the page at desktop and phone widths, for review
+        env:
+          PLAYWRIGHT_CHANNEL: chrome
+        run: node scripts/page-screenshots.mjs screenshots
+
+      - name: Keep the screenshots as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-screenshots
+          path: screenshots/
 
       - name: Keep the built page as a workflow artifact
         uses: actions/upload-artifact@v4

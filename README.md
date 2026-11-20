@@ -41,16 +41,16 @@ grouped by area; each file holds one concern and opens with a line saying what i
 | Path | What it holds |
 |---|---|
 | `src/index.js` | Re-exports everything; lists the folders |
-| `src/core/` | `bytes.js` byte helpers · `sha256.js` synchronous SHA-256 · `constants.js` consensus constants · `pretty-number.js` formatting · `citations.js` links from each rule to the node's source |
+| `src/core/` | `bytes.js` byte helpers · `sha256.js` and `sha384.js` synchronous hashes · `secp256k1.js` recovering a signer's key · `denomination.js` · `constants.js` consensus constants · `pretty-number.js` formatting · `citations.js` links from each rule to the node's source |
 | `src/mining/` | `vdf.js` VDF steps and sessions · `difficulty.js` · `identity.js` the mining address · `packing.js` replica 2.9 layout and packing · `mining-math.js` H0, recall ranges, H1, H2 · `held-storage.js` held chunks, read from disk on demand · `miner.js` one step against held data · `odds.js` expected wait and why · `randomx.js` real RandomX through `vendor/` · `workers/` the VDF and RandomX web workers |
-| `src/blocks/` | Turning a solution into a block: `account-tree.js` · `rewards.js` · `history.js` history hashes · `fields.js` plain fields · `solution.js` · `assembler.js` · `hash.js` signed hash and id · `signing-guard.js` · `signer.js` · `binary.js` the form nodes accept |
-| `src/network/` | `gateway.js` HTTP to gateways and nodes · `peers.js` finding and testing sources · `vdf-client.js` VDF servers · `chunk-fetcher.js` fetching chunks in parallel |
+| `src/blocks/` | Building, publishing and following blocks: `account-tree.js` accounts and their root · `rewards.js` · `history.js` history hashes · `fields.js` plain fields · `adjustments.js` difficulty retargets and price adjustments · `vdf-info.js` the VDF steps since the parent · `solution.js` · `assembler.js` · `hash.js` signed hash and id · `signing-guard.js` · `signer.js` · `binary.js` the form nodes accept · `block-publisher.js` solution to posted block · `chain-follower.js` keeping state by following blocks · `network-rules.js` what a localnet relaxes |
+| `src/network/` | `gateway.js` HTTP to gateways · `node-client.js` what nodes serve for chain state, and posting blocks · `erlang-term.js` the node's binary term format · `peers.js` finding and testing sources · `vdf-client.js` VDF servers and the steps seen · `chunk-fetcher.js` fetching chunks in parallel |
 | `src/storage/` | `chunk-store.js` packed chunks in IndexedDB, export and import · `chunk-share.js` moving chunks between copies of the page |
 | `src/wallet/` | `wallet.js` RSA keys · `transaction.js` signed transactions · `bundle.js` ANS-104 items for Turbo |
-| `apps/browser/` | The page: `index.html`; `app.js` (startup, identity, RandomX, wiring) and one panel module per page section — `sources-panel.js`, `holding-panel.js`, `mining-panel.js`, `records-panel.js`, `quick-start-panel.js` — whose methods join the app's; `page-view.js`, `step-explorer.js`, `resources.js` |
+| `apps/browser/` | The page: `index.html`; `app.js` (startup, identity, RandomX, wiring) and one panel module per page section — `sources-panel.js`, `holding-panel.js`, `mining-panel.js`, `publishing-panel.js`, `records-panel.js`, `quick-start-panel.js` — whose methods join the app's; `page-view.js`, `step-explorer.js`, `resources.js` |
 | `apps/node/miner.mjs` | Server mode, same library |
-| `scripts/` | The single-file build (follows imports, so new modules need no list), source gathering, the live network check, localnet capture |
-| `test/` | Tests (`*.test.mjs`, run by `npm test`), the page check, and `fixtures/` |
+| `scripts/` | The single-file build (follows imports, so new modules need no list), source gathering, the live network check, the localnet workflow's capture and post, page screenshots |
+| `test/` | Tests (`*.test.mjs`, run by `npm test`; the localnet ones read the `localnet-fixtures` branch, `mainnet-blocks.test.mjs` needs the network), the page check, and `fixtures/` |
 | `data/` | Build inputs: the sample block, gathered sources, the shared key, the page's permaweb id |
 | `vendor/randomx-arweave/` | randomx.js built for Arweave, with its patch and build notes |
 | `docs/TODO.md` | Larger tasks, each opening to its steps |
