@@ -216,50 +216,70 @@ export class HoldingPanel {
 
   // ---- how much storage to use ----
 
-  static STORAGE_TARGET_KEY = 'weave-tab-miner.storage-target-bytes';
+  // A new key: settings saved under the first slider were clamped to its 2 GiB range.
+  static STORAGE_TARGET_KEY = 'weave-tab-miner.storage-target';
   static STORAGE_STEP_BYTES = 64 * 2 ** 20;
-  static DEFAULT_STORAGE_TARGET_BYTES = 256 * 2 ** 20;
 
   /** The slider's setting in bytes: how much this tab aims to hold for its address. */
   get storageTargetBytes() {
     return Number(this.view.elements.storageTargetInput.value);
   }
 
-  /** Restores the slider (remembered in this browser) and follows it. */
+  /**
+   * Restores the slider and follows it. The setting is remembered as a number of bytes, or
+   * as "max" (the default): all the browser allows, which grows when the browser allows
+   * more. It is applied once the browser's allowance is known, since the slider's range
+   * clamps any value set before that.
+   */
   setUpStorageSlider() {
     const slider = this.view.elements.storageTargetInput;
+    this.storageTargetSetting = 'max';
     try {
-      const saved = Number(localStorage.getItem(HoldingPanel.STORAGE_TARGET_KEY));
-      if (saved > 0) slider.value = String(saved);
+      const saved = localStorage.getItem(HoldingPanel.STORAGE_TARGET_KEY);
+      if (Number(saved) > 0) this.storageTargetSetting = Number(saved);
     } catch {
       // Storage refused: the default applies each visit.
     }
     slider.addEventListener('input', () => {
+      this.storageTargetSetting = slider.value === slider.max ? 'max' : Number(slider.value);
       try {
-        localStorage.setItem(HoldingPanel.STORAGE_TARGET_KEY, slider.value);
+        localStorage.setItem(HoldingPanel.STORAGE_TARGET_KEY, String(this.storageTargetSetting));
       } catch {
         // Not remembered; applies to this visit.
       }
       this.refreshStorageSlider();
+      if (this.running) this.fillStorageWhileMining();
     });
     this.refreshStorageSlider();
   }
 
   /**
-   * The slider's range (up to what the browser allows, rounded down to a step) and its
-   * text and meter: the amount set, what the browser allows, and how full it is.
+   * Holding data is part of mining, so while mining on the live block the tab keeps
+   * fetching toward "Storage to use" in the background (packing shares the CPU with
+   * mining, which slows each step a little; storage is by far the larger factor).
+   */
+  async fillStorageWhileMining() {
+    if (this.holdStopper || this.blockOrigin !== 'live' || !this.chunksToReachTarget()) return;
+    this.view.log(`filling storage toward ${PageView.formatBytes(this.storageTargetBytes)} while mining`);
+    await this.holdChunks();
+  }
+
+  /**
+   * The slider's range (up to 90% of what the browser allows, in whole steps), its position
+   * from the setting, and its text and meter: the amount set, the allowance, how full.
    */
   refreshStorageSlider() {
     const { storageTargetInput: slider, storageFillMeter: meter } = this.view.elements;
-    if (this.storageQuotaBytes) {
-      const step = HoldingPanel.STORAGE_STEP_BYTES;
-      slider.max = String(Math.max(step, Math.floor(this.storageQuotaBytes * 0.9 / step) * step));
-    }
+    const step = HoldingPanel.STORAGE_STEP_BYTES;
+    if (this.storageQuotaBytes) slider.max = String(Math.max(step, Math.floor(this.storageQuotaBytes * 0.9 / step) * step));
+    const setting = this.storageTargetSetting ?? 'max';
+    slider.value = String(setting === 'max' ? Number(slider.max) : Math.min(setting, Number(slider.max)));
     const target = this.storageTargetBytes;
     const held = this.storage.byteCount;
     meter.value = target ? Math.min(1, held / target) : 0;
     const allowed = this.storageQuotaBytes ? ` of about ${PageView.formatBytes(this.storageQuotaBytes)} this browser allows` : '';
-    this.view.setText('storageTargetText', `${PageView.formatBytes(target)}${allowed}; ${PageView.formatBytes(held)} held (${target ? Math.min(100, Math.round(held / target * 100)) : 0}%)`);
+    const over = held > target ? ' — more than set, so nothing more is fetched' : '';
+    this.view.setText('storageTargetText', `${PageView.formatBytes(target)}${allowed}; ${PageView.formatBytes(held)} held (${target ? Math.round(held / target * 100) : 0}%)${over}`);
   }
 
   /** Chunks still to fetch to reach the slider's setting; 0 when it is reached. */
@@ -318,6 +338,10 @@ export class HoldingPanel {
 
   /** Fetches and packs toward the storage slider's setting, or `chunkCount` chunks if given. */
   async holdChunks({ chunkCount = null } = {}) {
+    if (this.holdStopper) {
+      this.view.setText('holdStatus', 'Already fetching; "Stop early" ends it.');
+      return;
+    }
     if (!this.identity || !this.session) {
       this.view.log('pick an identity and load a block first', 'warn');
       return;
@@ -332,7 +356,7 @@ export class HoldingPanel {
     } else {
       const wanted = chunkCount ?? this.chunksToReachTarget();
       if (!wanted) {
-        this.view.setText('holdStatus', `Already holding the ${PageView.formatBytes(this.storageTargetBytes)} set aside. Move "Storage to use" up to hold more.`);
+        this.view.setText('holdStatus', `Already holding ${PageView.formatBytes(this.storage.byteCount)}, at or over the ${PageView.formatBytes(this.storageTargetBytes)} set in "Storage to use". Move it up to hold more${this.storageTargetSetting === 'max' ? '; it is at the most this browser allows (a browser setting, or more free disk, raises that)' : ''}.`);
         return;
       }
       await this.holdLiveChunks(wanted);
