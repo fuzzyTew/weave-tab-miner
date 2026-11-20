@@ -3,7 +3,7 @@
 // reachable when this was written, so this tests the layout, not a real server's reply.
 // Run: node test/vdf-update.test.mjs
 import { Bytes } from '../src/core/bytes.js';
-import { VdfUpdate } from '../src/network/vdf-client.js';
+import { VdfStepRecord, VdfUpdate } from '../src/network/vdf-client.js';
 import { VdfSession } from '../src/mining/vdf.js';
 
 class VdfUpdateTest {
@@ -44,6 +44,13 @@ class VdfUpdateTest {
       ['a session moved onto the update mines with its seed and bound', (() => {
         const moved = new VdfSession({ seed: new Uint8Array(48), nextSeed: new Uint8Array(48), partitionUpperBound: 1n, networkDiff: 5n, height: 7 }).withVdfUpdate(update);
         return moved.seed[0] === 9 && moved.partitionUpperBound === 393_022_109_425_910n && moved.networkDiff === 5n && moved.height === 7;
+      })()],
+      ['a step record merges updates and lists the steps after one, oldest first', (() => {
+        const record = new VdfStepRecord();
+        record.add(update);
+        record.add({ ...update, stepNumber: 119_924_202, stepsNewestFirst: [update.stepsNewestFirst[0]], checkpoints: [] });
+        const after = record.stepsAfter(119_924_199).map(([step]) => step);
+        return record.newestStep === 119_924_202 && after.join() === '119924200,119924202' && record.missingSteps(119_924_199, 119_924_202).join() === '119924201';
       })()],
       ['newer steps, oldest first', fresh.length === 2 && fresh[0][0] === 119_924_199 && fresh[0][1][0] === 2 && fresh[1][1][0] === 3],
     ];

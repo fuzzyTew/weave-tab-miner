@@ -82,6 +82,18 @@ export class VdfStepRecord {
   }
 
   /** The steps after `afterStep` up to `throughStep` that are not held. */
+  /** The newest step held, or -1. */
+  get newestStep() {
+    let newest = -1;
+    for (const step of this.outputsByStep.keys()) if (step > newest) newest = step;
+    return newest;
+  }
+
+  /** [stepNumber, output] pairs held after `afterStep`, oldest first. */
+  stepsAfter(afterStep) {
+    return [...this.outputsByStep.entries()].filter(([step]) => step > afterStep).sort(([left], [right]) => left - right);
+  }
+
   missingSteps(afterStep, throughStep) {
     const missing = [];
     for (let step = afterStep + 1; step <= throughStep; step++) if (!this.outputsByStep.has(step)) missing.push(step);
@@ -150,6 +162,19 @@ export class VdfServerClient {
     const contentType = response.headers.get('content-type') ?? '';
     if (/text\/html|application\/json/i.test(contentType)) throw new Error(`answered with ${contentType}, not a VDF update`);
     return VdfUpdate.parse(new Uint8Array(await response.arrayBuffer()));
+  }
+
+  /**
+   * Clients for every one of `baseUrls` that answers, tried together. Public servers run
+   * at different paces (measured: ~0.6 steps a second each, some in bursts, against the
+   * network's ~1), so polling all of them and taking the newest steps keeps up best.
+   */
+  static async allAnswering(baseUrls, { timeoutMs = 5000, log = () => {} } = {}) {
+    const clients = await Promise.all(baseUrls.map(async (baseUrl) => {
+      const client = new VdfServerClient({ baseUrls: [baseUrl], timeoutMs, log });
+      return (await client.findServer()) ? client : null;
+    }));
+    return clients.filter(Boolean);
   }
 
   /** Finds a server that answers. Returns its URL, or null with each refusal logged. */
