@@ -2,6 +2,7 @@
 // mining difficulty every 10 blocks (ar_retarget) and the storage price every 50
 // (ar_pricing:recalculate_price_per_gib_minute). Rules for new blocks only: every fork
 // so far is past, so the special cases at fork heights are left out.
+import { Denomination } from '../core/denomination.js';
 
 export class DifficultyRetarget {
   /**
@@ -73,12 +74,6 @@ export class PriceAdjustment {
     return height % PriceAdjustment.PRICE_ADJUSTMENT_FREQUENCY === 0;
   }
 
-  /** ar_pricing:redenominate: amounts in an older denomination are 1000× smaller units. */
-  static redenominate(amount, fromDenomination, toDenomination) {
-    if (fromDenomination === 0) return amount;
-    return amount * 1000n ** BigInt(Math.max(0, toDenomination - fromDenomination));
-  }
-
   /**
    * ar_pricing:get_v2_price_per_gib_minute_two_difficulty: what storing a GiB for a minute
    * costs the network, estimated from its hash rate and rewards over the reward history
@@ -90,7 +85,7 @@ export class PriceAdjustment {
     let rewardTotal = 0n;
     for (const entry of parentRewardHistory.entries.slice(0, PriceAdjustment.REWARD_HISTORY_BLOCKS)) {
       hashRateTotal += entry.hashRate;
-      rewardTotal += PriceAdjustment.redenominate(entry.reward, entry.denomination, Number(parent.denomination));
+      rewardTotal += Denomination.redenominate(entry.reward, entry.denomination, Number(parent.denomination));
     }
     let intervalTotal = 0n;
     let vdfIntervalTotal = 0n;

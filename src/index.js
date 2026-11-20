@@ -3,14 +3,15 @@
 // Folders, by area (README.md "Layout" describes each file):
 //   core/     bytes, SHA-256, constants, formatting, source citations
 //   mining/   VDF, difficulty, packing, the per-step hashes, held storage, the miner, odds, RandomX
-//   blocks/   building a block: account tree, rewards, history hashes, fields, adjustments, solution, VDF info, hash, signing, binary
-//   network/  gateways, peers and sources, VDF servers, fetching chunks
+//   blocks/   building and following blocks: account tree, rewards, history hashes, fields, adjustments, solution, VDF info, hash, signing, binary, chain follower
+//   network/  gateways, nodes, peers and sources, VDF servers, fetching chunks
 //   storage/  packed chunks in the browser, and moving them between copies of the page
 //   wallet/   keys, transactions, ANS-104 data items for bundlers
 export * from './blocks/account-tree.js';
 export * from './blocks/adjustments.js';
 export * from './blocks/assembler.js';
 export * from './blocks/binary.js';
+export * from './blocks/chain-follower.js';
 export * from './blocks/fields.js';
 export * from './blocks/hash.js';
 export * from './blocks/history.js';
@@ -22,6 +23,7 @@ export * from './blocks/vdf-info.js';
 export * from './core/bytes.js';
 export * from './core/citations.js';
 export * from './core/constants.js';
+export * from './core/denomination.js';
 export * from './core/pretty-number.js';
 export * from './core/sha256.js';
 export * from './mining/difficulty.js';
@@ -35,6 +37,7 @@ export * from './mining/randomx.js';
 export * from './mining/vdf.js';
 export * from './network/chunk-fetcher.js';
 export * from './network/gateway.js';
+export * from './network/node-client.js';
 export * from './network/peers.js';
 export * from './network/vdf-client.js';
 export * from './storage/chunk-share.js';
