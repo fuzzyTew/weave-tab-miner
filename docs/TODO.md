@@ -10,6 +10,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Hold more data | mostly done; storage, not memory, is the limit |
 | Host the page on Arweave | not started |
 | Install it like an app | not started: a PWA, then F-Droid |
+| Be a light client | started: mining follows seeds and the tip; state not yet tracked |
 | Mine for a pool | not started |
 | Network-agnostic design | tried and reverted; plan below |
 
@@ -165,6 +166,29 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
       chunked upload (`POST /tx` without data, then `POST /chunk` per 256 KiB with its
       `data_path`), which `DataTransaction` does not do yet. Then record the id in
       `data/permaweb.json`.
+
+</details>
+
+<details>
+<summary><b>Be a light client</b> — practical on a phone, and useful to the network</summary>
+
+- [x] Mine on the current chain: seeds and weave bound from each VDF server update, and
+      the tip block fetched each minute (before, the page mined the block it loaded at
+      the start, so solutions went invalid at the next reset line, ~20 minutes).
+      Not yet: the same for "compute VDF in this tab" mode, whose seeds still come from
+      the loaded block.
+- [ ] Find out exactly what account information nodes serve (`/wallet/{addr}/balance`,
+      `/wallet_list/{root}` pages, any per-account proofs), from the node source and
+      live, and record it here.
+- [ ] Keep state by watching blocks, as light clients do: from one trusted starting
+      state, apply each new block's reward release and transactions and check the result
+      against its `wallet_list` root, so the next block can be built without fetching
+      300k accounts.
+- [ ] Partial account tree: only the paths a block changes, with sibling hashes (about
+      37 KB per account against ~30 MB for all), if nodes serve them or can be asked.
+- [ ] Include pending transactions (GET /tx/pending, then each tx), validated (anchors,
+      balances, fees, format) and their fees shared out as the node does, so mined blocks
+      carry the community's data and not just empty blocks.
 
 </details>
 
