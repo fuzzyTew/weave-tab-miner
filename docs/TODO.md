@@ -4,11 +4,12 @@ Larger tasks, each opening to its steps. In order of what matters next:
 
 | Task | State |
 |---|---|
-| Turn a solution into a block | 6 of 7 steps done: a localnet takes our blocks; mainnet left |
+| Turn a solution into a block | 6 of 7 steps done, and most of mainnet's rules; a real solution left |
 | Check what peers and gateways say | not started; the page trusts the first answer |
 | Reach networks that block Arweave | partly: gathered sources, seeds, a source test |
 | Hold more data | mostly done; storage, not memory, is the limit |
 | Host the page on Arweave | not started |
+| Install it like an app | not started: a PWA, then F-Droid |
 | Mine for a pool | not started |
 | Network-agnostic design | tried and reverted; plan below |
 
@@ -50,10 +51,21 @@ height 2,069,866 with their parents' state, captured).
        real RandomX (`src/blocks/solution.js`, `test/block-solution.test.mjs`), builds each
        block on its parent's VDF step and posts it; the node took 3 of 3 in a row as its
        tip. Small chunks are zero-padded to 256 KiB, as the node proves them.
-7. [ ] Mainnet: the same, after a real solution. Needs: VDF steps between the parent's and
-       the block's (`VdfInfo` only builds the localnet's same-step info), two-chunk
-       solutions, secp256k1 signing (optional; RSA keys also mine), and the stubbed fields
-       (price adjustments every 50 blocks, retargets) — `NextBlockFields` throws at those.
+7. [ ] Mainnet. Done, each checked where a node checks it:
+       - VDF steps between the parent's and the block's, seeds and bounds across reset
+         lines (`src/blocks/vdf-info.js`): the localnet took blocks 1 and 2 computed steps
+         ahead; all three saved blocks' `nonce_limiter_info` and a mainnet block's match.
+       - Two-chunk (H2) solutions (`BlockSolution`): saved block 2,069,867 matches; the
+         localnet took ours.
+       - Difficulty retargets and price adjustments, including the 2.7.2 price transition
+         mainnet is still in (`src/blocks/adjustments.js`): the localnet took 37 blocks in
+         a row across a price adjustment; the localnet never retargets, so retargets are
+         checked against live mainnet blocks (`test/mainnet-blocks.test.mjs`, 6 of 6, and a
+         price adjustment).
+       Left: the VDF difficulty retarget (every 720 heights; written, not yet met by a
+       test), secp256k1 signing (optional; RSA keys also mine), transactions in blocks
+       (empty blocks only so far), and the true end: a real solution beating the real
+       difficulty, posted to peers, and kept by the network against competing blocks.
 
 To continue in a new conversation with Claude, a prompt like this works:
 
@@ -153,6 +165,18 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
       chunked upload (`POST /tx` without data, then `POST /chunk` per 256 KiB with its
       `data_path`), which `DataTransaction` does not do yet. Then record the id in
       `data/permaweb.json`.
+
+</details>
+
+<details>
+<summary><b>Install it like an app</b> — a PWA, then an F-Droid package</summary>
+
+- [ ] Progressive web app: a manifest and a service worker that caches the page, so it
+      installs from the browser, opens offline and keeps mining from a home-screen icon.
+      Storage stays per origin, so an installed copy shares the site's held chunks.
+- [ ] F-Droid: a small Android app (a WebView around the single-file page, or a
+      Trusted Web Activity) built from source with no proprietary libraries, so F-Droid
+      can build and sign it. Helps old phones with free storage hold data.
 
 </details>
 
