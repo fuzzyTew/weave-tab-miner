@@ -19,7 +19,7 @@ import { AccountTree } from '../src/blocks/account-tree.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { BlockAssembler, ChainState } from '../src/blocks/assembler.js';
-import { OneChunkSolution } from '../src/blocks/solution.js';
+import { BlockSolution } from '../src/blocks/solution.js';
 import { ComputedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
 import { BlockSigner } from '../src/blocks/signer.js';
 import { DoubleSigningGuard } from '../src/blocks/signing-guard.js';
@@ -134,17 +134,20 @@ class LocalnetBlockPoster {
     let accepted = 0;
     for (let index = 0; index < this.blockCount; index++) {
       const { recallByte, chunkJson } = await this.heldChunk();
+      // Every third block is a two-chunk solution (H2), the more common kind on mainnet.
+      const second = index % 3 === 2 ? await this.heldChunk() : null;
       const vdfInfo = await this.vdfInfo(state, index);
-      const solution = await OneChunkSolution.build({
+      const solution = await BlockSolution.build({
         addressBytes: wallet.addressBytes, vdfInfo,
         seed: Bytes.fromBase64Url(vdfInfo.seed), recallByte, chunkJson,
+        ...(second ? { recallByte2: second.recallByte, chunk2Json: second.chunkJson } : {}),
         nonce: randomInt(32), h0Hasher, entropySource,
       });
       const timestamp = Math.max(Math.floor(Date.now() / 1000), Number(state.block.timestamp));
       const block = await BlockAssembler.assemble({ state, solution, rewardAddress: wallet.address, rewardKey: Bytes.toBase64Url(wallet.ownerBytes), timestamp });
       const signed = await signer.sign(block);
       const reply = await this.client.postBlock(BlockBinary.encode(signed), signed.indep_hash);
-      console.log(`block ${signed.height} (${signed.indep_hash.slice(0, 12)}…, VDF step ${vdfInfo.global_step_number}, chunk at ${recallByte}): POST /block2 → ${reply.status} ${reply.text}`);
+      console.log(`block ${signed.height} (${signed.indep_hash.slice(0, 12)}…, VDF step ${vdfInfo.global_step_number}, chunk at ${recallByte}${second ? ` and ${second.recallByte}` : ''}): POST /block2 → ${reply.status} ${reply.text}`);
       if (!(await this.waitForTip(signed.indep_hash))) {
         console.log(`block ${signed.height} did not become the tip within ${LocalnetBlockPoster.ACCEPT_TIMEOUT_MS / 1000} s; the node log below says why`);
         break;
