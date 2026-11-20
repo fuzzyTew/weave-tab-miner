@@ -167,41 +167,91 @@ export class HoldingPanel {
     }, { once: true });
   }
 
+  /**
+   * Saves this address's packed chunks to a file, a batch at a time (a few GB never sit in
+   * memory). Above STREAM_TO_FILE_BYTES, where the browser can write a chosen file directly
+   * (the File System Access API), it streams there, asking where to save; otherwise the
+   * batches become one download. Progress and any failure show in the Hold data status.
+   */
+  static STREAM_TO_FILE_BYTES = 256 * 2 ** 20;
+
   async exportChunks() {
-    const entries = this.identity ? await this.store.load(this.identity.address) : [];
-    if (!entries.length) {
+    const offsets = this.identity ? await this.store.offsets(this.identity.address) : [];
+    if (!offsets.length) {
       this.view.setText('holdStatus', 'Nothing saved for this address to export. Only real (RandomX) packing is saved.');
       return;
     }
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(PackedChunkArchive.toBlob(this.identity.address, entries));
-    link.download = PackedChunkArchive.fileName(this.identity.address, entries.length);
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 60000);
-    this.view.setText('holdStatus', `Exported ${entries.length} packed chunks (${PageView.formatBytes(entries.length * PackedChunkArchive.CHUNK_SIZE)}) as ${link.download}.`);
+    const address = this.identity.address;
+    const fileName = PackedChunkArchive.fileName(address, offsets.length);
+    const size = PageView.formatBytes(offsets.length * PackedChunkArchive.CHUNK_SIZE);
+    const onProgress = (done, total) => this.view.setText('holdStatus', `Exporting: ${done.toLocaleString()} of ${total.toLocaleString()} chunks (${size} in all)…`);
+    const parts = PackedChunkArchive.parts(address, offsets, (wanted) => this.store.loadSome(address, wanted), { onProgress });
+    try {
+      if (window.showSaveFilePicker && offsets.length * PackedChunkArchive.CHUNK_SIZE > HoldingPanel.STREAM_TO_FILE_BYTES) {
+        let handle;
+        try {
+          handle = await window.showSaveFilePicker({ suggestedName: fileName });
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            this.view.setText('holdStatus', 'Export cancelled.');
+            return;
+          }
+          throw error;
+        }
+        const writable = await handle.createWritable();
+        try {
+          for await (const part of parts) await writable.write(part);
+          await writable.close();
+        } catch (error) {
+          await writable.abort().catch(() => {});
+          throw error;
+        }
+      } else {
+        const collected = [];
+        for await (const part of parts) collected.push(part);
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob(collected, { type: 'application/octet-stream' }));
+        link.download = fileName;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 600000);
+      }
+      this.view.setText('holdStatus', `Exported ${offsets.length.toLocaleString()} packed chunks (${size}) as ${fileName}.`);
+      this.view.log(`exported ${offsets.length} packed chunks as ${fileName}`, 'good');
+    } catch (error) {
+      this.view.setText('holdStatus', `Export stopped: ${error.message}. Nothing was lost; try again, or free disk space if the browser ran out.`);
+      this.view.log(`export failed: ${error.message}`, 'error');
+    }
   }
 
+  /** Loads an exported file, a batch at a time, into this browser's storage. */
   async importChunks() {
     const [file] = this.view.elements.importChunksInput.files;
     if (!file) return;
     this.view.elements.importChunksInput.value = '';
+    let address = null;
+    let imported = 0;
     try {
-      const { address, entries } = await PackedChunkArchive.fromBlob(file);
-      if (!(await this.store.save(address, entries))) throw new Error('this browser refused to store them');
-      if (address === this.identity?.address) {
-        for (const [offset] of entries) this.storage.addOnDisk(offset);
-        this.choosePartitionWithMostHeld();
-        this.view.setText('holdStatus', `Imported ${entries.length} packed chunks for this address.`);
-      } else {
-        this.view.setText('holdStatus', `Imported ${entries.length} packed chunks for ${address}. They only work for that address: use "Mine for it" below.`);
+      for await (const batch of PackedChunkArchive.batches(file)) {
+        address = batch.address;
+        if (!(await this.store.save(address, batch.entries))) throw new Error('this browser refused to store them (storage full, or private browsing)');
+        if (address === this.identity?.address) for (const [offset] of batch.entries) this.storage.addOnDisk(offset);
+        imported += batch.entries.length;
+        this.view.setText('holdStatus', `Importing: ${imported.toLocaleString()} chunks so far…`);
       }
-      this.view.log(`imported ${entries.length} packed chunks for ${address} from ${file.name}`, 'good');
-      await this.refreshStorageNote();
-      this.refreshSummary();
+      if (address === this.identity?.address) {
+        this.choosePartitionWithMostHeld();
+        this.view.setText('holdStatus', `Imported ${imported.toLocaleString()} packed chunks for this address.`);
+      } else {
+        this.view.setText('holdStatus', `Imported ${imported.toLocaleString()} packed chunks for ${address}. They only work for that address: use "Mine for it" below.`);
+      }
+      this.view.log(`imported ${imported} packed chunks for ${address} from ${file.name}`, 'good');
     } catch (error) {
-      this.view.setText('holdStatus', `Not imported: ${error.message}`);
+      const kept = imported ? ` The ${imported.toLocaleString()} chunks before that were kept.` : '';
+      this.view.setText('holdStatus', `Import stopped: ${error.message}.${kept}`);
       this.view.log(`import of ${file.name} failed: ${error.message}`, 'error');
     }
+    await this.refreshStorageNote();
+    this.refreshSummary();
   }
 
   async saveChunks(entries) {
