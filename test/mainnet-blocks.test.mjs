@@ -28,19 +28,40 @@ class MainnetBlocksTest {
     console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
   }
 
-  /** The first gateway's answer for `path`, as JSON or bytes; throws with each gateway's error. */
-  async get(path, readAs = 'json') {
+  /**
+   * The first answer for `path` from `sources` (default: the gateways), as JSON or bytes,
+   * each source tried twice since the network is flaky; throws with every source's error.
+   */
+  async get(path, readAs = 'json', sources = this.gateways) {
     const errors = [];
-    for (const gateway of this.gateways) {
-      try {
-        const response = await fetch(gateway + path, { signal: AbortSignal.timeout(60000) });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return readAs === 'bytes' ? new Uint8Array(await response.arrayBuffer()) : await response.json();
-      } catch (error) {
-        errors.push(`${gateway}: ${error.message}`);
+    for (const source of sources) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetch(source + path, { signal: AbortSignal.timeout(60000) });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return readAs === 'bytes' ? new Uint8Array(await response.arrayBuffer()) : await response.json();
+        } catch (error) {
+          if (attempt === 1 || error.message.startsWith('HTTP')) {
+            errors.push(`${source}: ${error.cause?.message ?? error.message}`);
+            break;
+          }
+        }
       }
     }
     throw new Error(`${path}: ${errors.join('; ')}`);
+  }
+
+  /** Nodes from a gateway's /peers: they serve the histories gateways do not. */
+  async peers() {
+    if (!this.peerList) {
+      try {
+        this.peerList = (await this.get('/peers')).slice(0, 15).map((peer) => `http://${peer}`);
+      } catch (error) {
+        console.log(`none  peers: ${error.message.slice(0, 200)}`);
+        this.peerList = [];
+      }
+    }
+    return this.peerList;
   }
 
   async block(height) {
@@ -49,10 +70,11 @@ class MainnetBlocksTest {
   }
 
   async histories(parent) {
+    const sources = [...this.gateways, ...await this.peers()];
     try {
       return {
-        parentRewardHistory: RewardHistory.fromBinary(await this.get(`/reward_history/${parent.indep_hash}`, 'bytes')),
-        parentBlockTimeHistory: BlockTimeHistory.fromBinary(await this.get(`/block_time_history/${parent.indep_hash}`, 'bytes')),
+        parentRewardHistory: RewardHistory.fromBinary(await this.get(`/reward_history/${parent.indep_hash}`, 'bytes', sources)),
+        parentBlockTimeHistory: BlockTimeHistory.fromBinary(await this.get(`/block_time_history/${parent.indep_hash}`, 'bytes', sources)),
       };
     } catch (error) {
       console.log(`none  histories of block ${parent.height}: ${error.message.slice(0, 300)}`);
@@ -89,7 +111,14 @@ class MainnetBlocksTest {
     let resets = 0;
     let checkedWhole = false;
     for (let height = tip - MainnetBlocksTest.VDF_BLOCKS_CHECKED; height <= tip; height++) {
-      const [parent, child] = [await this.block(height - 1), await this.block(height)];
+      let parent;
+      let child;
+      try {
+        [parent, child] = [await this.block(height - 1), await this.block(height)];
+      } catch (error) {
+        console.log(`none  block ${height}: ${error.message.slice(0, 200)}`);
+        continue;
+      }
       const step = Number(child.nonce_limiter_info.global_step_number);
       const crossed = VdfInfo.resetPoint(Number(parent.nonce_limiter_info.global_step_number), step) !== null;
       if (crossed) resets++;
