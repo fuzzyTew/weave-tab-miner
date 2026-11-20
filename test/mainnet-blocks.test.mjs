@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
 import { BlockHash } from '../src/blocks/hash.js';
 import { BlockPublisher } from '../src/blocks/block-publisher.js';
+import { BlockSolution } from '../src/blocks/solution.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 
 class MainnetBlocksTest {
@@ -246,7 +247,21 @@ class MainnetBlocksTest {
       this.report(`republished mainnet block ${block.height} from its solution: the same id (${((Date.now() - started) / 1000).toFixed(0)} s)`, built.indep_hash === block.indep_hash && posted.length === 1,
         differing.length ? `differ: ${differing.map((field) => `${field} ${JSON.stringify(built[field])?.slice(0, 60)} vs ${JSON.stringify(block[field])?.slice(0, 60)}`).join('; ')}` : '');
     } catch (error) {
-      this.report(`republished mainnet block ${block.height} from its solution`, false, error.stack.slice(0, 600));
+      // Say which part differs: the unpacked chunk, its packing, or H0 and the hash.
+      let diagnosis = '';
+      try {
+        const fields = await BlockSolution.build({
+          addressBytes: Bytes.fromBase64Url(block.reward_addr), vdfInfo: info, seed: Bytes.fromBase64Url(info.seed), nonce: report.solution.nonce,
+          recallByte: report.solution.recallByte1, chunkJson: await this.get(`/chunk/${report.solution.recallByte1 + 1n}`),
+          ...(twoChunks ? { recallByte2: report.solution.recallByte2, chunk2Json: await this.get(`/chunk/${report.solution.recallByte2 + 1n}`) } : {}),
+          ...this.randomx,
+        });
+        const compared = ['unpacked_chunk_hash', 'chunk_hash', 'unpacked_chunk2_hash', 'chunk2_hash', 'hash', 'partition_number', 'packing_difficulty', 'replica_format'];
+        diagnosis = compared.map((field) => `${field} ${JSON.stringify(fields[field]) === JSON.stringify(block[field]) ? 'same' : `ours ${fields[field]} vs ${block[field]}`}`).join('; ');
+      } catch (diagnosisError) {
+        diagnosis = `(diagnosis failed: ${diagnosisError.message})`;
+      }
+      this.report(`republished mainnet block ${block.height} from its solution`, false, `${error.message} — ${diagnosis}`);
     }
   }
 
