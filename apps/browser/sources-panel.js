@@ -142,7 +142,7 @@ export class SourcesPanel {
 
   describeGatheredSources() {
     const { gatheredAt, gateways, nodes } = BundledResources.gatheredSources();
-    if (!gatheredAt) return 'This copy has no gathered list; Test all sources tries your own and the 2 built in. If ar.io gateways are blocked, Find gateways reads their registry from Solana.';
+    if (!gatheredAt) return '"Test all sources" tries your own sources and the 2 built-in gateways. If none answer, "Find gateways and peers" looks further, including the gateway list kept on Solana.';
     const nodeNote = PeerAccess.blockedReason() ? ' (nodes only from a downloaded copy)' : '';
     return `This copy carries ${gateways.length} gateways and ${nodes.length} nodes${nodeNote} that answered GitHub on ${gatheredAt.slice(0, 10)}. Test all sources tries them, a few at a time, until ${SourcesPanel.ENOUGH_WORKING_SOURCES} answer.`;
   }
