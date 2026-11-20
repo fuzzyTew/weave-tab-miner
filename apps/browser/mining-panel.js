@@ -11,6 +11,7 @@ import { PageView } from './page-view.js';
 
 export class MiningPanel {
   static REPLAY_STEP_INTERVAL_MS = 1000; // the network's VDF pace, about one step per second
+  static MAX_STEP_BACKLOG = 2; // VDF-server steps mined per poll at most; older ones are skipped
   // ---- mining ----
 
   get isTestMode() {
@@ -27,7 +28,7 @@ export class MiningPanel {
   async mineOne(stepNumber, output, source) {
     const report = await this.makeMiner().mineStep(this.session, stepNumber, output);
     this.stepsMined++;
-    this.pace.record();
+    this.pace.record(report.timings);
     this.lastMinedStep = Math.max(this.lastMinedStep, stepNumber);
     this.view.setText('stepsMined', this.stepsMined.toLocaleString());
     this.view.addStepRow(report, source, () => this.explorer.show(report));
@@ -72,6 +73,8 @@ export class MiningPanel {
     this.running = true;
     this.holdScreenAwake();
     this.pace.reset();
+    this.stepsSkipped = 0;
+    this.lastMinedStep = -1; // a VDF server's backlog from before this start is stale
     this.view.elements.solutionBanner.hidden = true;
     this.view.elements.startButton.disabled = true;
     this.view.elements.stopButton.disabled = false;
@@ -147,7 +150,13 @@ export class MiningPanel {
       if (!this.running) return;
       try {
         const update = await client.latest();
-        for (const [stepNumber, output] of VdfUpdate.steps(update, this.lastMinedStep)) {
+        // A server sends its whole session (up to 1,200 steps). Steps well behind the
+        // newest are stale, so only the newest few are mined: at the start, and whenever
+        // mining falls behind; the skipped ones are counted for the pace report.
+        const fresh = VdfUpdate.steps(update, this.lastMinedStep);
+        const kept = fresh.slice(-MiningPanel.MAX_STEP_BACKLOG);
+        if (this.lastMinedStep >= 0) this.stepsSkipped += fresh.length - kept.length;
+        for (const [stepNumber, output] of kept) {
           if (!this.running) return;
           await this.mineOne(stepNumber, output, 'VDF server');
         }
@@ -205,7 +214,7 @@ export class MiningPanel {
     const seconds = SolutionOdds.expectedSecondsPerSolution(odds);
     this.view.setText('expectedWait', PageView.formatDuration(seconds));
     const { fullSpeedSeconds, factors } = SolutionOdds.waitBreakdown({ ...odds, quotaBytes: this.storageQuotaBytes });
-    const pace = this.running ? `Measured pace: ${stepsPerSecond.toFixed(2)} steps a second.` : 'Assumes the network\'s pace of one step a second until mining starts.';
+    const pace = this.running ? `Measured pace: ${stepsPerSecond.toFixed(2)} steps a second. ${this.pace.describe(SolutionOdds.NETWORK_STEPS_PER_SECOND)}${this.stepsSkipped ? ` ${this.stepsSkipped.toLocaleString()} steps were skipped while mining fell behind.` : ''}` : 'Assumes the network\'s pace of one step a second until mining starts.';
     this.view.setText('limitHeadline', `A miner holding the whole partition and the whole weave would wait about ${PageView.formatDuration(fullSpeedSeconds)}. Each shortfall below multiplies that; they compound. ${pace}`);
     this.view.fillLimits(factors);
     const hitChance = SolutionOdds.heldRangeHitChance(odds);
