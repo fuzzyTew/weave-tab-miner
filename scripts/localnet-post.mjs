@@ -25,6 +25,7 @@ import { BlockSigner } from '../src/blocks/signer.js';
 import { DoubleSigningGuard } from '../src/blocks/signing-guard.js';
 import { BlockBinary } from '../src/blocks/binary.js';
 import { ChainFollower } from '../src/blocks/chain-follower.js';
+import { NetworkRules } from '../src/blocks/network-rules.js';
 import { ArweaveWallet } from '../src/wallet/wallet.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 
@@ -91,7 +92,7 @@ class LocalnetBlockPoster {
       rewardHistory: RewardHistory.fromBinary(rewardHistory),
       blockTimeHistory: BlockTimeHistory.fromBinary(blockTimeHistory),
       accountTree,
-      difficultyRetargets: false,
+      rules: NetworkRules.LOCALNET,
     });
   }
 

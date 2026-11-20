@@ -4,16 +4,17 @@
 import { Bytes } from '../core/bytes.js';
 import { BlockHistoryHashes, BlockTimeHistory } from './history.js';
 import { NextBlockFields } from './fields.js';
+import { NetworkRules } from './network-rules.js';
 
 export class ChainState {
   /**
    * What a node keeps about the tip that the next block is computed from: the block itself
    * (JSON as nodes serve it), its reward history and block-time history, and the account
-   * tree at that block. `advance` moves it to a new block in place. `difficultyRetargets`
-   * is false for a localnet, whose difficulty stays fixed.
+   * tree at that block. `advance` moves it to a new block in place. `rules` are the
+   * network's (NetworkRules.MAINNET, or LOCALNET for Arweave's test chain).
    */
-  constructor({ block, rewardHistory, blockTimeHistory, accountTree, difficultyRetargets = true }) {
-    Object.assign(this, { block, rewardHistory, blockTimeHistory, accountTree, difficultyRetargets });
+  constructor({ block, rewardHistory, blockTimeHistory, accountTree, rules = NetworkRules.MAINNET }) {
+    Object.assign(this, { block, rewardHistory, blockTimeHistory, accountTree, rules });
   }
 }
 
@@ -36,7 +37,7 @@ export class BlockAssembler {
   static async assemble({ state, solution, rewardAddress, rewardKey, timestamp }) {
     const parent = state.block;
     const fields = NextBlockFields.compute({
-      parent, parentBlockTimeHistory: state.blockTimeHistory, parentRewardHistory: state.rewardHistory, timestamp, difficultyRetargets: state.difficultyRetargets,
+      parent, parentBlockTimeHistory: state.blockTimeHistory, parentRewardHistory: state.rewardHistory, timestamp, difficultyRetargets: state.rules.difficultyRetargets,
     });
     const block = {
       ...fields,
