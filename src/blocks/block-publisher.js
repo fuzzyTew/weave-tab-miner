@@ -43,14 +43,17 @@ export class BlockPublisher {
 
     const vdfInfo = await VdfInfo.afterParent({ parent, parentBlockTimeHistory: state.blockTimeHistory, stepNumber: report.stepNumber, stepSource })
       .catch((error) => { throw new BlockPublishError('VDF', error.message); });
-    if (Bytes.toBase64Url(Bytes.fromBase64Url(vdfInfo.seed).subarray(0, 32)) !== Bytes.toBase64Url(report.trace.seed)) {
-      throw new BlockPublishError('VDF', 'the seed the solution was mined with is not the one the tip gives this step; the VDF session changed under the miner');
+    // H0 takes the parent's seed (ar_block:compute_h0), even when the block's own VDF info
+    // has moved to a new seed past a reset line.
+    const seed = Bytes.fromBase64Url(parent.nonce_limiter_info.seed);
+    if (Bytes.toBase64Url(seed.subarray(0, 32)) !== Bytes.toBase64Url(report.trace.seed)) {
+      throw new BlockPublishError('VDF', 'the solution was mined with another seed than the tip block\'s; a new block arrived while mining');
     }
 
     const chunkFor = async (recallByte) => this.fetchChunkJson(recallByte + 1n).catch((error) => { throw new BlockPublishError('chunk', `the chunk at ${recallByte} could not be fetched again: ${error.message}`); });
     const twoChunks = solution.recallByte2 !== undefined;
     const fields = await BlockSolution.build({
-      addressBytes: this.signer.wallet.addressBytes, vdfInfo, seed: Bytes.fromBase64Url(vdfInfo.seed), nonce: solution.nonce,
+      addressBytes: this.signer.wallet.addressBytes, vdfInfo, seed, nonce: solution.nonce,
       recallByte: solution.recallByte1, chunkJson: await chunkFor(solution.recallByte1),
       ...(twoChunks ? { recallByte2: solution.recallByte2, chunk2Json: await chunkFor(solution.recallByte2) } : {}),
       h0Hasher: this.h0Hasher, entropySource: this.entropySource,

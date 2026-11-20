@@ -53,7 +53,7 @@ export class BlockSolution {
    * two-chunk solution, the one at `recallByte2`. `chunkJson` and `chunk2Json` are GET
    * /chunk's answers for them, unpacked ({ chunk, data_path, tx_path }, base64url). `nonce`
    * is the miner's (it counts sub-chunks across the recall range, so its remainder by 32
-   * picks the sub-chunk in each chunk). `seed` is the block's VDF seed (48 bytes);
+   * picks the sub-chunk in each chunk). `seed` is the parent block's VDF seed (48 bytes; ar_block:compute_h0 takes the parent's);
    * `h0Hasher` and `entropySource` come from src/mining/randomx.js. With two chunks the
    * solution hash is H2, over H1 and the second sub-chunk (ar_block:compute_h2).
    *

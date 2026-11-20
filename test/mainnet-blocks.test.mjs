@@ -224,7 +224,7 @@ class MainnetBlocksTest {
     const info = block.nonce_limiter_info;
     const report = {
       stepNumber: Number(info.global_step_number),
-      trace: { seed: Bytes.fromBase64Url(info.seed).subarray(0, 32) },
+      trace: { seed: Bytes.fromBase64Url(follower.state.block.nonce_limiter_info.seed).subarray(0, 32) },
       solution: {
         nonce: Number(Bytes.toBigInt(Bytes.fromBase64Url(block.nonce))), hash: Bytes.fromBase64Url(block.hash),
         recallByte1: BigInt(block.recall_byte), ...(twoChunks ? { recallByte2: BigInt(block.recall_byte2) } : {}),
@@ -254,7 +254,7 @@ class MainnetBlocksTest {
       let diagnosis = '';
       try {
         const fields = await BlockSolution.build({
-          addressBytes: Bytes.fromBase64Url(block.reward_addr), vdfInfo: info, seed: Bytes.fromBase64Url(info.seed), nonce: report.solution.nonce,
+          addressBytes: Bytes.fromBase64Url(block.reward_addr), vdfInfo: info, seed: Bytes.fromBase64Url(follower.state.block.nonce_limiter_info.seed), nonce: report.solution.nonce,
           recallByte: report.solution.recallByte1, chunkJson: await this.get(`/chunk/${report.solution.recallByte1 + 1n}`),
           ...(twoChunks ? { recallByte2: report.solution.recallByte2, chunk2Json: await this.get(`/chunk/${report.solution.recallByte2 + 1n}`) } : {}),
           ...this.randomx,

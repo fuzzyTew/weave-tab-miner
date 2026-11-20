@@ -134,7 +134,7 @@ class LocalnetBlockPoster {
       const vdfInfo = await this.vdfInfo(state, index);
       const solution = await BlockSolution.build({
         addressBytes: wallet.addressBytes, vdfInfo,
-        seed: Bytes.fromBase64Url(vdfInfo.seed), recallByte, chunkJson,
+        seed: Bytes.fromBase64Url(state.block.nonce_limiter_info.seed), recallByte, chunkJson,
         ...(second ? { recallByte2: second.recallByte, chunk2Json: second.chunkJson } : {}),
         nonce: randomInt(32), h0Hasher, entropySource,
       });
