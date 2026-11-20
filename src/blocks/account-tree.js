@@ -119,6 +119,64 @@ export class AccountTree {
     }
   }
 
+  /**
+   * Removes an address's account, to undo an insert. Only a leaf's node is deleted; nodes
+   * left with no account and one child are kept, since such a node passes its child's hash
+   * up unchanged, so the root is what a tree built without the account would have.
+   */
+  remove(addressBytes) {
+    const key = AccountTree.toByteString(addressBytes);
+    let level = 1;
+    for (;;) {
+      const nodeKey = key.slice(0, level);
+      const node = this.nodes.get(nodeKey);
+      if (!node) return;
+      const keySuffix = key.slice(level);
+      if (keySuffix === node.suffix) {
+        if (node.value === undefined) return;
+        this.size--;
+        if (node.children.length) {
+          node.value = undefined;
+          node.hash = null;
+          this.invalidate(node.parent);
+          return;
+        }
+        this.nodes.delete(nodeKey);
+        const siblings = this.nodes.get(node.parent).children;
+        siblings.splice(siblings.indexOf(nodeKey), 1);
+        this.invalidate(node.parent);
+        return;
+      }
+      if (!keySuffix.startsWith(node.suffix)) return;
+      level += node.suffix.length + 1;
+    }
+  }
+
+  /**
+   * Runs `change(tree)` and then puts back every account it touched through `putAccount`
+   * (insert or remove), so a root can be worked out for a block that may never be
+   * accepted. Resolves whatever `change` resolves.
+   */
+  async withUndoneChanges(change) {
+    const saved = new Map();
+    const originalPut = this.putAccount;
+    this.putAccount = (addressBytes, account) => {
+      const key = AccountTree.toByteString(addressBytes);
+      if (!saved.has(key)) saved.set(key, this.get(addressBytes));
+      originalPut.call(this, addressBytes, account);
+    };
+    try {
+      return await change(this);
+    } finally {
+      this.putAccount = originalPut;
+      for (const [key, account] of saved) {
+        const addressBytes = AccountTree.fromByteString(key);
+        if (account === undefined) this.remove(addressBytes);
+        else this.insert(addressBytes, account);
+      }
+    }
+  }
+
   /** The account stored under an address, or undefined (the node's lookup/4). */
   get(addressBytes) {
     const key = AccountTree.toByteString(addressBytes);

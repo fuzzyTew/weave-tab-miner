@@ -53,6 +53,9 @@ jobs:
       - name: Detect whether plain-http addresses get through
         run: node test/peer-access.test.mjs
 
+      - name: Apply transactions to accounts, and undo changes
+        run: node test/account-changes.test.mjs
+
       - name: Check the wait estimate's arithmetic
         run: node test/odds.test.mjs
 
