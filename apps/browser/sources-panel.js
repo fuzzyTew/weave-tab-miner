@@ -59,6 +59,7 @@ export class SourcesPanel {
       // Storage refused: the box starts unticked each visit.
     }
     PeerAccess.allowMixedContent(mixedContentCheckbox.checked);
+    if (!mixedContentChoice.hidden && !mixedContentCheckbox.checked) this.detectMixedContent();
     mixedContentCheckbox.addEventListener('change', () => {
       PeerAccess.allowMixedContent(mixedContentCheckbox.checked);
       try {
@@ -70,6 +71,26 @@ export class SourcesPanel {
         ? 'Plain-http nodes and VDF servers will be tried. If they fail, the browser may still be blocking them: check the site setting.'
         : this.describeGatheredSources());
     });
+  }
+
+  /**
+   * Tries a few plain-http VDF servers and nodes in the background; if the browser lets
+   * any through (its site setting allows insecure content), ticks the box for this visit,
+   * so nobody has to find it. Not remembered: the setting can change between visits.
+   */
+  async detectMixedContent() {
+    const { vdfServers = [], nodes = [] } = BundledResources.gatheredSources();
+    const probes = [...vdfServers.map((entry) => entry.url), ...VdfServerClient.PUBLIC_SERVER_URLS, ...nodes.map((entry) => entry.url)]
+      // IP addresses only: a browser may quietly switch a named host to https (HSTS),
+      // which would answer and wrongly look like plain http getting through.
+      .filter((url) => /^http:\/\/\d+\.\d+\.\d+\.\d+(:\d+)?\/?$/.test(url)).slice(0, 8).map((url) => `${url.replace(/\/$/, '')}/info`);
+    if (!(await PeerAccess.detectMixedContent(probes))) return;
+    const { mixedContentCheckbox } = this.view.elements;
+    if (mixedContentCheckbox.checked) return;
+    mixedContentCheckbox.checked = true;
+    PeerAccess.allowMixedContent(true);
+    this.view.setText('peerStatus', 'This browser lets the page reach plain-http nodes and VDF servers here, so they will be tried too.');
+    this.view.log('plain-http requests get through from this https page (the browser allows insecure content here); nodes and VDF servers will be tried', 'info');
   }
 
   static SEEDS_STORAGE_KEY = 'weave-tab-miner.seeds';
