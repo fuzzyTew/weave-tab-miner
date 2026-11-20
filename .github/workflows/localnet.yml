@@ -19,6 +19,11 @@ on:
       blocks:
         description: Blocks to mine (and save, or post)
         default: '3'
+      vdf_steps:
+        description: "post mode: build blocks on VDF steps computed after the parent's (as on mainnet), or on the parent's own step (localnet only)"
+        type: choice
+        options: [computed, same]
+        default: computed
 
 permissions:
   contents: write
@@ -93,7 +98,7 @@ jobs:
 
       - name: Mine blocks with this library and post them to the node
         if: inputs.mode == 'post'
-        run: node scripts/localnet-post.mjs "${{ inputs.blocks }}"
+        run: node scripts/localnet-post.mjs "${{ inputs.blocks }}" "${{ inputs.vdf_steps }}"
 
       - name: Show the localnet log
         if: always()

@@ -1,12 +1,14 @@
 // scripts/localnet-post.mjs — mines blocks with this library and posts them to a running
 // Arweave localnet, several in a row, and reports what the node accepted. Step 6 of
 // docs/TODO.md "Turn a solution into a block". Run by the localnet workflow:
-//   node scripts/localnet-post.mjs <blocks to post>
+//   node scripts/localnet-post.mjs <blocks to post> [VDF steps ahead: same | computed]
 //
 // A localnet skips the difficulty check and lets a block name its recall chunk, so every
 // attempt can be a block: the script picks a chunk from the localnet's seeded data, packs
-// its proven sub-chunk for a fresh RSA key, and builds the block on the tip's own VDF step
-// (which a localnet allows). Everything else is checked by the node as on mainnet.
+// its proven sub-chunk for a fresh RSA key, and builds the block either on the tip's own
+// VDF step ("same", which only a localnet allows) or, by default, 1 or 2 steps after it
+// with the steps computed here, as on mainnet ("computed", about 8 s a step). Everything
+// else is checked by the node as on mainnet.
 import { readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
 import { createHash, randomInt } from 'node:crypto';
@@ -17,7 +19,8 @@ import { AccountTree } from '../src/blocks/account-tree.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { BlockAssembler, ChainState } from '../src/blocks/assembler.js';
-import { OneChunkSolution, VdfInfo } from '../src/blocks/solution.js';
+import { OneChunkSolution } from '../src/blocks/solution.js';
+import { ComputedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
 import { BlockSigner } from '../src/blocks/signer.js';
 import { DoubleSigningGuard } from '../src/blocks/signing-guard.js';
 import { BlockBinary } from '../src/blocks/binary.js';
@@ -38,8 +41,18 @@ class LocalnetBlockPoster {
   static CHUNK_DRAWS = 40;
   static ACCEPT_TIMEOUT_MS = 120000;
 
-  constructor({ blockCount, client = new LocalnetClient() }) {
-    Object.assign(this, { blockCount, client });
+  constructor({ blockCount, vdfMode = 'computed', client = new LocalnetClient() }) {
+    Object.assign(this, { blockCount, vdfMode, client });
+    this.vdfSteps = new ComputedVdfSteps();
+  }
+
+  /** The VDF info of block `index` of this run: alternately 1 and 2 steps ahead, unless "same". */
+  async vdfInfo(state, index) {
+    if (this.vdfMode === 'same') return VdfInfo.sameStepAsParent(state.block);
+    return VdfInfo.afterParent({
+      parent: state.block, parentBlockTimeHistory: state.blockTimeHistory,
+      stepNumber: Number(state.block.nonce_limiter_info.global_step_number) + 1 + (index % 2), stepSource: this.vdfSteps,
+    });
   }
 
   /** The tip with its reward and block-time histories, waiting up to ACCEPT_TIMEOUT_MS for them. */
@@ -120,16 +133,17 @@ class LocalnetBlockPoster {
     let accepted = 0;
     for (let index = 0; index < this.blockCount; index++) {
       const { recallByte, chunkJson } = await this.heldChunk();
+      const vdfInfo = await this.vdfInfo(state, index);
       const solution = await OneChunkSolution.build({
-        addressBytes: wallet.addressBytes, vdfInfo: VdfInfo.sameStepAsParent(state.block),
-        seed: Bytes.fromBase64Url(state.block.nonce_limiter_info.seed), recallByte, chunkJson,
+        addressBytes: wallet.addressBytes, vdfInfo,
+        seed: Bytes.fromBase64Url(vdfInfo.seed), recallByte, chunkJson,
         nonce: randomInt(32), h0Hasher, entropySource,
       });
       const timestamp = Math.max(Math.floor(Date.now() / 1000), Number(state.block.timestamp));
       const block = await BlockAssembler.assemble({ state, solution, rewardAddress: wallet.address, rewardKey: Bytes.toBase64Url(wallet.ownerBytes), timestamp });
       const signed = await signer.sign(block);
       const reply = await this.client.postBlock(BlockBinary.encode(signed), signed.indep_hash);
-      console.log(`block ${signed.height} (${signed.indep_hash.slice(0, 12)}…, chunk at ${recallByte}): POST /block2 → ${reply.status} ${reply.text}`);
+      console.log(`block ${signed.height} (${signed.indep_hash.slice(0, 12)}…, VDF step ${vdfInfo.global_step_number}, chunk at ${recallByte}): POST /block2 → ${reply.status} ${reply.text}`);
       if (!(await this.waitForTip(signed.indep_hash))) {
         console.log(`block ${signed.height} did not become the tip within ${LocalnetBlockPoster.ACCEPT_TIMEOUT_MS / 1000} s; the node log below says why`);
         break;
@@ -143,4 +157,4 @@ class LocalnetBlockPoster {
   }
 }
 
-await new LocalnetBlockPoster({ blockCount: Number(process.argv[2] ?? 3) }).run();
+await new LocalnetBlockPoster({ blockCount: Number(process.argv[2] ?? 3), vdfMode: process.argv[3] ?? 'computed' }).run();
