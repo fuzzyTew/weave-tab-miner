@@ -6,6 +6,7 @@
 // node holds the bytes its keys have in common, and branches where they differ.
 import { Bytes } from '../core/bytes.js';
 import { Denomination } from '../core/denomination.js';
+import { Sha384 } from '../core/sha384.js';
 
 export class AccountTree {
   /**
@@ -16,12 +17,13 @@ export class AccountTree {
    * compares those exactly as Erlang orders binaries (byte by byte, a prefix first), which
    * is the order the node hashes children in (gb_sets).
    *
-   * `sha384(bytes)` may return a Uint8Array or a Promise of one; the default uses WebCrypto.
-   * A synchronous one (Node's crypto) makes hashing the whole tree several times faster.
+   * `sha384(bytes)` may return a Uint8Array or a Promise of one; the default is the
+   * library's synchronous Sha384 (about 50 s for 300,000 accounts in Node); Node's own
+   * crypto is about three times faster; WebCrypto's asynchronous digest far slower.
    */
   static ROOT = 'root';
 
-  constructor({ sha384 = AccountTree.webCryptoSha384 } = {}) {
+  constructor({ sha384 = Sha384.hash } = {}) {
     this.sha384 = sha384;
     this.nodes = new Map([[AccountTree.ROOT, { parent: null, children: [], hash: null, suffix: null, value: undefined }]]);
     this.size = 0;

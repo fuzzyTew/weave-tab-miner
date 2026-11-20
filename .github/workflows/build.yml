@@ -59,6 +59,9 @@ jobs:
       - name: Read Erlang-format account pages, as browsers must
         run: node test/erlang-term.test.mjs
 
+      - name: Check the library's SHA-384 against Node's
+        run: node test/sha384.test.mjs
+
       - name: Check the wait estimate's arithmetic
         run: node test/odds.test.mjs
 
