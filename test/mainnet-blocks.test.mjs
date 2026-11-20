@@ -4,8 +4,10 @@
 // across entropy reset lines, and one whole nonce_limiter_info), and following the chain
 // as a light client (every account from a node, then several blocks' transactions and
 // reward releases, each checked against the block's root). Needs the network, so it
-// runs in CI's live-network job; it prints SKIP when no gateway answers.
-// Run: node test/mainnet-blocks.test.mjs [gateway URL ...]
+// runs in CI's live-network job; it prints SKIP when no gateway answers. The quick checks run
+// by default; --full adds the slow ones (a whole VDF step at mainnet difficulty, following
+// the chain from every account, and rebuilding a block from its solution: minutes each).
+// Run: node test/mainnet-blocks.test.mjs [--full] [gateway URL ...]
 import { Bytes } from '../src/core/bytes.js';
 import { DifficultyRetarget, PriceAdjustment } from '../src/blocks/adjustments.js';
 import { NextBlockFields } from '../src/blocks/fields.js';
@@ -31,7 +33,8 @@ class MainnetBlocksTest {
   static VDF_BLOCKS_CHECKED = 40;
   static BLOCKS_FOLLOWED = 12;
 
-  constructor(gateways) {
+  constructor(gateways, { full = false } = {}) {
+    this.full = full;
     this.gateways = gateways.length ? gateways : MainnetBlocksTest.DEFAULT_GATEWAYS;
     this.failures = 0;
     this.blocks = new Map();
@@ -142,7 +145,7 @@ class MainnetBlocksTest {
         this.report(`block ${height}${crossed ? ' (crosses a reset line)' : ''}: seeds, bounds and VDF difficulty match`, differing.length === 0,
           differing.map(([field, value]) => `${field} ${JSON.stringify(value)} vs ${JSON.stringify(child.nonce_limiter_info[field])}`).join('; '));
       }
-      if (!checkedWhole && !crossed && height % VdfInfo.VDF_DIFFICULTY_RETARGET !== 0) {
+      if (this.full && !checkedWhole && !crossed && height % VdfInfo.VDF_DIFFICULTY_RETARGET !== 0) {
         // The last step's checkpoints are computed at mainnet difficulty: tens of seconds.
         checkedWhole = true;
         const info = await VdfInfo.afterParent({ parent, parentBlockTimeHistory: new BlockTimeHistory([]), stepNumber: step, stepSource: RecordedVdfSteps.fromBlock(child) });
@@ -274,7 +277,7 @@ class MainnetBlocksTest {
       return;
     }
     console.log(`checking mainnet blocks below ${tip}`);
-    for (const section of ['retargets', 'adjustments', 'vdf', 'follow']) {
+    for (const section of this.full ? ['vdf', 'follow'] : ['retargets', 'adjustments', 'vdf']) {
       try {
         await this[section](tip);
       } catch (error) {
@@ -285,4 +288,5 @@ class MainnetBlocksTest {
   }
 }
 
-await new MainnetBlocksTest(process.argv.slice(2)).run();
+const flags = process.argv.slice(2);
+await new MainnetBlocksTest(flags.filter((flag) => !flag.startsWith('--')), { full: flags.includes('--full') }).run();

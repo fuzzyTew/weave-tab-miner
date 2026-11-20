@@ -124,13 +124,18 @@ jobs:
       - name: Try every live request
         run: node scripts/live-network-check.mjs
 
-      - name: Measure the VDF's pace, on the network and from each server
-        if: always()
-        run: node scripts/vdf-pace-check.mjs 60
-
-      - name: Check retargets, price adjustments and VDF info against recent mainnet blocks
+      - name: Check retargets, price adjustments and VDF seeds against recent mainnet blocks
         if: always()
         run: node test/mainnet-blocks.test.mjs
+
+      # The slow checks (minutes each) run daily and on request, not on every push.
+      - name: Daily, follow mainnet from every account and rebuild a real block from its solution
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        run: node test/mainnet-blocks.test.mjs --full
+
+      - name: Daily, measure the VDF's pace on the network and from each server
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        run: node scripts/vdf-pace-check.mjs 60
 
   page:
     runs-on: ubuntu-latest
