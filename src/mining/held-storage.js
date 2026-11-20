@@ -60,28 +60,43 @@ export class HeldStorage {
     }
   }
 
-  /** Brings the chunks holding these weave bytes into memory, where held. */
+  /**
+   * Brings the chunks holding these weave bytes into memory, where held, reading those on
+   * disk in parallel. Resolves the number read from disk. Callers should ask for no more
+   * than `residentLimit` chunks at once, or the first may leave memory again before use.
+   */
   async ensureLoaded(weaveBytes) {
     const keys = [...new Set(weaveBytes.map((byte) => Replica29Layout.bucketEndOffsetForByte(byte).toString()))]
       .filter((key) => this.packedChunks.has(key));
+    const onDisk = keys.filter((key) => this.packedChunks.get(key) === null && this.loadChunk);
+    const read = await Promise.all(onDisk.map((key) => this.loadChunk(BigInt(key))));
+    onDisk.forEach((key, index) => {
+      if (read[index]) this.packedChunks.set(key, read[index]);
+    });
     for (const key of keys) {
-      if (this.packedChunks.get(key) === null && this.loadChunk) {
-        const chunk = await this.loadChunk(BigInt(key));
-        if (chunk) this.packedChunks.set(key, chunk);
-      }
       if (this.packedChunks.get(key)) this.touch(key);
     }
+    return read.filter(Boolean).length;
   }
 
   get residentCount() {
     return this.resident.size;
   }
 
-  subChunkForByte(weaveByte, subChunkIndex) {
-    const packed = this.packedChunks.get(Replica29Layout.bucketEndOffsetForByte(weaveByte).toString());
+  /** The packed chunk holding `weaveByte`, if held and in memory; else null. */
+  chunkForByte(weaveByte) {
+    return this.packedChunks.get(Replica29Layout.bucketEndOffsetForByte(weaveByte).toString()) ?? null;
+  }
+
+  /** Sub-chunk `subChunkIndex` of a packed chunk, or null for no chunk. */
+  static subChunkOf(packed, subChunkIndex) {
     if (!packed) return null;
     const size = ConsensusConstants.SUB_CHUNK_SIZE;
     return packed.subarray(subChunkIndex * size, (subChunkIndex + 1) * size);
+  }
+
+  subChunkForByte(weaveByte, subChunkIndex) {
+    return HeldStorage.subChunkOf(this.chunkForByte(weaveByte), subChunkIndex);
   }
 
   get byteCount() {

@@ -4,6 +4,8 @@
 import { ConsensusConstants } from '../src/core/constants.js';
 import { HeldStorage } from '../src/mining/held-storage.js';
 import { Replica29Layout } from '../src/mining/packing.js';
+import { Miner } from '../src/mining/miner.js';
+import { StubH0Hasher } from '../src/mining/mining-math.js';
 
 class HeldStorageTest {
   run() {
@@ -46,6 +48,24 @@ class HeldStorageTest {
     onDisk.addOnDisk(endOffset(4));
     report('a chunk known only on disk loads on demand', onDisk.subChunkForByte(Replica29Layout.bucketEndOffsetForByte(endOffset(4) - 1n) - 1n, 0) === null
       && (await onDisk.ensureLoaded([endOffset(4) - 1n]), onDisk.subChunkForByte(endOffset(4) - 1n, 0)?.[0] === 5));
+
+    // A whole recall range held on disk, more chunks than may sit in memory: mining a step
+    // must still try every nonce (it reads the range chunk by chunk).
+    const chunksPerRange = ConsensusConstants.noncesPerRecallRange / ConsensusConstants.SUB_CHUNK_COUNT;
+    const rangeDisk = new Map();
+    let rangeReads = 0;
+    const ranged = new HeldStorage({ residentLimit: 4, loadChunk: async (offset) => { rangeReads++; return rangeDisk.get(offset.toString()) ?? null; } });
+    for (let index = 0; index < chunksPerRange; index++) {
+      rangeDisk.set(endOffset(index).toString(), chunkFor(index));
+      ranged.addOnDisk(endOffset(index));
+    }
+    const miner = new Miner({
+      identity: { addressBytes: new Uint8Array(32) }, partitionNumber: 0, storage: ranged, h0Hasher: new StubH0Hasher(),
+      testMode: { aimRange1AtHeldData: true, difficultyEase: 1 },
+    });
+    const stepReport = await miner.mineStep({ seed: new Uint8Array(48), partitionUpperBound: 10n ** 15n, networkDiff: (1n << 256n) - 1n }, 1, new Uint8Array(32));
+    report(`a step over ${chunksPerRange} held chunks with room for 4 in memory tries every nonce`, stepReport.noncesTried === ConsensusConstants.noncesPerRecallRange && ranged.residentCount <= 4 + 2,
+      `${stepReport.noncesTried} of ${ConsensusConstants.noncesPerRecallRange} tried, ${rangeReads} reads, ${ranged.residentCount} in memory after; ${stepReport.timings.totalMs.toFixed(0)} ms`);
     return failures;
   }
 }

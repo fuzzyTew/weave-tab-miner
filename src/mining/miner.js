@@ -31,6 +31,7 @@ export class Miner {
   }
 
   async mineStep(session, stepNumber, vdfOutput) {
+    const startedAt = performance.now();
     const packingDifficulty = ConsensusConstants.REPLICA_2_9_PACKING_DIFFICULTY;
     const h0Preimage = MiningMath.h0Preimage(vdfOutput, this.partitionNumber, session.seed, this.identity.addressBytes, packingDifficulty);
     const h0 = await this.h0Hasher.hash(h0Preimage);
@@ -40,44 +41,58 @@ export class Miner {
       if (firstHeld) range1Start = BigInt(firstHeld) - BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
     }
 
-    // Held chunks may be on disk only (HeldStorage.ensureLoaded): read in the ones both
-    // ranges touch before trying their nonces.
-    const chunksPerRange = ConsensusConstants.noncesPerRecallRange / ConsensusConstants.SUB_CHUNK_COUNT;
-    const rangeBytes = [];
-    for (let chunk = 0; chunk < chunksPerRange; chunk++) {
-      for (const start of [range1Start, range2Start]) rangeBytes.push(MiningMath.recallByteForNonce(start, chunk * ConsensusConstants.SUB_CHUNK_COUNT)[0]);
-    }
-    await this.storage.ensureLoaded(rangeBytes);
-
     const trace = {
       vdfOutput, partitionNumber: this.partitionNumber, seed: session.seed.subarray(0, 32), address: this.identity.addressBytes,
       packingDifficulty, h0Preimage, h0, h0IsStub: this.h0Hasher.isStub, range1Start, range2Start, firstHeldNonce: null,
     };
-    const report = { stepNumber, h0, range1Start, range2Start, noncesTried: 0, h2Tried: 0, solution: null, trace };
-    for (let nonce = 0; nonce < ConsensusConstants.noncesPerRecallRange; nonce++) {
-      const [recallByte1, subChunkIndex] = MiningMath.recallByteForNonce(range1Start, nonce);
-      const subChunk1 = this.storage.subChunkForByte(recallByte1, subChunkIndex);
-      if (!subChunk1) continue;
+    // Where this step's time went, for the page's pace report.
+    const timings = { h0Ms: performance.now() - startedAt, loadMs: 0, hashMs: 0, chunksRead: 0 };
+    const report = { stepNumber, h0, range1Start, range2Start, noncesTried: 0, h2Tried: 0, solution: null, trace, timings };
 
-      report.noncesTried++;
-      const h1 = MiningMath.h1(h0, nonce, subChunk1);
-      const [recallByte2] = MiningMath.recallByteForNonce(range2Start, nonce);
-      const subChunk2 = this.storage.subChunkForByte(recallByte2, subChunkIndex);
-      const h2 = subChunk2 ? MiningMath.h2(h1.hash, subChunk2, h0) : null;
-      if (!trace.firstHeldNonce) trace.firstHeldNonce = { nonce, recallByte1, recallByte2, subChunkIndex, h1, h2 };
+    // Nonces run chunk by chunk (32 sub-chunks each), so a step needs only one chunk of
+    // each range in memory at a time; held chunks may be on disk only
+    // (HeldStorage.ensureLoaded). The next pair is read while this one is hashed.
+    const subChunkCount = ConsensusConstants.SUB_CHUNK_COUNT;
+    const chunksPerRange = ConsensusConstants.noncesPerRecallRange / subChunkCount;
+    const chunkPairBytes = (chunk) => [range1Start, range2Start].map((start) => MiningMath.recallByteForNonce(start, chunk * subChunkCount)[0]);
+    let pending = this.storage.ensureLoaded(chunkPairBytes(0));
+    for (let chunk = 0; chunk < chunksPerRange && !report.solution; chunk++) {
+      const loadStarted = performance.now();
+      timings.chunksRead += await pending;
+      timings.loadMs += performance.now() - loadStarted;
+      // Pin this pair while the next is read: reading may push older chunks out of memory.
+      const pinned = chunkPairBytes(chunk).map((byte) => this.storage.chunkForByte(byte));
+      pending = chunk + 1 < chunksPerRange ? this.storage.ensureLoaded(chunkPairBytes(chunk + 1)) : Promise.resolve(0);
 
-      if (this.easedPasses(h1.hash, true, session.networkDiff)) {
-        report.solution = { kind: 'one-chunk (H1)', nonce, hash: h1.hash, recallByte1 };
-        break;
+      const hashStarted = performance.now();
+      for (let nonce = chunk * subChunkCount; nonce < (chunk + 1) * subChunkCount; nonce++) {
+        const [recallByte1, subChunkIndex] = MiningMath.recallByteForNonce(range1Start, nonce);
+        const subChunk1 = HeldStorage.subChunkOf(pinned[0], subChunkIndex);
+        if (!subChunk1) continue;
+
+        report.noncesTried++;
+        const h1 = MiningMath.h1(h0, nonce, subChunk1);
+        const [recallByte2] = MiningMath.recallByteForNonce(range2Start, nonce);
+        const subChunk2 = HeldStorage.subChunkOf(pinned[1], subChunkIndex);
+        const h2 = subChunk2 ? MiningMath.h2(h1.hash, subChunk2, h0) : null;
+        if (!trace.firstHeldNonce) trace.firstHeldNonce = { nonce, recallByte1, recallByte2, subChunkIndex, h1, h2 };
+
+        if (this.easedPasses(h1.hash, true, session.networkDiff)) {
+          report.solution = { kind: 'one-chunk (H1)', nonce, hash: h1.hash, recallByte1 };
+          break;
+        }
+        if (!h2) continue;
+
+        report.h2Tried++;
+        if (this.easedPasses(h2.hash, false, session.networkDiff)) {
+          report.solution = { kind: 'two-chunk (H2)', nonce, hash: h2.hash, recallByte1, recallByte2 };
+          break;
+        }
       }
-      if (!h2) continue;
-
-      report.h2Tried++;
-      if (this.easedPasses(h2.hash, false, session.networkDiff)) {
-        report.solution = { kind: 'two-chunk (H2)', nonce, hash: h2.hash, recallByte1, recallByte2 };
-        break;
-      }
+      timings.hashMs += performance.now() - hashStarted;
     }
+    timings.chunksRead += await pending;
+    timings.totalMs = performance.now() - startedAt;
     return report;
   }
 }
