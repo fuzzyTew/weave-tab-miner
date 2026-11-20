@@ -93,8 +93,8 @@ export class NextBlockFields {
    * parent's reward and block-time histories price storage at adjustment heights.
    * `difficultyRetargets` is false on a localnet, whose difficulty never changes.
    *
-   * STUBS, which throw rather than guess: price adjustments during the 2.7.2 price
-   * transition (all in the past), and redenomination.
+   * STUBS, which throw rather than guess: price adjustments before the 2.7.2 price
+   * transition (long past), and redenomination.
    */
   static compute({ parent, parentBlockTimeHistory, parentRewardHistory, timestamp, difficultyRetargets = true }) {
     const height = parent.height + 1;

@@ -53,8 +53,14 @@ export class PriceAdjustment {
    * likewise (it no longer changes after fork 2.6).
    */
   static PRICE_ADJUSTMENT_FREQUENCY = 50;
-  /** The 2.7.2 price transition's last height (2.6.8 at 1,189,560 + 361,910 + 518,400 blocks). */
+  /**
+   * The 2.7.2 price transition (ar_pricing_transition): from TRANSITION_START (fork 2.6.8 at
+   * 1,189,560 + 361,910) over 518,400 blocks (~24 months), the estimate is blended in
+   * linearly from TRANSITION_START_PRICE; from TRANSITION_END on it is used as it is.
+   */
+  static TRANSITION_START = 1_551_470;
   static TRANSITION_END = 2_069_870;
+  static TRANSITION_START_PRICE = 340n; // ?PRICE_2_7_2_PER_GIB_MINUTE_UPPER_BOUND
   static REWARD_HISTORY_BLOCKS = 3 * 30 * 24 * 30 + 50; // ar_rewards:reward_history_length, with the consensus window
   static BLOCK_TIME_HISTORY_BLOCKS = 30 * 24 * 30;
   static POA1_DIFF_MULTIPLIER = 100n;
@@ -109,6 +115,15 @@ export class PriceAdjustment {
       / (intervalTotal * atLeastOne(hashRateTotal) * PriceAdjustment.PARTITION_SIZE);
   }
 
+  /** ar_pricing:get_price_per_gib_minute: the estimate, blended in during the transition. */
+  static targetPricePerGibMinute(height, estimate) {
+    if (height >= PriceAdjustment.TRANSITION_END) return estimate;
+    if (height < PriceAdjustment.TRANSITION_START) throw new Error(`height ${height} is before the 2.7.2 price transition, which is not implemented`);
+    const elapsed = BigInt(height - PriceAdjustment.TRANSITION_START);
+    const remaining = BigInt(PriceAdjustment.TRANSITION_END - height);
+    return (PriceAdjustment.TRANSITION_START_PRICE * remaining + estimate * elapsed) / (elapsed + remaining);
+  }
+
   /** The price and rate fields (strings and rate pairs, as block JSON) of a block at `height`. */
   static fields({ height, parent, parentRewardHistory, parentBlockTimeHistory }) {
     const carried = {
@@ -116,9 +131,8 @@ export class PriceAdjustment {
       usd_to_ar_rate: parent.usd_to_ar_rate, scheduled_usd_to_ar_rate: parent.scheduled_usd_to_ar_rate,
     };
     if (!PriceAdjustment.isAdjustmentHeight(height)) return carried;
-    if (height < PriceAdjustment.TRANSITION_END) throw new Error(`height ${height} adjusts prices during the 2.7.2 price transition, which is not implemented`);
     const scheduled = BigInt(parent.scheduled_price_per_gib_minute);
-    const target = PriceAdjustment.estimatedPricePerGibMinute({ parent, parentRewardHistory, parentBlockTimeHistory });
+    const target = PriceAdjustment.targetPricePerGibMinute(height, PriceAdjustment.estimatedPricePerGibMinute({ parent, parentRewardHistory, parentBlockTimeHistory }));
     const average = (9n * scheduled + target) / 10n;
     const upper = scheduled * 2n;
     const lower = scheduled / 2n;
