@@ -1,7 +1,7 @@
 // src/index.js — the library's public entry point: `import { Miner } from 'weave-tab-miner'`.
 // Modules can also be imported one at a time by path, e.g. 'weave-tab-miner/wallet/bundle'.
 // Folders, by area (README.md "Layout" describes each file):
-//   core/     bytes, SHA-256, constants, formatting, source citations
+//   core/     bytes, SHA-256, secp256k1 key recovery, denominations, constants, formatting, source citations
 //   mining/   VDF, difficulty, packing, the per-step hashes, held storage, the miner, odds, RandomX
 //   blocks/   building and following blocks: account tree, rewards, history hashes, fields, adjustments, solution, VDF info, hash, signing, binary, publishing, chain follower, network rules
 //   network/  gateways, nodes, peers and sources, VDF servers, fetching chunks
@@ -27,6 +27,7 @@ export * from './core/citations.js';
 export * from './core/constants.js';
 export * from './core/denomination.js';
 export * from './core/pretty-number.js';
+export * from './core/secp256k1.js';
 export * from './core/sha256.js';
 export * from './mining/difficulty.js';
 export * from './mining/held-storage.js';

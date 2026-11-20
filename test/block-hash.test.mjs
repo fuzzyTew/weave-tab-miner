@@ -5,6 +5,7 @@
 // Run: node test/block-hash.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createHash, createPublicKey, verify } from 'node:crypto';
+import { Secp256k1 } from '../src/core/secp256k1.js';
 import { BlockHash } from '../src/blocks/hash.js';
 import { Bytes } from '../src/core/bytes.js';
 
@@ -42,6 +43,8 @@ class BlockHashTest {
       this.report(`block ${child.height}: signature verifies with its reward key`, signed);
       const address = Bytes.toBase64Url(new Uint8Array(createHash('sha256').update(rewardKey).digest()));
       this.report(`block ${child.height}: reward address is SHA-256 of the key`, address === child.reward_addr);
+      const recovered = Bytes.toBase64Url(Secp256k1.recoverPublicKey(BlockHash.signaturePreimage(child), Bytes.fromBase64Url(child.signature)));
+      this.report(`block ${child.height}: Secp256k1.recoverPublicKey gives its reward key back from the signature`, recovered === child.reward_key);
     }
     process.exitCode = this.failures ? 1 : 0;
   }
