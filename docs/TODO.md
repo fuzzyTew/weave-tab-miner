@@ -194,6 +194,9 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
       solution. Needs nodes, so an https copy needs insecure content allowed.
 - [ ] Phones: reading 317,000 accounts takes tens of MB and about a minute of hashing;
       keep the tree in IndexedDB between visits, and see what an old phone manages.
+- [ ] Shared-key tabs on different devices could each solve at one height and both sign,
+      which is double-signing; each tab's guard knows only its own signatures. Rare, so
+      postponed until tabs can talk to each other (libp2p or similar).
 - [ ] Double-signing proofs in followed blocks (a ban and a prover reward): the follower
       stops and starts over at one.
 - [ ] Include pending transactions (GET /tx/pending, then each tx), validated (anchors,
