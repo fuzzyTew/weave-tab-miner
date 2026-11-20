@@ -59,7 +59,9 @@ export class MiningPanel {
     this.view.setText('solutionDetail', `${report.solution.kind} at step ${report.stepNumber.toLocaleString()}, nonce ${report.solution.nonce}, hash ${PageView.shortHex(report.solution.hash, 24)}. ${detail}`);
     this.view.log(`solution found at step ${report.stepNumber}`, 'good');
     this.explorer.show(report);
-    this.stop();
+    // Test mode and stand-ins stop so the solution can be looked at; with real rules the
+    // tab keeps mining, since every step is another chance.
+    if (this.isTestMode || !this.usingRealRandomx || isSampleReplay) this.stop();
   }
 
   async start() {
