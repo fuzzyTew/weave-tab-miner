@@ -5,6 +5,7 @@
 // A Patricia tree (also called a radix tree) stores keys by their shared beginnings: each
 // node holds the bytes its keys have in common, and branches where they differ.
 import { Bytes } from '../core/bytes.js';
+import { Denomination } from '../core/denomination.js';
 
 export class AccountTree {
   /**
@@ -133,25 +134,58 @@ export class AccountTree {
   }
 
   /**
-   * Adds a released mining reward to its address (ar_rewards.erl apply_reward), in the
-   * block's denomination. A new address gets an old-style account with no last
-   * transaction; banned accounts (mining permission false) receive nothing.
-   *
-   * STUB for redenomination: amounts in another denomination would be multiplied by 1,000
-   * per step (ar_pricing:redenominate); this throws instead until a fixture needs it.
+   * Stores an account in the form update_account (ar_node_utils.erl) gives it: the short
+   * form for denomination 1 with mining allowed, the long form otherwise.
    */
-  applyReward(addressBytes, amount, denomination) {
-    const existing = this.get(addressBytes);
-    if (existing && existing.denomination !== undefined && existing.miningPermission === false) return;
-    const accountDenomination = existing?.denomination ?? 1;
-    if (accountDenomination !== denomination) throw new Error(`redenominating from ${accountDenomination} to ${denomination} is not implemented`);
-    const lastTx = existing?.lastTx ?? new Uint8Array(0);
-    const balance = (existing?.balance ?? 0n) + BigInt(amount);
-    // update_account keeps the short form for denomination 1 with mining allowed.
-    const account = denomination === 1 && (existing?.miningPermission ?? true)
+  putAccount(addressBytes, { balance, lastTx, denomination, miningPermission = true }) {
+    this.insert(addressBytes, denomination === 1 && miningPermission
       ? { balance, lastTx }
-      : { balance, lastTx, denomination, miningPermission: existing?.miningPermission ?? true };
-    this.insert(addressBytes, account);
+      : { balance, lastTx, denomination, miningPermission });
+  }
+
+  /** An account's balance in `denomination`; short-form accounts are in denomination 1. */
+  static balanceIn(account, denomination) {
+    return Denomination.redenominate(account.balance, account.denomination ?? 1, denomination);
+  }
+
+  /**
+   * Adds `amount` (already in the block's `denomination`) to an address, as
+   * ar_rewards:apply_reward and update_recipient_balance do: a new address gets an
+   * account with no last transaction. `skipBanned` leaves banned accounts (mining
+   * permission false) unpaid, as reward releases do; transfers still reach them.
+   */
+  credit(addressBytes, amount, denomination, { skipBanned = false } = {}) {
+    const existing = this.get(addressBytes);
+    const miningPermission = existing?.miningPermission ?? true;
+    if (skipBanned && !miningPermission) return;
+    this.putAccount(addressBytes, {
+      balance: (existing ? AccountTree.balanceIn(existing, denomination) : 0n) + BigInt(amount),
+      lastTx: existing?.lastTx ?? new Uint8Array(0), denomination, miningPermission,
+    });
+  }
+
+  /** A released mining reward (ar_rewards:apply_rewards2), in the block's denomination. */
+  applyReward(addressBytes, amount, denomination) {
+    this.credit(addressBytes, amount, denomination, { skipBanned: true });
+  }
+
+  /**
+   * One transaction's account changes (ar_node_utils:apply_tx): the sender pays quantity
+   * and fee and its last transaction becomes this one; the target receives the quantity.
+   * A sender with no account changes nothing at all. `transaction` holds
+   * { idBytes, ownerAddressBytes, targetBytes, quantity, reward, denomination } with
+   * BigInt amounts in the transaction's own denomination.
+   */
+  applyTransaction(transaction, denomination) {
+    const sender = this.get(transaction.ownerAddressBytes);
+    if (!sender) return;
+    const spent = Denomination.redenominate(transaction.quantity + transaction.reward, transaction.denomination, denomination);
+    this.putAccount(transaction.ownerAddressBytes, {
+      balance: AccountTree.balanceIn(sender, denomination) - spent, lastTx: transaction.idBytes,
+      denomination, miningPermission: sender.miningPermission ?? true,
+    });
+    if (transaction.quantity === 0n) return;
+    this.credit(transaction.targetBytes, Denomination.redenominate(transaction.quantity, transaction.denomination, denomination), denomination);
   }
 
   /** Arweave's deep hash (ar_deep_hash.erl) with this tree's SHA-384. */
