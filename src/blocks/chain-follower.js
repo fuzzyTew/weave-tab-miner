@@ -4,7 +4,9 @@
 // state kept this way is ready to build the next block on the moment a solution is found,
 // without fetching all accounts again.
 import { Bytes } from '../core/bytes.js';
+import { Secp256k1 } from '../core/secp256k1.js';
 import { Sha256 } from '../core/sha256.js';
+import { DeepHash } from '../wallet/transaction.js';
 import { BlockAssembler } from './assembler.js';
 
 export class ChainFollowError extends Error {
@@ -25,13 +27,33 @@ export class ChainFollower {
   }
 
   /**
+   * The data a secp256k1-signed transaction's signature covers
+   * (ar_tx:signature_data_segment_v2_no_public_key): the format-2 fields without the owner,
+   * deep-hashed, with the denomination first when there is one.
+   */
+  static async secp256k1SignedData(json) {
+    const text = (value) => new TextEncoder().encode(String(value));
+    const fields = [
+      text(json.format), Bytes.fromBase64Url(json.target ?? ''), text(json.quantity || 0), text(json.reward || 0),
+      Bytes.fromBase64Url(json.last_tx ?? ''), (json.tags ?? []).map((tag) => [Bytes.fromBase64Url(tag.name), Bytes.fromBase64Url(tag.value)]),
+      text(json.data_size || 0), Bytes.fromBase64Url(json.data_root ?? ''),
+    ];
+    if (Number(json.denomination ?? 0) > 0) fields.unshift(text(json.denomination));
+    return DeepHash.of(fields);
+  }
+
+  /**
    * A transaction's account-changing fields from its JSON (ar_serialize:json_struct_to_tx):
    * amounts as BigInt; `denomination` absent means 0 (taken as it is). The sender's address
-   * is SHA-256 of the owner key, for RSA and secp256k1 keys alike (ar_wallet:to_address).
+   * is SHA-256 of its public key (ar_wallet:to_address); secp256k1-signed transactions
+   * leave the owner empty, so their key is recovered from the signature, as nodes do.
    */
-  static transactionFromJson(json) {
-    const ownerBytes = Bytes.fromBase64Url(json.owner ?? '');
-    if (!ownerBytes.length) throw new Error(`transaction ${json.id} has no owner key; recovering it from the signature is not implemented`);
+  static async transactionFromJson(json) {
+    let ownerBytes = Bytes.fromBase64Url(json.owner ?? '');
+    if (!ownerBytes.length) {
+      if (Number(json.format) !== 2) throw new Error(`transaction ${json.id} has no owner key and is not format 2`);
+      ownerBytes = Secp256k1.recoverPublicKey(await ChainFollower.secp256k1SignedData(json), Bytes.fromBase64Url(json.signature));
+    }
     return {
       idBytes: Bytes.fromBase64Url(json.id),
       ownerAddressBytes: Sha256.hash(ownerBytes),
