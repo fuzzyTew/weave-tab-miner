@@ -8,23 +8,6 @@ import { Replica29Layout } from '../mining/packing.js';
 import { Sha256 } from '../core/sha256.js';
 import { SegmentWriter } from './hash.js';
 
-export class VdfInfo {
-  /**
-   * A new block's nonce_limiter_info on the parent's own VDF step. Only a localnet accepts
-   * that (ar_nonce_limiter's LOCALNET rules allow a block on its parent's step and validate
-   * that the steps match); on mainnet a block must be on a later step, with the steps
-   * between listed — not built yet.
-   */
-  static sameStepAsParent(parent) {
-    // The parent's step, output, steps ("checkpoints") and last-step checkpoints, with the
-    // parent's output as this block's prev_output (ar_block_pre_validator requires
-    // prev_output to be the parent's output on any step).
-    const info = JSON.parse(JSON.stringify(parent.nonce_limiter_info));
-    info.prev_output = info.output;
-    return info;
-  }
-}
-
 export class OneChunkSolution {
   /** Arweave's replica 2.9 packing, as block JSON names it. */
   static PACKING_DIFFICULTY = 10;
