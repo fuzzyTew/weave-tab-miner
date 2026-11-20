@@ -93,7 +93,7 @@ export class MiningPanel {
     this.fillStorageWhileMining();
   }
 
-  static TIP_POLL_MS = 60_000; // blocks come about every 2 minutes
+  static TIP_POLL_MS = 20_000; // blocks come about every 2 minutes; a new tip changes the seed H0 uses
 
   /**
    * Fetches the current block every TIP_POLL_MS while mining, so the difficulty and the

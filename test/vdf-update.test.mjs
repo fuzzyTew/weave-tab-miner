@@ -41,9 +41,9 @@ class VdfUpdateTest {
       ['difficulty', update.nextVdfDifficulty === 1_134_000n],
       ['upper bound', update.upperBound === 393_022_109_425_910n],
       ['25 checkpoints', update.checkpoints.length === 25 && update.checkpoints[24][0] === 124],
-      ['a session moved onto the update mines with its seed and bound', (() => {
+      ['a session moved onto the update takes its bound but keeps the tip block\'s seed, as H0 must', (() => {
         const moved = new VdfSession({ seed: new Uint8Array(48), nextSeed: new Uint8Array(48), partitionUpperBound: 1n, networkDiff: 5n, height: 7 }).withVdfUpdate(update);
-        return moved.seed[0] === 9 && moved.partitionUpperBound === 393_022_109_425_910n && moved.networkDiff === 5n && moved.height === 7;
+        return moved.seed[0] === 0 && moved.partitionUpperBound === 393_022_109_425_910n && moved.networkDiff === 5n && moved.height === 7;
       })()],
       ['a step record merges updates and lists the steps after one, oldest first', (() => {
         const record = new VdfStepRecord();
