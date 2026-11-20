@@ -19,8 +19,10 @@ on:
 permissions:
   contents: read
 
+# A newer push replaces a running push build; daily and hand-started runs (with the slow
+# mainnet checks) run to the end.
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
