@@ -10,7 +10,8 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Hold more data | mostly done; storage, not memory, is the limit |
 | Host the page on Arweave | not started |
 | Install it like an app | not started: a PWA, then F-Droid |
-| Be a light client | started: mining follows seeds and the tip; state not yet tracked |
+| Be a light client | follows the chain, publishes real solutions; pending transactions left |
+| A simple page | not started: a storage slider, details folded away, reviewed with screenshots |
 | Mine for a pool | not started |
 | Network-agnostic design | tried and reverted; plan below |
 
@@ -177,18 +178,40 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
       the start, so solutions went invalid at the next reset line, ~20 minutes).
       Not yet: the same for "compute VDF in this tab" mode, whose seeds still come from
       the loaded block.
-- [ ] Find out exactly what account information nodes serve (`/wallet/{addr}/balance`,
-      `/wallet_list/{root}` pages, any per-account proofs), from the node source and
-      live, and record it here.
-- [ ] Keep state by watching blocks, as light clients do: from one trusted starting
-      state, apply each new block's reward release and transactions and check the result
-      against its `wallet_list` root, so the next block can be built without fetching
-      300k accounts.
-- [ ] Partial account tree: only the paths a block changes, with sibling hashes (about
-      37 KB per account against ~30 MB for all), if nodes serve them or can be asked.
+- [x] What nodes serve for accounts (ar_http_iface_middleware.erl, recorded in
+      `src/network/node-client.js`): every account by root in pages, and single balances;
+      no per-account proofs, so a partial tree cannot be checked against a root. A browser
+      must read the pages in Erlang's term format (`src/network/erlang-term.js`): asking
+      for JSON needs a header nodes give no CORS permission for there.
+- [x] Keep state by watching blocks (`ChainFollower`): every account once (317,041 on
+      mainnet, hashed and checked against the block's root), then each new block's
+      transactions (secp256k1 senders recovered from their signatures, as nodes do) and
+      released reward, each checked against the block's root, on live mainnet blocks.
+- [x] Publish real solutions from the page (`BlockPublisher`, `apps/browser/publishing-panel.js`):
+      built on the followed state, signed through the guard, posted to up to 8 nodes as
+      text/plain (the only form a browser may send to /block2). Checked by publishing the
+      localnet's own blocks byte for byte, and a live mainnet block rebuilt from its
+      solution. Needs nodes, so an https copy needs insecure content allowed.
+- [ ] Phones: reading 317,000 accounts takes tens of MB and about a minute of hashing;
+      keep the tree in IndexedDB between visits, and see what an old phone manages.
+- [ ] Double-signing proofs in followed blocks (a ban and a prover reward): the follower
+      stops and starts over at one.
 - [ ] Include pending transactions (GET /tx/pending, then each tx), validated (anchors,
       balances, fees, format) and their fees shared out as the node does, so mined blocks
       carry the community's data and not just empty blocks.
+
+</details>
+
+<details>
+<summary><b>A simple page</b> — one slider, the rest folded away</summary>
+
+- [ ] A slider for how much of the browser's storage to use, showing how much of it is
+      filled; holding, packing and mining follow from it.
+- [ ] Everything verbose (settings, explanations, the step explorer, logs) inside
+      expandable sections, popups or tabs, so a newcomer sees a few plain controls first.
+- [ ] Review all the code and the page for consistency with the codebase's intents and
+      the architecture discussed so far, and check the page with screenshots for what a
+      new person would understand at a glance.
 
 </details>
 
