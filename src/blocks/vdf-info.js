@@ -36,10 +36,11 @@ export class RecordedVdfSteps {
   /**
    * A step source that already holds some step outputs (from a VDF server, or a block's
    * own `checkpoints` list), as a Map of step number to output, and asks `fallback` for
-   * anything else. Checkpoints within a step are always asked of `fallback`.
+   * anything else. `checkpointsByStep` holds steps' 25 checkpoints (oldest first) where
+   * known, as a VDF server sends for its newest step; others are asked of `fallback`.
    */
-  constructor(outputsByStep, fallback = new ComputedVdfSteps()) {
-    Object.assign(this, { outputsByStep, fallback });
+  constructor(outputsByStep, fallback = new ComputedVdfSteps(), checkpointsByStep = new Map()) {
+    Object.assign(this, { outputsByStep, fallback, checkpointsByStep });
   }
 
   static fromBlock(block, fallback) {
@@ -48,7 +49,7 @@ export class RecordedVdfSteps {
   }
 
   async checkpoints(request) {
-    return this.fallback.checkpoints(request);
+    return this.checkpointsByStep.get(request.stepNumber) ?? this.fallback.checkpoints(request);
   }
 
   async output(request) {

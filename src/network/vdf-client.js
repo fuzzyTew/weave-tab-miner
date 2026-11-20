@@ -32,12 +32,60 @@ export class VdfUpdate {
     return update;
   }
 
+  /**
+   * The update's newest step's 25 checkpoints, oldest first (the step's output last), or
+   * null if they do not end on that step's output. Servers send them newest first, as
+   * blocks list last_step_checkpoints; both orders are accepted.
+   */
+  static lastStepCheckpoints(update) {
+    const output = update.stepsNewestFirst[0];
+    if (!output || update.checkpoints.length !== 25) return null;
+    const same = (left, right) => left.length === right.length && left.every((byte, index) => byte === right[index]);
+    if (same(update.checkpoints[0], output)) return update.checkpoints.slice().reverse();
+    if (same(update.checkpoints.at(-1), output)) return update.checkpoints.slice();
+    return null;
+  }
+
   /** [stepNumber, output] pairs, oldest first, after `afterStepNumber`. */
   static steps(update, afterStepNumber) {
     return update.stepsNewestFirst
       .map((output, index) => [update.stepNumber - index, output])
       .filter(([stepNumber]) => stepNumber > afterStepNumber)
       .reverse();
+  }
+}
+
+export class VdfStepRecord {
+  /**
+   * Every step output seen from VDF server updates, by step number, and the checkpoints of
+   * steps that came as an update's newest: what a block's nonce_limiter_info lists for the
+   * steps since its parent. Keeps the newest `keepSteps` (a block may list 10,800).
+   */
+  constructor({ keepSteps = 12_000, keepCheckpointSteps = 64 } = {}) {
+    Object.assign(this, { keepSteps, keepCheckpointSteps });
+    this.outputsByStep = new Map();
+    this.checkpointsByStep = new Map();
+  }
+
+  add(update) {
+    for (const [stepNumber, output] of VdfUpdate.steps(update, -1)) this.outputsByStep.set(stepNumber, output);
+    const checkpoints = VdfUpdate.lastStepCheckpoints(update);
+    if (checkpoints) this.checkpointsByStep.set(update.stepNumber, checkpoints);
+    VdfStepRecord.trimOldest(this.outputsByStep, this.keepSteps);
+    VdfStepRecord.trimOldest(this.checkpointsByStep, this.keepCheckpointSteps);
+  }
+
+  static trimOldest(map, keep) {
+    if (map.size <= keep) return;
+    const steps = [...map.keys()].sort((left, right) => left - right);
+    for (const step of steps.slice(0, map.size - keep)) map.delete(step);
+  }
+
+  /** The steps after `afterStep` up to `throughStep` that are not held. */
+  missingSteps(afterStep, throughStep) {
+    const missing = [];
+    for (let step = afterStep + 1; step <= throughStep; step++) if (!this.outputsByStep.has(step)) missing.push(step);
+    return missing;
   }
 }
 
@@ -91,7 +139,8 @@ export class VdfServerClient {
   /**
    * GET /vdf: the server's latest update, which holds only its newest 2 steps
    * (ar_nonce_limiter_server REGULAR_UPDATE_INCLUDE_STEPS_COUNT); `path` "/vdf/session"
-   * gets the whole current session instead, to fill a gap between polls.
+   * gets the whole current session instead, to fill a gap between polls, and
+   * "/vdf/previous_session" the one before.
    */
   async fetchUpdate(baseUrl, path = '/vdf') {
     const response = await fetch(`${baseUrl}${path}`, { signal: AbortSignal.timeout(this.timeoutMs) });
@@ -120,6 +169,12 @@ export class VdfServerClient {
   async latest() {
     if (!this.serverUrl) throw new Error('no VDF server found yet');
     return this.fetchUpdate(this.serverUrl);
+  }
+
+  /** The session before the current one, for steps from before the last reset line. */
+  async previousSession() {
+    if (!this.serverUrl) throw new Error('no VDF server found yet');
+    return this.fetchUpdate(this.serverUrl, '/vdf/previous_session');
   }
 
   /** The whole current session (every step since the last reset line). */
