@@ -208,3 +208,66 @@ export class VdfServerClient {
     return this.fetchUpdate(this.serverUrl, '/vdf/session');
   }
 }
+
+export class VdfServerPool {
+  /**
+   * Several VDF servers polled together, their steps merged in one VdfStepRecord. Public
+   * servers each run at their own pace (measured: about 0.6 steps a second each, some in
+   * bursts, against the network's ~1), so the newest of them is followed. An update holds
+   * only a server's newest 2 steps; when steps are missing since the last one mined, the
+   * newest server's whole session fills them (seconds old, still worth mining).
+   */
+  constructor({ clients, record = new VdfStepRecord() }) {
+    Object.assign(this, { clients, record });
+  }
+
+  /** A pool of every one of `baseUrls` that answers, or null if none does. */
+  static async connect(baseUrls, options = {}) {
+    const clients = await VdfServerClient.allAnswering(baseUrls, options);
+    return clients.length ? new VdfServerPool({ clients, record: options.record }) : null;
+  }
+
+  get serverUrls() {
+    return this.clients.map((client) => client.serverUrl);
+  }
+
+  /**
+   * One round: every server asked at once. Resolves { newest, fresh, gapFilled, missing }:
+   * the newest update (its seeds are the current ones), the held steps after `afterStep` up
+   * to it as [stepNumber, output] oldest first, whether a session filled a gap, and how
+   * many steps stayed missing. Throws only if no server answered, with each one's reason.
+   */
+  async poll(afterStep) {
+    const answers = await Promise.allSettled(this.clients.map((client) => client.latest()));
+    const updates = answers.filter((answer) => answer.status === 'fulfilled').map((answer) => answer.value);
+    if (!updates.length) throw new Error(answers.map((answer, index) => `${this.clients[index].serverUrl}: ${answer.reason?.message}`).join('; '));
+    const newest = updates.reduce((best, update) => (update.stepNumber > best.stepNumber ? update : best));
+    for (const update of updates) this.record.add(update);
+
+    let gapFilled = false;
+    if (afterStep >= 0 && this.record.missingSteps(afterStep, newest.stepNumber).length) {
+      const best = this.clients[answers.findIndex((answer) => answer.value === newest)];
+      this.record.add(await best.session());
+      gapFilled = true;
+    }
+    return {
+      newest, gapFilled,
+      missing: afterStep >= 0 ? this.record.missingSteps(afterStep, newest.stepNumber).length : 0,
+      fresh: this.record.stepsAfter(afterStep).filter(([step]) => step <= newest.stepNumber),
+    };
+  }
+
+  /** Fills `record` with the steps since `afterStep`, from the previous and current sessions. */
+  async fillSince(afterStep, throughStep) {
+    for (const client of this.clients) {
+      if (!this.record.missingSteps(afterStep, throughStep).length) return;
+      try {
+        this.record.add(await client.previousSession());
+        this.record.add(await client.session());
+      } catch {
+        // The next server may have them.
+      }
+    }
+  }
+}
+

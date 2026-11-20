@@ -3,7 +3,7 @@
 // reachable when this was written, so this tests the layout, not a real server's reply.
 // Run: node test/vdf-update.test.mjs
 import { Bytes } from '../src/core/bytes.js';
-import { VdfStepRecord, VdfUpdate } from '../src/network/vdf-client.js';
+import { VdfServerPool, VdfStepRecord, VdfUpdate } from '../src/network/vdf-client.js';
 import { VdfSession } from '../src/mining/vdf.js';
 
 class VdfUpdateTest {
@@ -19,7 +19,7 @@ class VdfUpdateTest {
     return new Uint8Array(length).fill(value);
   }
 
-  run() {
+  async run() {
     const steps = [VdfUpdateTest.filled(32, 3), VdfUpdateTest.filled(32, 2), VdfUpdateTest.filled(32, 1)];
     const checkpoints = Array.from({ length: 25 }, (_, index) => VdfUpdateTest.filled(32, 100 + index));
     const body = Bytes.concat(
@@ -54,6 +54,19 @@ class VdfUpdateTest {
       })()],
       ['newer steps, oldest first', fresh.length === 2 && fresh[0][0] === 119_924_199 && fresh[0][1][0] === 2 && fresh[1][1][0] === 3],
     ];
+    // Two servers at different paces, the faster one with a gap since the last mined step.
+    const step = (number) => new Uint8Array(32).fill(number % 256);
+    const updateAt = (number) => ({ ...update, stepNumber: number, stepsNewestFirst: [step(number), step(number - 1)], checkpoints: [] });
+    const sessionTo = (number) => ({ ...update, stepNumber: number, stepsNewestFirst: Array.from({ length: 10 }, (_, index) => step(number - index)), checkpoints: [] });
+    const slow = { serverUrl: 'slow', latest: async () => updateAt(105), session: async () => sessionTo(105) };
+    const fast = { serverUrl: 'fast', latest: async () => updateAt(110), session: async () => sessionTo(110) };
+    const pool = new VdfServerPool({ clients: [slow, fast] });
+    const round = await pool.poll(103);
+    checks.push(['a server pool follows the newest server, fills the gap from its session, and lists every step after the last mined',
+      round.newest.stepNumber === 110 && round.gapFilled && round.missing === 0 && round.fresh.map(([number]) => number).join() === '104,105,106,107,108,109,110']);
+    const failing = new VdfServerPool({ clients: [{ serverUrl: 'down', latest: async () => { throw new Error('refused'); } }] });
+    checks.push(['a pool with no server answering says why', await failing.poll(1).then(() => false, (error) => /down: refused/.test(error.message))]);
+
     let failures = 0;
     for (const [name, passed] of checks) {
       console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}`);
