@@ -19,7 +19,7 @@ import { Miner } from '../../src/mining/miner.js';
 import { VdfSession, VdfChain } from '../../src/mining/vdf.js';
 import { SolutionOdds } from '../../src/mining/odds.js';
 import { ArweaveGateway } from '../../src/network/gateway.js';
-import { VdfServerClient, VdfUpdate } from '../../src/network/vdf-client.js';
+import { VdfServerClient, VdfServerPool } from '../../src/network/vdf-client.js';
 import { RandomxBundle, RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/mining/randomx.js';
 
 class CommandLineOptions {
@@ -118,16 +118,18 @@ class ServerMiner {
 
   /** Steps from a public VDF server, if any peer or gateway answers GET /vdf. */
   async mineFromVdfServer() {
-    const client = new VdfServerClient({ baseUrls: [...VdfServerClient.PUBLIC_SERVER_URLS, ...ArweaveGateway.DEFAULT_GATEWAY_URLS], log: (message) => console.error(`warn: ${message}`) });
-    if (!(await client.findServer())) throw new Error('no VDF server answered; use --vdf local (slower) instead');
-    console.log(`VDF steps from ${client.serverUrl}`);
+    const pool = await VdfServerPool.connect([...VdfServerClient.PUBLIC_SERVER_URLS, ...ArweaveGateway.DEFAULT_GATEWAY_URLS], { log: (message) => console.error(`warn: ${message}`) });
+    if (!pool) throw new Error('no VDF server answered; use --vdf local (slower) instead');
+    console.log(`VDF steps from ${pool.serverUrls.join(', ')}`);
     for (;;) {
       try {
-        for (const [stepNumber, output] of VdfUpdate.steps(await client.latest(), this.lastMinedStep)) {
+        const { newest, fresh } = await pool.poll(this.lastMinedStep);
+        this.session = this.session.withVdfUpdate(newest);
+        for (const [stepNumber, output] of fresh.slice(-8)) {
           if (await this.mineStep(stepNumber, output)) return;
         }
       } catch (error) {
-        console.error(`VDF server: ${error.message}`);
+        console.error(`VDF servers: ${error.message}`);
       }
       await new Promise((resolve) => setTimeout(resolve, VdfServerClient.POLL_INTERVAL_MS));
     }

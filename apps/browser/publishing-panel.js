@@ -130,15 +130,7 @@ export class PublishingPanel {
     }
     this.setPublishStatus(`Building the block for the solution at step ${report.stepNumber.toLocaleString()}…`);
     const parentStep = Number(this.follower.state.block.nonce_limiter_info.global_step_number);
-    for (const client of this.vdfClients ?? []) {
-      if (!this.vdfSteps.missingSteps(parentStep, report.stepNumber).length) break;
-      try {
-        this.vdfSteps.add(await client.previousSession());
-        this.vdfSteps.add(await client.session());
-      } catch (error) {
-        this.view.log(`VDF sessions from ${client.serverUrl}: ${error.message}`, 'warn');
-      }
-    }
+    await this.vdfPool?.fillSince(parentStep, report.stepNumber);
     const publisher = new BlockPublisher({
       follower: this.follower, signer: this.blockSigner(), fetchChunkJson: (offset) => this.gateway.chunkJson(offset),
       nodes: this.publishNodes, h0Hasher: this.h0Hasher, entropySource: this.entropySource, log: (message) => this.view.log(message),

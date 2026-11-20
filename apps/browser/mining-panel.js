@@ -6,7 +6,7 @@ import { Miner } from '../../src/mining/miner.js';
 import { VdfSession } from '../../src/mining/vdf.js';
 import { SolutionOdds } from '../../src/mining/odds.js';
 import { PeerAccess } from '../../src/network/peers.js';
-import { VdfServerClient } from '../../src/network/vdf-client.js';
+import { VdfServerClient, VdfServerPool } from '../../src/network/vdf-client.js';
 import { BundledResources } from './resources.js';
 import { PageView } from './page-view.js';
 
@@ -172,53 +172,34 @@ export class MiningPanel {
    * computing the VDF here. Falls back to telling the person when none answers.
    */
   /**
-   * Steps from public VDF servers: the only way to keep the network's pace without
-   * computing the VDF here. Every server that answers is polled together and their steps
-   * merged, since each runs at its own pace; the newest are mined. Falls back to telling
-   * the person when none answers.
+   * Steps from public VDF servers (a VdfServerPool): the only way to keep the network's
+   * pace without computing the VDF here. Falls back to telling the person when none answers.
    */
   async runVdfServer() {
     const candidates = this.vdfServerCandidates();
     this.view.setText('vdfStatus', `Looking for VDF servers among ${candidates.length} candidates…`);
-    const clients = await VdfServerClient.allAnswering(candidates, { log: (message) => this.view.log(message, 'warn') });
-    if (!clients.length) {
+    const pool = await VdfServerPool.connect(candidates, { record: this.vdfSteps, log: (message) => this.view.log(message, 'warn') });
+    if (!pool) {
       const downloadHint = PeerAccess.blockedReason() ? ' The public VDF servers use plain http, which a downloaded copy opened from disk can reach.' : '';
       this.view.setText('vdfStatus', `No VDF server answered this page.${downloadHint} "Compute VDF steps in this tab" works without one, but uses a whole CPU core.`);
       this.stop();
       return;
     }
-    this.view.setText('vdfStatus', `Getting VDF steps from ${clients.length} server${clients.length === 1 ? '' : 's'}: ${clients.map((client) => client.serverUrl).join(', ')}.`);
-    this.vdfClients = clients;
+    this.view.setText('vdfStatus', `Getting VDF steps from ${pool.clients.length} server${pool.clients.length === 1 ? '' : 's'}: ${pool.serverUrls.join(', ')}.`);
+    this.vdfPool = pool;
     const poll = async () => {
       if (!this.running) return;
       try {
         const pollStarted = performance.now();
-        const answers = await Promise.allSettled(clients.map((client) => client.latest()));
+        const { newest, fresh, gapFilled, missing } = await pool.poll(this.lastMinedStep);
         this.pollMs.push(performance.now() - pollStarted);
         if (this.pollMs.length > 20) this.pollMs.shift();
-        const updates = answers.filter((answer) => answer.status === 'fulfilled').map((answer) => answer.value);
-        if (!updates.length) throw new Error(answers.map((answer) => answer.reason?.message).join('; '));
-        // The newest update sets the seeds; every update's steps join the record.
-        const newest = updates.reduce((best, update) => (update.stepNumber > best.stepNumber ? update : best));
-        for (const update of updates) this.vdfSteps.add(update);
         this.latestVdfUpdate = newest;
         this.session = this.session.withVdfUpdate(newest);
-
-        // An update holds only a server's newest 2 steps, so a gap since the last mined step
-        // is filled from the newest server's whole session (seconds old, still worth mining).
-        if (this.lastMinedStep >= 0 && this.vdfSteps.missingSteps(this.lastMinedStep, newest.stepNumber).length) {
-          const best = clients[updates.indexOf(newest)] ?? clients[0];
-          try {
-            this.vdfSteps.add(await best.session());
-            this.gapsFilled++;
-          } catch (error) {
-            this.view.log(`VDF server session: ${error.message}`, 'warn');
-          }
-          this.stepsMissed += this.vdfSteps.missingSteps(this.lastMinedStep, newest.stepNumber).length;
-        }
+        if (gapFilled) this.gapsFilled++;
+        this.stepsMissed += missing;
         // Steps well behind the newest are stale, so only the newest few are mined: at the
         // start, and whenever mining falls behind; the skipped ones are counted.
-        const fresh = this.vdfSteps.stepsAfter(this.lastMinedStep).filter(([step]) => step <= newest.stepNumber);
         const kept = fresh.slice(-MiningPanel.MAX_STEP_BACKLOG);
         if (this.lastMinedStep >= 0) this.stepsSkipped += fresh.length - kept.length;
         for (const [stepNumber, output] of kept) {
