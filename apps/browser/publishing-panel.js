@@ -27,7 +27,7 @@ export class PublishingPanel {
     if (this.blockOrigin !== 'live') return 'Mining a sample block; load the live block to mine for real.';
     // Replayed steps are old, and steps computed here fall ever further behind the network's,
     // so a solution on them would come after newer blocks and could not be built on the tip.
-    if (!this.view.elements.vdfModeServer.checked) return 'Only VDF steps from a server keep pace with the network; choose "Live: steps from a VDF server" in Mine (on an https copy, servers need insecure content allowed).';
+    if (!this.view.elements.vdfModeServer.checked) return 'Only VDF steps from a server keep pace with the network; choose "Live: steps from every VDF server that answers" in Mine (on an https copy, servers need insecure content allowed).';
     if (!this.identity?.wallet) return 'Mining for an address without its key, so a block could not be signed; use the shared key or a keyfile.';
     const blocked = PeerAccess.blockedReason();
     if (blocked) return `Publishing needs Arweave nodes directly, and ${blocked}. Allow insecure content for this site in the browser's settings and reload, or use the downloaded copy.`;

@@ -197,6 +197,8 @@ export class SourcesPanel {
     this.block = block;
     this.blockOrigin = origin;
     this.session = VdfSession.fromBlock(block);
+    // The sample can only replay its own steps; a live block mines new ones from VDF servers.
+    this.view.elements[origin === 'sample' ? 'vdfModeReplay' : 'vdfModeServer'].checked = true;
     const partitionInput = this.view.elements.partitionInput;
     // The browser's own partition unless the person chose one or chunks are held elsewhere;
     // "Verify against the sample" sets the sample's own partition for its replay.

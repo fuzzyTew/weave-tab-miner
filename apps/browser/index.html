@@ -296,7 +296,7 @@
     <section class="stage" aria-labelledby="mineHeading">
       <h2 id="mineHeading"><span class="stage-number">4</span>Mine</h2>
       <label class="choice" for="vdfModeReplay"><input id="vdfModeReplay" name="vdfMode" type="radio" checked> Replay the block's last 15 VDF steps, one a second</label>
-      <label class="choice" for="vdfModeServer"><input id="vdfModeServer" name="vdfMode" type="radio"> Live: steps from a VDF server, if one answers</label>
+      <label class="choice" for="vdfModeServer"><input id="vdfModeServer" name="vdfMode" type="radio"> Live: steps from every VDF server that answers (needed to publish)</label>
       <label class="choice" for="vdfModeLocal"><input id="vdfModeLocal" name="vdfMode" type="radio"> Live: compute VDF steps in this tab (about 20 times slower)</label>
       <label class="choice" for="aimCheckbox"><input id="aimCheckbox" type="checkbox"> Test: aim range 1 at held data</label>
       <label for="easeSelect">Test: make each hash this many times likelier to pass
@@ -310,7 +310,7 @@
         <button id="startButton" class="primary" type="button">Start mining</button>
         <button id="stopButton" type="button" disabled>Stop</button>
       </div>
-      <p class="stage-note" id="vdfStatus">Each VDF step is 25 checkpoints of chained SHA-256.</p>
+      <p class="stage-note" id="vdfStatus">Loading a block picks the steps: the sample replays its own, a live block takes them from VDF servers.</p>
       <p class="stage-note"><b>Publishing:</b> <span id="publishStatus">starts with real mining on the live block.</span></p>
     </section>
   </div>
@@ -365,7 +365,10 @@
         <button id="sendButton" class="primary" type="button">Sign and send</button>
         <button id="freeSendButton" type="button">Store free through Turbo</button>
       </div>
-      <p class="stage-note" id="recordStatus">Sign and send: a normal Arweave transaction straight to a gateway, paid in AR from your key, no bundler involved, up to 256 KiB. Store free: signed by your key as an ANS-104 item and handed to ArDrive's Turbo bundler, which stores up to 100 KiB without payment, so a key with no AR works; getting it into a block then depends on Turbo.</p>
+      <p class="stage-note" id="recordStatus">—</p>
+      <details class="more"><summary>Sign and send, or store free?</summary>
+        <p class="stage-note">Sign and send: a normal Arweave transaction straight to a gateway, paid in AR from your key, no bundler involved, up to 256 KiB. Store free: signed by your key as an ANS-104 item and handed to ArDrive's Turbo bundler, which stores up to 100 KiB without payment, so a key with no AR works; getting it into a block then depends on Turbo.</p>
+      </details>
       <a id="recordLink" href="https://arweave.net" target="_blank" rel="noopener" class="address"></a>
     </section>
   </div>
