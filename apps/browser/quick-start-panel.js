@@ -59,8 +59,7 @@ export class QuickStartPanel {
       const savedElsewhere = (await this.store.addresses()).filter(({ address }) => address !== this.identity.address);
       if (this.storage.bytesInPartition(this.partitionNumber) === 0 && savedElsewhere.length === 0) {
         this.quickStartStage(`Fetching and packing ${QuickStartPanel.QUICK_START_CHUNKS} chunks (16 MiB) to start with…`);
-        this.view.elements.chunkCountInput.value = String(QuickStartPanel.QUICK_START_CHUNKS);
-        await this.holdChunks();
+        await this.holdChunks({ chunkCount: Math.min(QuickStartPanel.QUICK_START_CHUNKS, this.chunksToReachTarget() || QuickStartPanel.QUICK_START_CHUNKS) });
       }
       const heldChunks = this.storage.packedChunks.size;
       if (savedElsewhere.length) this.quickStartStage(`Chunks saved for ${savedElsewhere.length} other address${savedElsewhere.length === 1 ? '' : 'es'} will be repacked for this one first`, 'note');

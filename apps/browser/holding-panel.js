@@ -214,9 +214,63 @@ export class HoldingPanel {
     await this.refreshStorageNote();
   }
 
+  // ---- how much storage to use ----
+
+  static STORAGE_TARGET_KEY = 'weave-tab-miner.storage-target-bytes';
+  static STORAGE_STEP_BYTES = 64 * 2 ** 20;
+  static DEFAULT_STORAGE_TARGET_BYTES = 256 * 2 ** 20;
+
+  /** The slider's setting in bytes: how much this tab aims to hold for its address. */
+  get storageTargetBytes() {
+    return Number(this.view.elements.storageTargetInput.value);
+  }
+
+  /** Restores the slider (remembered in this browser) and follows it. */
+  setUpStorageSlider() {
+    const slider = this.view.elements.storageTargetInput;
+    try {
+      const saved = Number(localStorage.getItem(HoldingPanel.STORAGE_TARGET_KEY));
+      if (saved > 0) slider.value = String(saved);
+    } catch {
+      // Storage refused: the default applies each visit.
+    }
+    slider.addEventListener('input', () => {
+      try {
+        localStorage.setItem(HoldingPanel.STORAGE_TARGET_KEY, slider.value);
+      } catch {
+        // Not remembered; applies to this visit.
+      }
+      this.refreshStorageSlider();
+    });
+    this.refreshStorageSlider();
+  }
+
+  /**
+   * The slider's range (up to what the browser allows, rounded down to a step) and its
+   * text and meter: the amount set, what the browser allows, and how full it is.
+   */
+  refreshStorageSlider() {
+    const { storageTargetInput: slider, storageFillMeter: meter } = this.view.elements;
+    if (this.storageQuotaBytes) {
+      const step = HoldingPanel.STORAGE_STEP_BYTES;
+      slider.max = String(Math.max(step, Math.floor(this.storageQuotaBytes * 0.9 / step) * step));
+    }
+    const target = this.storageTargetBytes;
+    const held = this.storage.byteCount;
+    meter.value = target ? Math.min(1, held / target) : 0;
+    const allowed = this.storageQuotaBytes ? ` of about ${PageView.formatBytes(this.storageQuotaBytes)} this browser allows` : '';
+    this.view.setText('storageTargetText', `${PageView.formatBytes(target)}${allowed}; ${PageView.formatBytes(held)} held (${target ? Math.min(100, Math.round(held / target * 100)) : 0}%)`);
+  }
+
+  /** Chunks still to fetch to reach the slider's setting; 0 when it is reached. */
+  chunksToReachTarget() {
+    return Math.max(0, Math.ceil((this.storageTargetBytes - this.storage.byteCount) / ConsensusConstants.DATA_CHUNK_SIZE));
+  }
+
   async refreshStorageNote() {
     const estimate = await PackedChunkStore.estimate();
     this.storageQuotaBytes = estimate?.quota ?? null;
+    this.refreshStorageSlider();
     this.view.setText('storageNote', estimate
       ? `This site uses ${PageView.formatBytes(estimate.usage ?? 0)} of browser storage, of ${PageView.formatBytes(estimate.quota ?? 0)} allowed.`
       : 'This browser does not report its storage limits.');
@@ -262,7 +316,8 @@ export class HoldingPanel {
     this.view.setText('packStatus', `Packing: entropy ${done} of ${total} (about a second each; chunks at the same position reuse them)…`);
   }
 
-  async holdChunks() {
+  /** Fetches and packs toward the storage slider's setting, or `chunkCount` chunks if given. */
+  async holdChunks({ chunkCount = null } = {}) {
     if (!this.identity || !this.session) {
       this.view.log('pick an identity and load a block first', 'warn');
       return;
@@ -272,12 +327,25 @@ export class HoldingPanel {
       this.view.setText('holdStatus', 'This address belongs to the sample block\'s miner and is for checking only: packing for it would only help them. Use the shared key, generate one, or load your own.');
       return;
     }
-    if (this.blockOrigin === 'sample') await this.holdSampleChunks();
-    else await this.holdLiveChunks();
+    if (this.blockOrigin === 'sample') {
+      await this.holdSampleChunks(chunkCount ?? 1);
+    } else {
+      const wanted = chunkCount ?? this.chunksToReachTarget();
+      if (!wanted) {
+        this.view.setText('holdStatus', `Already holding the ${PageView.formatBytes(this.storageTargetBytes)} set aside. Move "Storage to use" up to hold more.`);
+        return;
+      }
+      await this.holdLiveChunks(wanted);
+    }
+    this.refreshStorageSlider();
     this.refreshSummary();
   }
 
-  async holdSampleChunks() {
+  /**
+   * The sample block's recall chunks, packed for this address: `chunkCount` of its one or
+   * two (one by default: the sample shows packing; the second only doubles the wait).
+   */
+  async holdSampleChunks(chunkCount) {
     const proofs = [['poa', 'recall_byte'], ['poa2', 'recall_byte2']];
     if (this.identity.address === this.block.reward_addr) {
       // The block carries the packed sub-chunk its own miner used, for its own address:
@@ -291,9 +359,7 @@ export class HoldingPanel {
       this.view.setText('holdStatus', `Holding the block's own packed sub-chunk ${subChunkIndex} of each recall chunk, exactly as its miner held them.`);
       return;
     }
-    // The sample has two chunks; "Chunks to fetch" can limit packing to the first.
-    const wanted = Math.max(1, Math.min(proofs.length, Number(this.view.elements.chunkCountInput.value || proofs.length)));
-    const chunks = proofs.slice(0, wanted).map(([proof, byteField]) => ({
+    const chunks = proofs.slice(0, chunkCount).map(([proof, byteField]) => ({
       bytes: Bytes.fromBase64Url(this.block[proof].unpacked_chunk),
       endOffset: Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField])),
     }));
@@ -315,8 +381,7 @@ export class HoldingPanel {
     this.view.setText('holdStatus', `Fetched ${progress.fetched} of ${progress.wanted} chunks (${PageView.formatBytes(progress.bytes)}) at ${PageView.formatBytes(progress.bytesPerSecond)}/s${left}${skipped}. Packed and saved: ${heldSoFar}.`);
   }
 
-  async holdLiveChunks() {
-    const wanted = Number(this.view.elements.chunkCountInput.value || 4);
+  async holdLiveChunks(wanted) {
     const partitionStart = BigInt(this.partitionNumber) * ConsensusConstants.PARTITION_SIZE;
     if (partitionStart >= this.session.partitionUpperBound) {
       this.view.log(`partition ${this.partitionNumber} is past the end of the weave`, 'error');

@@ -61,7 +61,6 @@ class PageCheck {
 
     // Pack one sample chunk (32 entropies) for another address, then reload and expect it restored.
     const address = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-    await page.fill('#chunkCountInput', '1');
     await page.fill('#addressInput', address);
     await page.click('#addressButton');
     started = Date.now();
