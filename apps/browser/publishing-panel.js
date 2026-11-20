@@ -130,12 +130,13 @@ export class PublishingPanel {
     }
     this.setPublishStatus(`Building the block for the solution at step ${report.stepNumber.toLocaleString()}…`);
     const parentStep = Number(this.follower.state.block.nonce_limiter_info.global_step_number);
-    if (this.vdfSteps.missingSteps(parentStep, report.stepNumber).length && this.vdfClient) {
+    for (const client of this.vdfClients ?? []) {
+      if (!this.vdfSteps.missingSteps(parentStep, report.stepNumber).length) break;
       try {
-        this.vdfSteps.add(await this.vdfClient.previousSession());
-        this.vdfSteps.add(await this.vdfClient.session());
+        this.vdfSteps.add(await client.previousSession());
+        this.vdfSteps.add(await client.session());
       } catch (error) {
-        this.view.log(`VDF sessions: ${error.message}`, 'warn');
+        this.view.log(`VDF sessions from ${client.serverUrl}: ${error.message}`, 'warn');
       }
     }
     const publisher = new BlockPublisher({
