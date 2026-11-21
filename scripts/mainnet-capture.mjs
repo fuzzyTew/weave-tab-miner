@@ -56,6 +56,24 @@ class MainnetCapture {
     throw new Error('no peer served the accounts and histories');
   }
 
+  /**
+   * GET /chunk for the chunk holding `recallByte`; failing that, the unpacked chunk the
+   * block's own proof carries, if it does; failing that, null, so the replay skips this
+   * block's rebuild but still follows it (chunks are sometimes served by no node at all).
+   */
+  async chunkFor(recallByte, poa, sources) {
+    try {
+      return await this.get(`/chunk/${BigInt(recallByte) + 1n}`, 'json', sources);
+    } catch (error) {
+      if (poa?.unpacked_chunk) {
+        console.log(`${error.message.slice(0, 300)} — using the block's own proof`);
+        return { chunk: poa.unpacked_chunk, data_path: poa.data_path, tx_path: poa.tx_path };
+      }
+      console.log(`${error.message.slice(0, 300)} — leaving it out`);
+      return null;
+    }
+  }
+
   async run() {
     mkdirSync(this.outputDirectory, { recursive: true });
     const tip = (await this.get('/info')).height - 5; // a few blocks back, past short forks
@@ -77,13 +95,13 @@ class MainnetCapture {
       // The chunks a rebuild from the solution fetches again (replica 2.9 blocks only).
       const chunks = {};
       if (block.replica_format === 1) {
-        for (const byte of [block.recall_byte, block.recall_byte2].filter((value) => value !== undefined && value !== null)) {
-          const offset = String(BigInt(byte) + 1n);
-          chunks[offset] = await this.get(`/chunk/${offset}`, 'json', sources);
+        for (const [byte, poa] of [[block.recall_byte, block.poa], [block.recall_byte2, block.poa2]]) {
+          if (byte === undefined || byte === null) continue;
+          chunks[String(BigInt(byte) + 1n)] = await this.chunkFor(byte, poa, sources);
         }
       }
       blocks.push({ block, transactions, chunks });
-      console.log(`block ${height}: ${transactions.length} transactions, ${Object.keys(chunks).length} chunks`);
+      console.log(`block ${height}: ${transactions.length} transactions, ${Object.values(chunks).filter(Boolean).length} of ${Object.keys(chunks).length} chunks`);
     }
     writeFileSync(`${this.outputDirectory}/blocks.json.gz`, gzipSync(JSON.stringify(blocks)));
     console.log(`captured blocks ${startHeight}–${tip} in ${Math.round((Date.now() - this.startedAt) / 1000)} s`);

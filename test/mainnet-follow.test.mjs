@@ -100,7 +100,11 @@ class MainnetFollowTest {
         const { rejected } = await TransactionPicker.pick(transactions, state);
         this.report(`the picker accepts all ${transactions.length} of block ${block.height}'s transactions`, rejected.length === 0, rejected.slice(0, 3).map((item) => `${item.id.slice(0, 8)}: ${item.reason}`).join('; '));
       }
-      if (block.replica_format === 1) await this.republish(follower, entry, randomx);
+      if (block.replica_format === 1 && Object.values(entry.chunks).includes(null)) {
+        console.log(`SKIP  block ${block.height}'s rebuild: no node served its chunk when it was captured`);
+      } else if (block.replica_format === 1) {
+        await this.republish(follower, entry, randomx);
+      }
       try {
         await follower.apply(block);
         this.report(`followed block ${block.height}: its account root and history hash`, Bytes.toBase64Url(state.blockTimeHistory.hash()) === block.block_time_history_hash);
