@@ -191,12 +191,14 @@ class MainnetBlocksTest {
     if (!histories) return;
     const state = new ChainState({ block: start, accountTree, rewardHistory: histories.parentRewardHistory, blockTimeHistory: histories.parentBlockTimeHistory });
     const follower = new ChainFollower({ state, fetchTransaction: (id) => this.get(`/tx/${id}`, 'json', [...this.gateways, node.baseUrl]) });
-    let republished = false;
+    // One block without transactions and one with them, each rebuilt from its solution.
+    const republished = new Set();
     for (let height = start.height + 1; height <= tip; height++) {
       const block = await this.block(height);
-      if (!republished && !block.txs.length && block.replica_format === 1) {
-        republished = true;
-        await this.republish(follower, block);
+      const kind = block.txs.length ? 'with transactions' : 'empty';
+      if (!republished.has(kind) && block.replica_format === 1) {
+        republished.add(kind);
+        await this.republish(follower, block, await Promise.all(block.txs.map((id) => this.get(`/tx/${id}`, 'json', [...this.gateways, node.baseUrl]))));
       }
       try {
         const { transactionCount } = await follower.apply(block);
@@ -210,12 +212,12 @@ class MainnetBlocksTest {
   }
 
   /**
-   * BlockPublisher rebuilding a real mainnet block from its solution alone (an empty one,
-   * as the builder makes): chunks fetched from gateways and packed here with real RandomX,
+   * BlockPublisher rebuilding a real mainnet block from its solution and its transactions:
+   * chunks fetched from gateways and packed here with real RandomX,
    * the block assembled on the followed state, and its id compared with the block's,
    * with the block's own signature standing in for signing.
    */
-  async republish(follower, block) {
+  async republish(follower, block, transactions) {
     if (!this.randomx) {
       runInThisContext(readFileSync(new URL('../vendor/randomx-arweave/randomx-arweave.iife.js', import.meta.url), 'utf8') + '\nglobalThis.RandomxArweave = RandomxArweave;');
       const host = new RandomxDirectHost(globalThis.RandomxArweave);
@@ -246,9 +248,9 @@ class MainnetBlocksTest {
     const checkpoints = new Map([[report.stepNumber, info.last_step_checkpoints.map(Bytes.fromBase64Url).reverse()]]);
     try {
       const started = Date.now();
-      const { block: built } = await publisher.publish({ report, stepSource: new RecordedVdfSteps(RecordedVdfSteps.fromBlock(block).outputsByStep, undefined, checkpoints), timestamp: block.timestamp });
+      const { block: built } = await publisher.publish({ report, stepSource: new RecordedVdfSteps(RecordedVdfSteps.fromBlock(block).outputsByStep, undefined, checkpoints), timestamp: block.timestamp, transactions });
       const differing = Object.keys(block).filter((field) => !['signature', 'indep_hash'].includes(field) && JSON.stringify(built[field]) !== JSON.stringify(block[field]));
-      this.report(`republished mainnet block ${block.height} from its solution: the same id (${((Date.now() - started) / 1000).toFixed(0)} s)`, built.indep_hash === block.indep_hash && posted.length === 1,
+      this.report(`republished mainnet block ${block.height} (${transactions.length} transactions) from its solution and transactions: the same id (${((Date.now() - started) / 1000).toFixed(0)} s)`, built.indep_hash === block.indep_hash && posted.length === 1,
         differing.length ? `differ: ${differing.map((field) => `${field} ${JSON.stringify(built[field])?.slice(0, 60)} vs ${JSON.stringify(block[field])?.slice(0, 60)}`).join('; ')}` : '');
     } catch (error) {
       // Say which part differs: the unpacked chunk, its packing, or H0 and the hash.
