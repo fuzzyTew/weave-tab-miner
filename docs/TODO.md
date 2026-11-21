@@ -11,7 +11,9 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Host the page on Arweave | not started |
 | Install it like an app | not started: a PWA, then F-Droid |
 | Be a light client | follows the chain, publishes real solutions; pending transactions left |
-| A simple page | not started: a storage slider, details folded away, reviewed with screenshots |
+| A simple page | started: storage slider, notes folded; user-story review with screenshots next |
+| VDF access and troubleshooting | servers merged; no help yet when none answer |
+| Mining together over p2p | planned, after the above are stable: threshold signing, shared polling |
 | Mine for a pool | not started |
 | Network-agnostic design | tried and reverted; plan below |
 
@@ -208,13 +210,56 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
 <details>
 <summary><b>A simple page</b> — one slider, the rest folded away</summary>
 
-- [ ] A slider for how much of the browser's storage to use, showing how much of it is
-      filled; holding, packing and mining follow from it.
-- [ ] Everything verbose (settings, explanations, the step explorer, logs) inside
-      expandable sections, popups or tabs, so a newcomer sees a few plain controls first.
-- [ ] Review all the code and the page for consistency with the codebase's intents and
-      the architecture discussed so far, and check the page with screenshots for what a
-      new person would understand at a glance.
+- [x] A slider for how much of the browser's storage to use, showing how much of it is
+      filled; fetching fills toward it, also in the background while mining.
+- [x] Notes, the wait breakdown and long explanations fold away (first pass).
+- [ ] Review by user stories, with screenshots of each state (`scripts/page-screenshots.mjs`,
+      and CI keeps them): "I opened it on a library computer", "my network blocks
+      Arweave", "I want data without mining yet", "fetching stalled", "I came back on
+      another device". The layout still follows the order this was built in, and the
+      states of chunk fetching are hard to read.
+- [ ] Getting data should not depend on starting mining: fetching is slow and networks
+      are fiddly, so having chunks ready matters on its own.
+- [ ] Organize into components a third party can take in quickly, and review all the
+      code for consistency with the codebase's intents.
+
+</details>
+
+<details>
+<summary><b>VDF access and troubleshooting</b> — one access point reached nodes but no VDF server</summary>
+
+- [x] Poll every VDF server that answers and merge their steps (`VdfServerPool`): each
+      public server ran at about 0.6 steps a second, the network at about 1.
+- [ ] When none answers: show each server tried and why it failed (timeout, refused,
+      blocked as mixed content), and what to try, in order: another server address, the
+      downloaded copy, computing steps here (too slow to publish), Tor or another network.
+      Seen in use: nodes and gateways answered but VDF requests timed out; running the
+      whole phone through Tor worked, but is heavy just for VDF.
+- [ ] A field for a VDF server address, remembered, and finding more: VDF servers are
+      ordinary nodes configured to serve; ask peers, and record any found in the
+      gathered sources.
+- [ ] Later, with p2p (below): tabs that can reach a server relay steps to those that
+      cannot.
+
+</details>
+
+<details>
+<summary><b>Mining together over p2p</b> — after the rest is stable and in manageable components</summary>
+
+- [ ] A p2p layer (libp2p, which runs in browsers over WebRTC and WebTransport) for tabs
+      to share the work of polling VDF servers and gossiping steps and blocks back to
+      nodes (keeping the network's view of them good), and to coordinate who holds which
+      chunks and the expected mining time.
+- [ ] Mining with less trusted strangers through threshold signing: no one tab holds the
+      key; a set of them must agree to sign a block, which also stops two blocks being
+      signed at one height. Base it on a well-studied scheme with a published
+      implementation. Arweave keys are RSA-PSS or secp256k1 ECDSA; for ECDSA the studied
+      threshold schemes are GG18/GG20, CGGMP21 and DKLs23 (Rust implementations exist
+      that could build to WebAssembly). FROST (RFC 9591) is the simplest well-studied one
+      but makes Schnorr signatures, which Arweave does not accept today.
+- [ ] Where p2p overlaps the official node's functions, mirror them; where it does not
+      (for example a way to name peers that are not reachable over HTTP), shape it as a
+      possible contribution upstream.
 
 </details>
 
