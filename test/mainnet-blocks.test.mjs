@@ -24,6 +24,7 @@ import { runInThisContext } from 'node:vm';
 import { BlockHash } from '../src/blocks/hash.js';
 import { BlockPublisher } from '../src/blocks/block-publisher.js';
 import { BlockTransactions } from '../src/blocks/block-transactions.js';
+import { TransactionPicker } from '../src/blocks/transaction-picker.js';
 import { BlockSolution } from '../src/blocks/solution.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 
@@ -203,8 +204,16 @@ class MainnetBlocksTest {
     if (root !== start.wallet_list) return;
     const histories = await this.histories(start, [node.baseUrl]);
     if (!histories) return;
-    const state = new ChainState({ block: start, accountTree, rewardHistory: histories.parentRewardHistory, blockTimeHistory: histories.parentBlockTimeHistory });
-    const follower = new ChainFollower({ state, fetchTransaction: (id) => this.get(`/tx/${id}`, 'json', [...this.gateways, node.baseUrl]) });
+    const state = new ChainState({
+      block: start, accountTree, rewardHistory: histories.parentRewardHistory, blockTimeHistory: histories.parentBlockTimeHistory,
+      recentBlocks: await ChainState.recentBlocksFrom(start, (height) => this.block(height)),
+    });
+    const transactionCache = new Map();
+    const fetchTransaction = async (id) => {
+      if (!transactionCache.has(id)) transactionCache.set(id, await this.get(`/tx/${id}`, 'json', [...this.gateways, node.baseUrl]));
+      return transactionCache.get(id);
+    };
+    const follower = new ChainFollower({ state, fetchTransaction });
     // One block without transactions and one with them, each rebuilt from its solution.
     const republished = new Set();
     for (let height = start.height + 1; height <= tip; height++) {
@@ -215,6 +224,11 @@ class MainnetBlocksTest {
         await this.republish(follower, block, await Promise.all(block.txs.map((id) => this.get(`/tx/${id}`, 'json', [...this.gateways, node.baseUrl]))));
       }
       try {
+        // The picker must accept every transaction a real block carried, on its parent's state.
+        if (block.txs.length) {
+          const { rejected } = await TransactionPicker.pick(await Promise.all(block.txs.map(fetchTransaction)), state);
+          this.report(`the transaction picker accepts all ${block.txs.length} of block ${height}'s transactions`, rejected.length === 0, rejected.slice(0, 3).map((entry) => `${entry.id.slice(0, 8)}: ${entry.reason}`).join('; '));
+        }
         const { transactionCount } = await follower.apply(block);
         const historiesMatch = Bytes.toBase64Url(state.blockTimeHistory.hash()) === block.block_time_history_hash;
         this.report(`followed block ${height} (${transactionCount} transactions): our root and block-time history hash are the block's`, historiesMatch);

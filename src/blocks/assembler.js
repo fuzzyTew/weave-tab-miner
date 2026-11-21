@@ -13,9 +13,22 @@ export class ChainState {
    * (JSON as nodes serve it), its reward history and block-time history, and the account
    * tree at that block. `advance` moves it to a new block in place. `rules` are the
    * network's (NetworkRules.MAINNET, or LOCALNET for Arweave's test chain).
+   * `recentBlocks` are the last RECENT_BLOCKS blocks, this one first, as { indepHash, txIds }:
+   * what a transaction may anchor to, and what it must not repeat (`recentBlocksFrom`
+   * fetches them; following blocks keeps them).
    */
-  constructor({ block, rewardHistory, blockTimeHistory, accountTree, rules = NetworkRules.MAINNET }) {
-    Object.assign(this, { block, rewardHistory, blockTimeHistory, accountTree, rules });
+  constructor({ block, rewardHistory, blockTimeHistory, accountTree, rules = NetworkRules.MAINNET, recentBlocks = [] }) {
+    Object.assign(this, { block, rewardHistory, blockTimeHistory, accountTree, rules, recentBlocks });
+  }
+
+  /** ar_block:get_max_tx_anchor_depth: transactions anchor to one of the last 50 blocks. */
+  static RECENT_BLOCKS = 50;
+
+  /** The last RECENT_BLOCKS blocks up to `tip`, through `fetchBlock(height)`, as recentBlocks. */
+  static async recentBlocksFrom(tip, fetchBlock) {
+    const blocks = [tip];
+    for (let height = Number(tip.height) - 1; blocks.length < ChainState.RECENT_BLOCKS; height--) blocks.push(await fetchBlock(height));
+    return blocks.map((block) => ({ indepHash: block.indep_hash, txIds: block.txs ?? [] }));
   }
 }
 
@@ -72,5 +85,6 @@ export class BlockAssembler {
     state.rewardHistory = new state.rewardHistory.constructor([rewardEntry, ...state.rewardHistory.entries]);
     state.blockTimeHistory = state.blockTimeHistory.withNewest(BlockTimeHistory.elementFor(block, state.block));
     state.block = block;
+    state.recentBlocks = [{ indepHash: block.indep_hash, txIds: block.txs ?? [] }, ...state.recentBlocks].slice(0, ChainState.RECENT_BLOCKS);
   }
 }
