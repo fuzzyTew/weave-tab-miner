@@ -23,8 +23,20 @@ import { readFileSync } from 'node:fs';
 import { runInThisContext } from 'node:vm';
 import { BlockHash } from '../src/blocks/hash.js';
 import { BlockPublisher } from '../src/blocks/block-publisher.js';
+import { BlockTransactions } from '../src/blocks/block-transactions.js';
 import { BlockSolution } from '../src/blocks/solution.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
+
+class BlockTransactionsOrder {
+  /** Which order of `transactions` gives `txRoot`, as a hint when a rebuilt tx_root differs. */
+  static describe(transactions, txRoot) {
+    if (!transactions.length || transactions.length > 6) return '';
+    const permutations = (list) => (list.length <= 1 ? [list] : list.flatMap((item, index) => permutations([...list.slice(0, index), ...list.slice(index + 1)]).map((rest) => [item, ...rest])));
+    const order = permutations(transactions.map((_, index) => index))
+      .find((indexes) => BlockTransactions.fields(indexes.map((index) => transactions[index]), { weave_size: '0' }).tx_root === txRoot);
+    return order ? ` — tx_root matches the transactions in order ${order.join(',')}` : ' — no order of these transactions gives the tx_root';
+  }
+}
 
 class MainnetBlocksTest {
   static DEFAULT_GATEWAYS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
@@ -252,6 +264,7 @@ class MainnetBlocksTest {
       const differing = Object.keys(block).filter((field) => !['signature', 'indep_hash'].includes(field) && JSON.stringify(built[field]) !== JSON.stringify(block[field]));
       this.report(`republished mainnet block ${block.height} (${transactions.length} transactions) from its solution and transactions: the same id (${((Date.now() - started) / 1000).toFixed(0)} s)`, built.indep_hash === block.indep_hash && posted.length === 1,
         differing.length ? `differ: ${differing.map((field) => `${field} ${JSON.stringify(built[field])?.slice(0, 60)} vs ${JSON.stringify(block[field])?.slice(0, 60)}`).join('; ')}`
+          + BlockTransactionsOrder.describe(transactions, block.tx_root)
           + ` — transactions: ${transactions.map((json) => `${json.id.slice(0, 8)} format ${json.format} data_size ${json.data_size} data ${String(json.data ?? '').length} chars data_root ${String(json.data_root ?? '').slice(0, 8)} reward ${json.reward} denomination ${json.denomination ?? '-'} quantity ${json.quantity}`).join(' | ')}` : '');
     } catch (error) {
       // Say which part differs: the unpacked chunk, its packing, or H0 and the hash.
