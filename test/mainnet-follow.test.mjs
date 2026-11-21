@@ -73,10 +73,8 @@ class MainnetFollowTest {
         recallByte1: BigInt(block.recall_byte), ...(twoChunks ? { recallByte2: BigInt(block.recall_byte2) } : {}),
       },
     };
-    // The block's own steps and last-step checkpoints, so no step is computed again here.
-    const checkpoints = new Map([[report.stepNumber, info.last_step_checkpoints.map(Bytes.fromBase64Url).reverse()]]);
     try {
-      const { block: built } = await publisher.publish({ report, stepSource: new RecordedVdfSteps(RecordedVdfSteps.fromBlock(block).outputsByStep, undefined, checkpoints), timestamp: block.timestamp, transactions });
+      const { block: built } = await publisher.publish({ report, stepSource: RecordedVdfSteps.fromBlock(block), timestamp: block.timestamp, transactions });
       const differing = Object.keys(block).filter((field) => !['signature', 'indep_hash'].includes(field) && JSON.stringify(built[field]) !== JSON.stringify(block[field]));
       this.report(`block ${block.height} (${transactions.length} transactions) rebuilt from its solution has the block's id`, built.indep_hash === block.indep_hash && posted.length === 1,
         differing.map((field) => `${field} ${JSON.stringify(built[field])?.slice(0, 50)} vs ${JSON.stringify(block[field])?.slice(0, 50)}`).join('; '));

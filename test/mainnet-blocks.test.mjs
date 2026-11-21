@@ -133,8 +133,7 @@ class MainnetBlocksTest {
         // The block's own steps and last-step checkpoints, so nothing is computed again
         // (computing VDF steps is checked against a block by test/against-block.test.mjs).
         checkedWhole = true;
-        const checkpoints = new Map([[step, child.nonce_limiter_info.last_step_checkpoints.map(Bytes.fromBase64Url).reverse()]]);
-        const info = await VdfInfo.afterParent({ parent, parentBlockTimeHistory: new BlockTimeHistory([]), stepNumber: step, stepSource: new RecordedVdfSteps(RecordedVdfSteps.fromBlock(child).outputsByStep, undefined, checkpoints) });
+        const info = await VdfInfo.afterParent({ parent, parentBlockTimeHistory: new BlockTimeHistory([]), stepNumber: step, stepSource: RecordedVdfSteps.fromBlock(child) });
         this.report(`block ${height} (${step - parent.nonce_limiter_info.global_step_number} steps): whole nonce_limiter_info matches`, JSON.stringify(info) === JSON.stringify(child.nonce_limiter_info));
       }
     }
