@@ -28,6 +28,7 @@ export class AccountTree {
     this.nodes = new Map([[AccountTree.ROOT, { parent: null, children: [], hash: null, suffix: null, value: undefined }]]);
     this.size = 0;
     this.leavesSinceYield = 0;
+    this.tagHashes = new Map();
   }
 
   static LEAVES_PER_YIELD = 2000;
@@ -247,17 +248,56 @@ export class AccountTree {
     this.credit(transaction.targetBytes, Denomination.redenominate(transaction.quantity, transaction.denomination, denomination), denomination);
   }
 
-  /** Arweave's deep hash (ar_deep_hash.erl) with this tree's SHA-384. */
-  async deepHash(item) {
-    const encoder = new TextEncoder();
+  /**
+   * Arweave's deep hash (ar_deep_hash.erl), as steps: the generator yields each input to
+   * hash and is sent back its digest (see `runSteps`). The "list…"/"blob…" tag hashes
+   * repeat endlessly across a tree, so each is hashed once and kept.
+   */
+  *deepHashSteps(item) {
     if (Array.isArray(item)) {
-      let accumulator = await this.sha384(encoder.encode(`list${item.length}`));
-      for (const child of item) accumulator = await this.sha384(Bytes.concat(accumulator, await this.deepHash(child)));
+      let accumulator = yield* this.tagHashSteps(`list${item.length}`);
+      for (const child of item) accumulator = yield Bytes.concat(accumulator, yield* this.deepHashSteps(child));
       return accumulator;
     }
-    const tagHash = await this.sha384(encoder.encode(`blob${item.length}`));
-    return this.sha384(Bytes.concat(tagHash, await this.sha384(item)));
+    const tagHash = yield* this.tagHashSteps(`blob${item.length}`);
+    return yield Bytes.concat(tagHash, yield item);
   }
+
+  *tagHashSteps(tag) {
+    let hash = this.tagHashes.get(tag);
+    if (!hash) {
+      hash = yield new TextEncoder().encode(tag);
+      this.tagHashes.set(tag, hash);
+    }
+    return hash;
+  }
+
+  /** The deep hash of `item`, with this tree's SHA-384 (synchronous or not). */
+  async deepHash(item) {
+    return this.runSteps(this.deepHashSteps(item));
+  }
+
+  /**
+   * Drives hashing steps: each yielded input is hashed with `sha384`, synchronously when it
+   * returns bytes (no promise per hash: hashing a whole tree makes millions), awaited when
+   * it returns a promise. A yielded PAUSE lets other work run.
+   */
+  async runSteps(steps) {
+    let step = steps.next();
+    while (!step.done) {
+      if (step.value === AccountTree.PAUSE) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        step = steps.next();
+        continue;
+      }
+      let digest = this.sha384(step.value);
+      if (digest instanceof Promise) digest = await digest;
+      step = steps.next(digest);
+    }
+    return step.value;
+  }
+
+  static PAUSE = Symbol('pause');
 
   /** binary:encode_unsigned: big-endian, no leading zeros, and one zero byte for 0. */
   static unsignedBytes(value) {
@@ -272,17 +312,17 @@ export class AccountTree {
     return Bytes.concat(new Uint8Array([bytes.length]), bytes);
   }
 
-  /** wallet_list_hash_fun(leaf, ...): the two account layouts hash differently. */
-  async leafHash(addressBytes, account) {
+  /** wallet_list_hash_fun(leaf, ...): the two account layouts hash differently. Steps, as deepHashSteps. */
+  *leafHashSteps(addressBytes, account) {
     if (account.denomination === undefined) {
-      return this.deepHash([addressBytes, AccountTree.unsignedBytes(account.balance), account.lastTx]);
+      return yield* this.deepHashSteps([addressBytes, AccountTree.unsignedBytes(account.balance), account.lastTx]);
     }
-    return this.sha384(Bytes.concat(
+    return yield Bytes.concat(
       AccountTree.lengthPrefixed(addressBytes),
       AccountTree.lengthPrefixed(AccountTree.unsignedBytes(account.balance)),
       AccountTree.lengthPrefixed(account.lastTx),
       AccountTree.lengthPrefixed(AccountTree.unsignedBytes(account.denomination)),
-      new Uint8Array([account.miningPermission ? 1 : 0])));
+      new Uint8Array([account.miningPermission ? 1 : 0]));
   }
 
   /**
@@ -293,29 +333,29 @@ export class AccountTree {
    */
   async rootHash() {
     if (this.size === 0) return new Uint8Array(0);
-    return this.nodeHash(AccountTree.ROOT);
+    return this.runSteps(this.nodeHashSteps(AccountTree.ROOT));
   }
 
-  async nodeHash(key) {
+  *nodeHashSteps(key) {
     const node = this.nodes.get(key);
     if (node.hash) return node.hash;
     const fullKey = () => AccountTree.fromByteString(key + node.suffix);
     if (node.children.length === 0) {
-      node.hash = await this.leafHash(fullKey(), node.value);
-      // Hashing a whole tree takes about a minute; letting other work run every so often
+      node.hash = yield* this.leafHashSteps(fullKey(), node.value);
+      // Hashing a whole tree takes many seconds; letting other work run every so often
       // keeps a page responsive (and its miner on pace) meanwhile.
       if (++this.leavesSinceYield >= AccountTree.LEAVES_PER_YIELD) {
         this.leavesSinceYield = 0;
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        yield AccountTree.PAUSE;
       }
       return node.hash;
     }
     const childHashes = [];
-    for (const child of node.children) childHashes.push(await this.nodeHash(child));
+    for (const child of node.children) childHashes.push(yield* this.nodeHashSteps(child));
     if (node.value !== undefined) {
-      node.hash = await this.deepHash([await this.leafHash(fullKey(), node.value), ...childHashes]);
+      node.hash = yield* this.deepHashSteps([yield* this.leafHashSteps(fullKey(), node.value), ...childHashes]);
     } else {
-      node.hash = childHashes.length === 1 ? childHashes[0] : await this.deepHash(childHashes);
+      node.hash = childHashes.length === 1 ? childHashes[0] : yield* this.deepHashSteps(childHashes);
     }
     return node.hash;
   }
