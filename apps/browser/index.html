@@ -310,6 +310,9 @@
         <button id="startButton" class="primary" type="button">Start mining</button>
         <button id="stopButton" type="button" disabled>Stop</button>
       </div>
+      <label for="vdfServerInput">VDF server address (optional; tried first, remembered)
+        <input id="vdfServerInput" type="url" placeholder="http://host:1984" autocomplete="off">
+      </label>
       <p class="stage-note" id="vdfStatus">Loading a block picks the steps: the sample replays its own, a live block takes them from VDF servers.</p>
       <p class="stage-note"><b>Publishing:</b> <span id="publishStatus">starts with real mining on the live block.</span></p>
     </section>

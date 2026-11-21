@@ -178,10 +178,9 @@ export class MiningPanel {
   async runVdfServer() {
     const candidates = this.vdfServerCandidates();
     this.view.setText('vdfStatus', `Looking for VDF servers among ${candidates.length} candidates…`);
-    const pool = await VdfServerPool.connect(candidates, { record: this.vdfSteps, log: (message) => this.view.log(message, 'warn') });
+    const { pool, failures } = await VdfServerPool.connect(candidates, { record: this.vdfSteps, log: (message) => this.view.log(message, 'warn') });
     if (!pool) {
-      const downloadHint = PeerAccess.blockedReason() ? ' The public VDF servers use plain http, which a downloaded copy opened from disk can reach.' : '';
-      this.view.setText('vdfStatus', `No VDF server answered this page.${downloadHint} "Compute VDF steps in this tab" works without one, but uses a whole CPU core.`);
+      this.showVdfTroubleshooting(failures);
       this.stop();
       return;
     }
@@ -212,6 +211,31 @@ export class MiningPanel {
       if (this.running) this.serverTimer = setTimeout(poll, VdfServerClient.POLL_INTERVAL_MS);
     };
     poll();
+  }
+
+  /** When no VDF server answers: each one tried and why, and what to try next, in order. */
+  showVdfTroubleshooting(failures) {
+    const steps = [
+      'Add a VDF server address you know of below, and start again.',
+      PeerAccess.blockedReason() ? 'Use the downloaded copy, or allow insecure content for this site: the public VDF servers use plain http.' : null,
+      'Try another network (a phone hotspot, say); some networks block these servers while letting gateways through.',
+      'Tor reaches them too, at the cost of running the device through it.',
+      '"Compute VDF steps in this tab" needs no server, but is about 20 times too slow to publish a block.',
+    ].filter(Boolean);
+    const list = document.createElement('ul');
+    for (const { url, reason } of failures) {
+      const item = document.createElement('li');
+      item.textContent = `${url}: ${reason}`;
+      list.append(item);
+    }
+    const what = document.createElement('ol');
+    for (const step of steps) {
+      const item = document.createElement('li');
+      item.textContent = step;
+      what.append(item);
+    }
+    const status = this.view.elements.vdfStatus;
+    status.replaceChildren(`No VDF server answered. Tried:`, list, 'What to try:', what);
   }
 
   runLocalVdf() {

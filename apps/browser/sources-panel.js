@@ -131,9 +131,33 @@ export class SourcesPanel {
    * serve it, the Arweave team's public servers, then every gateway in use. Plain-http ones
    * are dropped on an https page, which may not call them.
    */
+  static VDF_SERVER_KEY = 'weave-tab-miner.vdf-server';
+
+  /** The person's own VDF server address, remembered in this browser; '' if none. */
+  ownVdfServerUrl() {
+    const input = this.view.elements.vdfServerInput;
+    if (!this.vdfServerInputRestored) {
+      this.vdfServerInputRestored = true;
+      try {
+        input.value ||= localStorage.getItem(SourcesPanel.VDF_SERVER_KEY) ?? '';
+      } catch {
+        // Not remembered; applies to this visit.
+      }
+      input.addEventListener('change', () => {
+        try {
+          localStorage.setItem(SourcesPanel.VDF_SERVER_KEY, input.value.trim());
+        } catch {
+          // Not remembered.
+        }
+      });
+    }
+    return input.value.trim().replace(/\/$/, '');
+  }
+
   vdfServerCandidates() {
     const gathered = BundledResources.gatheredSources().vdfServers ?? [];
-    const all = [...new Set([...(this.testedVdfServerUrls ?? []), ...gathered.map((entry) => entry.url), ...VdfServerClient.PUBLIC_SERVER_URLS, ...this.gateway.gatewayUrls])];
+    const own = this.ownVdfServerUrl();
+    const all = [...new Set([...(own ? [own] : []), ...(this.testedVdfServerUrls ?? []), ...gathered.map((entry) => entry.url), ...VdfServerClient.PUBLIC_SERVER_URLS, ...this.gateway.gatewayUrls])];
     if (!PeerAccess.blockedReason()) return all;
     const reachable = all.filter((url) => !url.startsWith('http:'));
     if (reachable.length < all.length) this.view.log(`skipping ${all.length - reachable.length} plain-http VDF servers: an https page may not call them; a downloaded copy can`, 'warn');

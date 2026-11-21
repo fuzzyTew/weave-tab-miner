@@ -213,6 +213,7 @@ class BrowserNodeApp {
     new RunYourself(this.view).show();
     this.setUpMixedContentChoice();
     this.setUpStorageSlider();
+    this.ownVdfServerUrl(); // restores the remembered VDF server address into its field
     this.restoreSeeds();
     this.view.setText('peerStatus', this.describeGatheredSources());
     this.view.elements.bringChunksButton.hidden = location.protocol !== 'file:';
