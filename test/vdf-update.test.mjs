@@ -67,6 +67,9 @@ class VdfUpdateTest {
     const failing = new VdfServerPool({ clients: [{ serverUrl: 'down', latest: async () => { throw new Error('refused'); } }] });
     checks.push(['a pool with no server answering says why', await failing.poll(1).then(() => false, (error) => /down: refused/.test(error.message))]);
 
+    const unreachable = await VdfServerPool.connect(['http://127.0.0.1:9'], { timeoutMs: 2000 });
+    checks.push(['connecting to no answering server gives no pool and each one\'s reason', unreachable.pool === null && unreachable.failures.length === 1 && /could not connect/.test(unreachable.failures[0].reason)]);
+
     let failures = 0;
     for (const [name, passed] of checks) {
       console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}`);

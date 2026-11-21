@@ -170,25 +170,42 @@ export class VdfServerClient {
    * network's ~1), so polling all of them and taking the newest steps keeps up best.
    */
   static async allAnswering(baseUrls, { timeoutMs = 5000, log = () => {} } = {}) {
-    const clients = await Promise.all(baseUrls.map(async (baseUrl) => {
+    const tried = await Promise.all(baseUrls.map(async (baseUrl) => {
       const client = new VdfServerClient({ baseUrls: [baseUrl], timeoutMs, log });
-      return (await client.findServer()) ? client : null;
+      await client.findServer();
+      return client;
     }));
-    return clients.filter(Boolean);
+    return { clients: tried.filter((client) => client.serverUrl), failures: tried.flatMap((client) => client.failures) };
   }
 
   /** Finds a server that answers. Returns its URL, or null with each refusal logged. */
   async findServer() {
+    this.failures = [];
     for (const baseUrl of this.baseUrls) {
       try {
         await this.fetchUpdate(baseUrl);
         this.serverUrl = baseUrl;
         return baseUrl;
       } catch (error) {
-        this.log(`no VDF from ${baseUrl}: ${error.message}`);
+        const reason = VdfServerClient.describeFailure(error, baseUrl, this.timeoutMs);
+        this.failures.push({ url: baseUrl, reason });
+        this.log(`no VDF from ${baseUrl}: ${reason}`);
       }
     }
     return null;
+  }
+
+  /**
+   * Why a request failed, in plain words: no answer in time, refused by the browser (an
+   * https page asking plain http, or the server not allowing pages), or what the server said.
+   */
+  static describeFailure(error, baseUrl, timeoutMs) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') return `no answer within ${Math.round(timeoutMs / 1000)} s`;
+    const httpsPage = globalThis.location?.protocol === 'https:';
+    if (error.name === 'TypeError') {
+      return httpsPage && baseUrl.startsWith('http:') ? 'blocked: an https page may not ask plain http unless insecure content is allowed' : `could not connect (${error.message}); the network may block it`;
+    }
+    return error.message;
   }
 
   async latest() {
@@ -221,10 +238,13 @@ export class VdfServerPool {
     Object.assign(this, { clients, record });
   }
 
-  /** A pool of every one of `baseUrls` that answers, or null if none does. */
+  /**
+   * { pool, failures }: a pool of every one of `baseUrls` that answers (null if none does),
+   * and why each other one did not ([{ url, reason }]).
+   */
   static async connect(baseUrls, options = {}) {
-    const clients = await VdfServerClient.allAnswering(baseUrls, options);
-    return clients.length ? new VdfServerPool({ clients, record: options.record }) : null;
+    const { clients, failures } = await VdfServerClient.allAnswering(baseUrls, options);
+    return { pool: clients.length ? new VdfServerPool({ clients, record: options.record }) : null, failures };
   }
 
   get serverUrls() {
