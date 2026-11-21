@@ -3,6 +3,7 @@
 // forward. Step 3 of docs/TODO.md "Turn a solution into a block". Empty blocks only (no transactions).
 import { BlockTimeHistory } from './history.js';
 import { DifficultyRetarget, PriceAdjustment } from './adjustments.js';
+import { BlockTransactions } from './block-transactions.js';
 
 export class Inflation {
   /**
@@ -68,8 +69,10 @@ export class NextBlockFields {
    * fees. The reward is the inflation, topped up from the endowment pool when that falls
    * short of what storing the weave for this interval is expected to cost.
    */
-  static reward({ height, weaveSize, pricePerGibMinute, blockInterval, endowmentPool, debtSupply, kryderLatch, kryderMultiplier }) {
-    const base = Inflation.winston(height);
+  static reward({ height, weaveSize, pricePerGibMinute, blockInterval, endowmentPool: poolBefore, debtSupply, kryderLatch, kryderMultiplier, minerFeeShare = 0n, endowmentFeeShare = 0n }) {
+    // Transaction fees: the miner's share joins the inflation reward, the rest the pool.
+    const base = Inflation.winston(height) + minerFeeShare;
+    const endowmentPool = poolBefore + endowmentFeeShare;
     const expected = NextBlockFields.N_REPLICATIONS * weaveSize * pricePerGibMinute * blockInterval / (60n * NextBlockFields.GIB);
     if (base >= expected) return { reward: base, endowmentPool, debtSupply, kryderLatch, kryderMultiplier };
     const take = expected - base;
@@ -88,7 +91,8 @@ export class NextBlockFields {
   }
 
   /**
-   * Fields of an empty block on `parent` (block JSON as nodes serve it), as strings and
+   * Fields of a block on `parent` carrying `transactions` (their JSON, in block order;
+   * none by default) (block JSON as nodes serve it), as strings and
    * numbers in the same JSON form. `timestamp` is the miner's clock, in seconds. The
    * parent's reward and block-time histories price storage at adjustment heights.
    * `difficultyRetargets` is false on a localnet, whose difficulty never changes.
@@ -96,16 +100,21 @@ export class NextBlockFields {
    * STUBS, which throw rather than guess: price adjustments before the 2.7.2 price
    * transition (long past), and redenomination.
    */
-  static compute({ parent, parentBlockTimeHistory, parentRewardHistory, timestamp, difficultyRetargets = true }) {
+  static compute({ parent, parentBlockTimeHistory, parentRewardHistory, timestamp, difficultyRetargets = true, transactions = [] }) {
     const height = parent.height + 1;
     if (Number(parent.redenomination_height) > parent.height) throw new Error('a scheduled redenomination is not implemented yet');
     const { diff: newDiff, last_retarget } = DifficultyRetarget.fields({ height, parent, timestamp, difficultyRetargets });
     const prices = PriceAdjustment.fields({ height, parent, parentRewardHistory, parentBlockTimeHistory });
 
     const diff = BigInt(newDiff);
+    const carried = BlockTransactions.fields(transactions, parent);
+    const fees = BlockTransactions.feeShares(transactions, Number(parent.denomination));
     const rewardFields = NextBlockFields.reward({
       height,
-      weaveSize: BigInt(parent.weave_size),
+      // The new weave size, the block's own data included (update_accounts passes B's).
+      weaveSize: BigInt(carried.weave_size),
+      minerFeeShare: fees.minerShare,
+      endowmentFeeShare: fees.endowmentShare,
       pricePerGibMinute: BigInt(parent.price_per_gib_minute),
       blockInterval: NextBlockFields.blockInterval(parentBlockTimeHistory),
       endowmentPool: BigInt(parent.reward_pool),
@@ -133,10 +142,10 @@ export class NextBlockFields {
       scheduled_price_per_gib_minute: prices.scheduled_price_per_gib_minute,
       usd_to_ar_rate: prices.usd_to_ar_rate,
       scheduled_usd_to_ar_rate: prices.scheduled_usd_to_ar_rate,
-      weave_size: parent.weave_size,
-      block_size: '0',
-      tx_root: '',
-      txs: [],
+      weave_size: carried.weave_size,
+      block_size: carried.block_size,
+      tx_root: carried.tx_root,
+      txs: carried.txs,
       merkle_rebase_support_threshold: parent.merkle_rebase_support_threshold,
     };
   }

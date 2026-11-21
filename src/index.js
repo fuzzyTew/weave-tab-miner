@@ -3,7 +3,7 @@
 // Folders, by area (README.md "Layout" describes each file):
 //   core/     bytes, SHA-256, SHA-384, secp256k1 key recovery, denominations, constants, formatting, source citations
 //   mining/   VDF, difficulty, packing, the per-step hashes, held storage, the miner, odds, RandomX
-//   blocks/   building and following blocks: account tree, rewards, history hashes, fields, adjustments, solution, VDF info, hash, signing, binary, publishing, chain follower, network rules
+//   blocks/   building and following blocks: account tree, rewards, history hashes, fields, adjustments, solution, VDF info, hash, signing, binary, publishing, transactions in blocks, chain follower, network rules
 //   network/  gateways, nodes, peers and sources, VDF servers, fetching chunks
 //   storage/  packed chunks in the browser, and moving them between copies of the page
 //   wallet/   keys, transactions, ANS-104 data items for bundlers
@@ -12,6 +12,7 @@ export * from './blocks/adjustments.js';
 export * from './blocks/assembler.js';
 export * from './blocks/binary.js';
 export * from './blocks/block-publisher.js';
+export * from './blocks/block-transactions.js';
 export * from './blocks/chain-follower.js';
 export * from './blocks/fields.js';
 export * from './blocks/hash.js';

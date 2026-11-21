@@ -4,6 +4,7 @@
 import { Bytes } from '../core/bytes.js';
 import { BlockHistoryHashes, BlockTimeHistory } from './history.js';
 import { NextBlockFields } from './fields.js';
+import { BlockTransactions } from './block-transactions.js';
 import { NetworkRules } from './network-rules.js';
 
 export class ChainState {
@@ -34,10 +35,10 @@ export class BlockAssembler {
    * The account tree is left as it was (the oldest locked reward is released only to work
    * out the root, then put back), so a block that is never accepted costs nothing.
    */
-  static async assemble({ state, solution, rewardAddress, rewardKey, timestamp }) {
+  static async assemble({ state, solution, rewardAddress, rewardKey, timestamp, transactions = [] }) {
     const parent = state.block;
     const fields = NextBlockFields.compute({
-      parent, parentBlockTimeHistory: state.blockTimeHistory, parentRewardHistory: state.rewardHistory, timestamp, difficultyRetargets: state.rules.difficultyRetargets,
+      parent, parentBlockTimeHistory: state.blockTimeHistory, parentRewardHistory: state.rewardHistory, timestamp, difficultyRetargets: state.rules.difficultyRetargets, transactions,
     });
     const block = {
       ...fields,
@@ -52,9 +53,8 @@ export class BlockAssembler {
 
     // The release is undone once the root is known: the state moves on only by following
     // whichever block the network keeps (ChainFollower, or `advance`).
-    const released = state.rewardHistory.releasedReward();
     block.wallet_list = await state.accountTree.withUndoneChanges(async (tree) => {
-      tree.applyReward(released.addressBytes, released.reward, Number(parent.denomination));
+      await BlockTransactions.applyToAccounts(tree, transactions, state.rewardHistory.releasedReward(), Number(parent.denomination));
       return Bytes.toBase64Url(await tree.rootHash());
     });
     block.reward_history_hash = Bytes.toBase64Url(BlockHistoryHashes.rewardHistoryHash(block, Bytes.fromBase64Url(parent.reward_history_hash)));

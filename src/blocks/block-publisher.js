@@ -31,10 +31,11 @@ export class BlockPublisher {
 
   /**
    * Turns `report` (Miner.mineStep's, with a solution) into a block and posts it. `stepSource`
-   * supplies the VDF steps since the parent (a RecordedVdfSteps over a VdfStepRecord).
+   * supplies the VDF steps since the parent (a RecordedVdfSteps over a VdfStepRecord);
+   * `transactions` (JSON, in block order) are carried, none by default.
    * Resolves { block, replies: [{ node, status, text }] }; throws BlockPublishError.
    */
-  async publish({ report, stepSource, timestamp = Math.floor(Date.now() / 1000) }) {
+  async publish({ report, stepSource, timestamp = Math.floor(Date.now() / 1000), transactions = [] }) {
     const state = this.follower.state;
     const parent = state.block;
     const { solution } = report;
@@ -60,7 +61,7 @@ export class BlockPublisher {
     });
     if (fields.hash !== Bytes.toBase64Url(solution.hash)) throw new BlockPublishError('solution', 'rebuilding the solution from the fetched chunks gave a different hash than the miner found');
 
-    const block = await BlockAssembler.assemble({ state, solution: fields, rewardAddress: this.signer.wallet.address, rewardKey: Bytes.toBase64Url(this.signer.wallet.ownerBytes), timestamp: Math.max(timestamp, Number(parent.timestamp)) });
+    const block = await BlockAssembler.assemble({ state, solution: fields, rewardAddress: this.signer.wallet.address, rewardKey: Bytes.toBase64Url(this.signer.wallet.ownerBytes), timestamp: Math.max(timestamp, Number(parent.timestamp)), transactions });
     // At a retarget height the block's own difficulty can be higher than the one mined against.
     if (state.rules.difficultyChecked && !Difficulty.passes(solution.hash, !twoChunks, BigInt(block.diff))) throw new BlockPublishError('difficulty', `the solution does not pass block ${block.height}'s difficulty`);
 
