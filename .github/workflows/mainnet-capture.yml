@@ -40,7 +40,9 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git checkout --orphan mainnet-fixtures
           git rm -rq --cached .
-          git add -f mainnet_fixtures
+          # The replay leaves an account tree snapshot beside the fixtures; each checkout
+          # rebuilds its own, so the full hash keeps being checked from the accounts.
+          git add -f mainnet_fixtures ':!*.snapshot'
           git commit -qm "Mainnet blocks and state captured $(date -u +%Y-%m-%d)"
           git push -f origin mainnet-fixtures
           du -sh mainnet_fixtures

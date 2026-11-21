@@ -7,10 +7,9 @@
 // Run: node test/mainnet-follow.test.mjs [fixtures directory]   (default: ./mainnet_fixtures)
 import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { createHash } from 'node:crypto';
 import { runInThisContext } from 'node:vm';
 import { Bytes } from '../src/core/bytes.js';
-import { AccountTree } from '../src/blocks/account-tree.js';
+import { FixtureAccountTree } from './fixture-account-tree.mjs';
 import { ChainState } from '../src/blocks/assembler.js';
 import { BlockPublisher } from '../src/blocks/block-publisher.js';
 import { ChainFollower } from '../src/blocks/chain-follower.js';
@@ -34,15 +33,9 @@ class MainnetFollowTest {
 
   async startState() {
     const start = JSON.parse(readFileSync(`${this.fixturesDirectory}/start.json`, 'utf8'));
-    const { wallets } = JSON.parse(gunzipSync(readFileSync(`${this.fixturesDirectory}/wallet_list.json.gz`)));
-    // Node's own SHA-384 is about three times faster than the library's, for 300,000 accounts.
-    const accountTree = new AccountTree({ sha384: (bytes) => new Uint8Array(createHash('sha384').update(bytes).digest()) });
-    for (const json of wallets) {
-      const { addressBytes, account } = AccountTree.accountFromJson(json);
-      accountTree.insert(addressBytes, account);
-    }
-    const root = Bytes.toBase64Url(await accountTree.rootHash());
-    this.report(`${wallets.length} captured accounts hash to block ${start.block.height}'s root`, root === start.block.wallet_list);
+    const loaded = await FixtureAccountTree.load(`${this.fixturesDirectory}/wallet_list.json.gz`, start.block.wallet_list);
+    const accountTree = loaded.tree;
+    this.report(`the captured accounts hash to block ${start.block.height}'s root`, loaded.root === start.block.wallet_list, FixtureAccountTree.describe(loaded));
     return new ChainState({
       block: start.block, accountTree, recentBlocks: start.recentBlocks,
       rewardHistory: RewardHistory.fromBinary(Bytes.fromBase64Url(start.rewardHistory)),

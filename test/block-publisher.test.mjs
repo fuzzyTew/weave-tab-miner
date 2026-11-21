@@ -6,11 +6,9 @@
 // Fixtures as in test/account-tree.test.mjs.
 // Run: node test/block-publisher.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { gunzipSync } from 'node:zlib';
-import { createHash } from 'node:crypto';
 import { runInThisContext } from 'node:vm';
 import { Bytes } from '../src/core/bytes.js';
-import { AccountTree } from '../src/blocks/account-tree.js';
+import { FixtureAccountTree } from './fixture-account-tree.mjs';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { ChainState } from '../src/blocks/assembler.js';
@@ -34,13 +32,9 @@ class BlockPublisherTest {
   }
 
   async firstState(files) {
-    const saved = JSON.parse(gunzipSync(readFileSync(`${this.fixturesDirectory}/${files.find((name) => name.startsWith('wallet_list_'))}`)));
-    const accountTree = new AccountTree({ sha384: (bytes) => new Uint8Array(createHash('sha384').update(bytes).digest()) });
-    for (const json of saved.wallets) {
-      const { addressBytes, account } = AccountTree.accountFromJson(json);
-      accountTree.insert(addressBytes, account);
-    }
     const { parent } = JSON.parse(readFileSync(`${this.fixturesDirectory}/${files.find((name) => name.startsWith('block_'))}`, 'utf8'));
+    const walletFile = `${this.fixturesDirectory}/${files.find((name) => name.startsWith('wallet_list_'))}`;
+    const { tree: accountTree } = await FixtureAccountTree.load(walletFile, parent.block.wallet_list);
     return new ChainState({
       block: parent.block, accountTree, rules: NetworkRules.LOCALNET,
       rewardHistory: RewardHistory.fromBinary(Bytes.fromBase64Url(parent.rewardHistory)),
