@@ -251,7 +251,8 @@ class MainnetBlocksTest {
       const { block: built } = await publisher.publish({ report, stepSource: new RecordedVdfSteps(RecordedVdfSteps.fromBlock(block).outputsByStep, undefined, checkpoints), timestamp: block.timestamp, transactions });
       const differing = Object.keys(block).filter((field) => !['signature', 'indep_hash'].includes(field) && JSON.stringify(built[field]) !== JSON.stringify(block[field]));
       this.report(`republished mainnet block ${block.height} (${transactions.length} transactions) from its solution and transactions: the same id (${((Date.now() - started) / 1000).toFixed(0)} s)`, built.indep_hash === block.indep_hash && posted.length === 1,
-        differing.length ? `differ: ${differing.map((field) => `${field} ${JSON.stringify(built[field])?.slice(0, 60)} vs ${JSON.stringify(block[field])?.slice(0, 60)}`).join('; ')}` : '');
+        differing.length ? `differ: ${differing.map((field) => `${field} ${JSON.stringify(built[field])?.slice(0, 60)} vs ${JSON.stringify(block[field])?.slice(0, 60)}`).join('; ')}`
+          + ` — transactions: ${transactions.map((json) => `${json.id.slice(0, 8)} format ${json.format} data_size ${json.data_size} data ${String(json.data ?? '').length} chars data_root ${String(json.data_root ?? '').slice(0, 8)} reward ${json.reward} denomination ${json.denomination ?? '-'} quantity ${json.quantity}`).join(' | ')}` : '');
     } catch (error) {
       // Say which part differs: the unpacked chunk, its packing, or H0 and the hash.
       let diagnosis = '';
