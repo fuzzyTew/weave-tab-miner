@@ -177,7 +177,8 @@ class MainnetBlocksTest {
     }
     const start = await this.block(tip - MainnetBlocksTest.BLOCKS_FOLLOWED);
     const started = Date.now();
-    const accounts = await node.walletList(start.wallet_list);
+    // Progress every 50 pages, so a slow or stalled node shows where it stopped.
+    const accounts = await node.walletList(start.wallet_list, { onPage: (count) => { if (count % 125000 === 0) console.log(`      … ${count} accounts read from ${node.baseUrl}`); } });
     const accountTree = new AccountTree({ sha384: (bytes) => new Uint8Array(createHash('sha384').update(bytes).digest()) });
     for (const json of accounts) {
       const { addressBytes, account } = AccountTree.accountFromJson(json);

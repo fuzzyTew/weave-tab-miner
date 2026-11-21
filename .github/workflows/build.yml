@@ -114,7 +114,7 @@ jobs:
     # Tries every request the page makes against real gateways and nodes. The network can
     # be flaky, so a failure here is reported without blocking the build or Pages.
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -133,10 +133,12 @@ jobs:
       # The slow checks (minutes each) run daily and on request, not on every push.
       - name: Daily, follow mainnet from every account and rebuild a real block from its solution
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        timeout-minutes: 25
         run: node test/mainnet-blocks.test.mjs --full
 
       - name: Daily, measure the VDF's pace on the network and from each server
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        timeout-minutes: 8
         run: node scripts/vdf-pace-check.mjs 60
 
   page:
