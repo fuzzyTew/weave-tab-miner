@@ -194,8 +194,11 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
       text/plain (the only form a browser may send to /block2). Checked by publishing the
       localnet's own blocks byte for byte, and a live mainnet block rebuilt from its
       solution. Needs nodes, so an https copy needs insecure content allowed.
-- [ ] Phones: reading 317,000 accounts takes tens of MB and about a minute of hashing;
-      keep the tree in IndexedDB between visits, and see what an old phone manages.
+- [x] Keep the chain state between visits (`ChainStateStore`, an `AccountTreeSnapshot` with
+      its hashes): a return within 200 blocks catches up block by block instead of reading
+      317,000 accounts (tens of MB) and hashing them (about 20 s in Node).
+- [ ] Phones: see what an old phone manages for the first read and hash, and the snapshot's
+      save (about 1 s in Node, every 10 blocks).
 - [ ] Shared-key tabs on different devices could each solve at one height and both sign,
       which is double-signing; each tab's guard knows only its own signatures. Rare, so
       postponed until tabs can talk to each other (libp2p or similar).
