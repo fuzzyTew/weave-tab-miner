@@ -8,9 +8,7 @@ import { DeepHash } from '../wallet/transaction.js';
 export class SerializedInt {
   /** ar_serialize:encode_int(N, 8): a one-byte length, then N big-endian with no leading zeros. */
   static encode(value) {
-    let hex = BigInt(value).toString(16);
-    if (hex.length % 2) hex = `0${hex}`;
-    const bytes = Uint8Array.from(hex.match(/../g), (pair) => parseInt(pair, 16));
+    const bytes = Bytes.unsignedBigEndian(value);
     return Bytes.concat(new Uint8Array([bytes.length]), bytes);
   }
 }

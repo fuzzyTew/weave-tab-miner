@@ -299,26 +299,9 @@ export class AccountTree {
 
   static PAUSE = Symbol('pause');
 
-  /** binary:encode_unsigned: big-endian, no leading zeros, and one zero byte for 0. */
+  /** binary:encode_unsigned (see Bytes.unsignedBigEndian). */
   static unsignedBytes(value) {
-    value = BigInt(value);
-    if (value <= BigInt(Number.MAX_SAFE_INTEGER)) {
-      // Most balances fit a double exactly, which is several times faster than BigInt steps.
-      let number = Number(value);
-      let length = 1;
-      while (number >= 256 ** length) length++;
-      const bytes = new Uint8Array(length);
-      for (let index = length - 1; index >= 0; index--) {
-        bytes[index] = number % 256;
-        number = Math.floor(number / 256);
-      }
-      return bytes;
-    }
-    let hex = value.toString(16);
-    if (hex.length % 2) hex = `0${hex}`;
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let index = 0; index < bytes.length; index++) bytes[index] = parseInt(hex.slice(index * 2, index * 2 + 2), 16);
-    return bytes;
+    return Bytes.unsignedBigEndian(value);
   }
 
   /** ar_serialize:encode_bin(Bin, 8): a one-byte length, then the bytes. */

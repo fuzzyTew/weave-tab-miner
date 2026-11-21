@@ -45,6 +45,31 @@ export class Bytes {
     return bytes;
   }
 
+  /**
+   * binary:encode_unsigned: big-endian with no leading zeros, and one zero byte for 0.
+   * Values up to 2^53 use double arithmetic, several times faster than BigInt steps.
+   */
+  static unsignedBigEndian(value) {
+    value = BigInt(value);
+    if (value < 0n) throw new Error(`${value} is negative, so it has no unsigned encoding`);
+    if (value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+      let number = Number(value);
+      let length = 1;
+      while (number >= 256 ** length) length++;
+      const bytes = new Uint8Array(length);
+      for (let index = length - 1; index >= 0; index--) {
+        bytes[index] = number % 256;
+        number = Math.floor(number / 256);
+      }
+      return bytes;
+    }
+    let hex = value.toString(16);
+    if (hex.length % 2) hex = `0${hex}`;
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let index = 0; index < bytes.length; index++) bytes[index] = parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+    return bytes;
+  }
+
   static toBigInt(bytes) {
     let value = 0n;
     for (const byte of bytes) value = (value << 8n) | BigInt(byte);

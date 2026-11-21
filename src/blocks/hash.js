@@ -15,9 +15,7 @@ export class SegmentWriter {
   }
 
   static unsigned(value) {
-    let hex = BigInt(value).toString(16);
-    if (hex.length % 2) hex = `0${hex}`;
-    return Uint8Array.from(hex.match(/../g), (pair) => parseInt(pair, 16));
+    return Bytes.unsignedBigEndian(value);
   }
 
   static fixedInteger(value, byteCount) {
