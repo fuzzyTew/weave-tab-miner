@@ -55,8 +55,8 @@ jobs:
       - name: Detect whether plain-http addresses get through
         run: node test/peer-access.test.mjs
 
-      - name: Apply transactions to accounts, and undo changes
-        run: node test/account-changes.test.mjs
+      - name: Apply transactions to accounts, undo changes, and save and load the state
+        run: node test/account-changes.test.mjs && node test/chain-state-store.test.mjs
 
       - name: Pick pending transactions only when certain they are valid
         run: node test/transaction-picker.test.mjs

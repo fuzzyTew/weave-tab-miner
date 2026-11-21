@@ -19,6 +19,13 @@ import { BundledResources } from './resources.js';
 export class PublishingPanel {
   /** Nodes a block is posted to; more reach the network faster. */
   static POST_NODE_COUNT = 8;
+  /**
+   * A saved chain state at most this many blocks behind is caught up block by block; an
+   * older one is read again from a node (about 2 minutes a block, so 200 is most of a day).
+   */
+  static MAX_CATCH_UP_BLOCKS = 200;
+  /** The followed state is saved after this many blocks (saving takes about a second). */
+  static SAVE_EVERY_BLOCKS = 10;
 
   /** Why this tab cannot publish a block now, with what to do about it; null if it can. */
   publishBlocker() {
@@ -65,6 +72,7 @@ export class PublishingPanel {
         return;
       }
       const tip = this.block;
+      if (await this.resumeSavedChainState(tip, urls)) return;
       for (const url of urls) {
         const node = new NodeClient(url, { timeoutMs: 60000 });
         try {
@@ -84,8 +92,8 @@ export class PublishingPanel {
             rewardHistory: RewardHistory.fromBinary(await node.rewardHistory(tip.indep_hash)),
             blockTimeHistory: BlockTimeHistory.fromBinary(await node.blockTimeHistory(tip.indep_hash)),
           });
-          this.follower = new ChainFollower({ state, fetchTransaction: (id) => this.gateway.request(`/tx/${id}`) });
-          this.publishNodes = urls.slice(0, PublishingPanel.POST_NODE_COUNT).map((nodeUrl) => new NodeClient(nodeUrl, { timeoutMs: 30000 }));
+          this.startFollowing(this.followerFor(state), urls);
+          this.saveChainState();
           this.setPublishStatus(`Ready to publish: following the chain at block ${tip.height}. A real solution becomes a block posted to ${this.publishNodes.length} nodes.`);
           this.view.log(`ready to publish: chain state at block ${tip.height} from ${url}`, 'good');
           return;
@@ -99,15 +107,71 @@ export class PublishingPanel {
     }
   }
 
+  followerFor(state) {
+    return new ChainFollower({ state, fetchTransaction: (id) => this.gateway.request(`/tx/${id}`) });
+  }
+
+  /** Makes `follower` the one blocks are built on (only once it is at the tip, so followToTip never races it). */
+  startFollowing(follower, urls) {
+    this.follower = follower;
+    this.publishNodes = urls.slice(0, PublishingPanel.POST_NODE_COUNT).map((nodeUrl) => new NodeClient(nodeUrl, { timeoutMs: 30000 }));
+    this.blocksSinceSave = 0;
+  }
+
+  /** Saves the followed state for the next visit, in the background; failures are logged by the store. */
+  async saveChainState() {
+    const state = this.follower?.state;
+    if (!state) return;
+    this.blocksSinceSave = 0;
+    if (await this.chainStateStore.save(state)) this.view.log(`saved the chain state at block ${state.block.height} for next time`);
+  }
+
+  /**
+   * Picks up the state saved on an earlier visit and follows it to `tip`. Resolves whether
+   * that worked; if not (none saved, too old, or on a fork), the state is read afresh.
+   */
+  async resumeSavedChainState(tip, urls) {
+    const state = await this.chainStateStore.load().catch((error) => {
+      this.view.log(`the saved chain state could not be read (${error.message}); reading it again`, 'warn');
+      return null;
+    });
+    if (!state) return false;
+    const behind = Number(tip.height) - Number(state.block.height);
+    if (behind < 0 || behind > PublishingPanel.MAX_CATCH_UP_BLOCKS) {
+      this.view.log(`the saved chain state is at block ${state.block.height}, ${behind < 0 ? 'past the tip' : `${behind} blocks behind`}; reading it again`);
+      return false;
+    }
+    const follower = this.followerFor(state);
+    try {
+      this.setPublishStatus(`Getting ready to publish: catching up ${behind} blocks from the saved state at block ${state.block.height}…`);
+      await this.advanceFollower(follower, tip);
+    } catch (error) {
+      this.view.log(`the saved chain state does not lead to the tip (${error.message}); reading it again`, 'warn');
+      return false;
+    }
+    this.startFollowing(follower, urls);
+    this.saveChainState();
+    this.setPublishStatus(`Ready to publish: following the chain at block ${tip.height}. A real solution becomes a block posted to ${this.publishNodes.length} nodes.`);
+    this.view.log(`ready to publish: caught up ${behind} blocks from the saved chain state`, 'good');
+    return true;
+  }
+
+  /** Applies the blocks after `follower`'s state up to `tip`; throws where one does not follow. */
+  async advanceFollower(follower, tip) {
+    while (Number(follower.state.block.height) < Number(tip.height)) {
+      const height = Number(follower.state.block.height) + 1;
+      const block = height === Number(tip.height) ? tip : await this.gateway.request(`/block/height/${height}`);
+      await follower.apply(block);
+      this.blocksSinceSave = (this.blocksSinceSave ?? 0) + 1;
+    }
+  }
+
   /** Applies the blocks up to `tip` to the followed state; on a mismatch, starts over. */
   async followToTip(tip) {
     if (!this.follower) return;
     try {
-      while (Number(this.follower.state.block.height) < Number(tip.height)) {
-        const height = Number(this.follower.state.block.height) + 1;
-        const block = height === Number(tip.height) ? tip : await this.gateway.request(`/block/height/${height}`);
-        await this.follower.apply(block);
-      }
+      await this.advanceFollower(this.follower, tip);
+      if (this.blocksSinceSave >= PublishingPanel.SAVE_EVERY_BLOCKS) this.saveChainState();
       this.setPublishStatus(`Ready to publish: following the chain at block ${this.follower.state.block.height}.`);
     } catch (error) {
       this.view.log(`lost track of the chain (${error.message}); reading it again`, 'warn');

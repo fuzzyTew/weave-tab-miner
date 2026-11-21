@@ -15,6 +15,7 @@ import { ArweaveWallet } from '../../src/wallet/wallet.js';
 import { ChunkShareBridge } from '../../src/storage/chunk-share.js';
 import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/mining/randomx.js';
 import { PackedChunkStore } from '../../src/storage/chunk-store.js';
+import { ChainStateStore } from '../../src/storage/chain-state-store.js';
 import { BundledResources, RunYourself } from './resources.js';
 import { PageView } from './page-view.js';
 import { StepExplorer, StepPace } from './step-explorer.js';
@@ -37,6 +38,7 @@ class BrowserNodeApp {
     this.explorer = new StepExplorer(this.view);
     this.gateway = new ArweaveGateway({ log: (message) => this.view.log(message, 'warn') });
     this.store = new PackedChunkStore({ log: (message) => this.view.log(message, 'warn') });
+    this.chainStateStore = new ChainStateStore({ log: (message) => this.view.log(message, 'warn') });
     this.pace = new StepPace();
     this.identity = null;
     this.session = null;
