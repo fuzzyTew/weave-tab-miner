@@ -27,7 +27,10 @@ export class AccountTree {
     this.sha384 = sha384;
     this.nodes = new Map([[AccountTree.ROOT, { parent: null, children: [], hash: null, suffix: null, value: undefined }]]);
     this.size = 0;
+    this.leavesSinceYield = 0;
   }
+
+  static LEAVES_PER_YIELD = 2000;
 
   static toByteString(bytes) {
     let text = '';
@@ -299,6 +302,12 @@ export class AccountTree {
     const fullKey = () => AccountTree.fromByteString(key + node.suffix);
     if (node.children.length === 0) {
       node.hash = await this.leafHash(fullKey(), node.value);
+      // Hashing a whole tree takes about a minute; letting other work run every so often
+      // keeps a page responsive (and its miner on pace) meanwhile.
+      if (++this.leavesSinceYield >= AccountTree.LEAVES_PER_YIELD) {
+        this.leavesSinceYield = 0;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
       return node.hash;
     }
     const childHashes = [];
