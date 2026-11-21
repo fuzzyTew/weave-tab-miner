@@ -72,9 +72,11 @@ export class PublishingPanel {
           const accounts = await node.walletList(tip.wallet_list, { onPage: (count) => this.setPublishStatus(`Getting ready to publish: read ${count.toLocaleString()} accounts from ${url}…`) });
           this.setPublishStatus(`Getting ready to publish: checking ${accounts.length.toLocaleString()} accounts against block ${tip.height}'s root (this takes a minute)…`);
           const accountTree = new AccountTree();
-          for (const json of accounts) {
+          for (const [index, json] of accounts.entries()) {
             const { addressBytes, account } = AccountTree.accountFromJson(json);
             accountTree.insert(addressBytes, account);
+            // Let mining and the page run between batches of a few thousand.
+            if (index % 5000 === 4999) await new Promise((resolve) => setTimeout(resolve, 0));
           }
           if (Bytes.toBase64Url(await accountTree.rootHash()) !== tip.wallet_list) throw new Error('its accounts do not hash to the block\'s root');
           const state = new ChainState({
