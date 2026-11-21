@@ -31,21 +31,27 @@ export class Sha384 {
   ];
 
   static words = new Int32Array(160);
+  static state = new Int32Array(16);
+  /** Reused for inputs that fit it (nearly all, in an account tree); larger ones get their own. */
+  static scratch = new Uint8Array(1024);
 
   /** SHA-384 of `bytes` (a Uint8Array), as 48 bytes. */
   static hash(bytes) {
     const length = bytes.length;
     const blockCount = Math.ceil((length + 17) / 128); // data, the 0x80 byte, and a 16-byte length
-    const padded = new Uint8Array(blockCount * 128);
+    const paddedLength = blockCount * 128;
+    const padded = paddedLength <= Sha384.scratch.length ? Sha384.scratch.subarray(0, paddedLength) : new Uint8Array(paddedLength);
     padded.set(bytes);
+    padded.fill(0, length);
     padded[length] = 0x80;
     // The bit length in the last 16 bytes; lengths here stay far under 2^53 bits.
     const bitLength = length * 8;
-    const view = new DataView(padded.buffer);
-    view.setUint32(padded.length - 8, Math.floor(bitLength / 2 ** 32));
-    view.setUint32(padded.length - 4, bitLength >>> 0);
+    const view = new DataView(padded.buffer, padded.byteOffset, paddedLength);
+    view.setUint32(paddedLength - 8, Math.floor(bitLength / 2 ** 32));
+    view.setUint32(paddedLength - 4, bitLength >>> 0);
 
-    const state = Int32Array.from(Sha384.INITIAL);
+    const state = Sha384.state;
+    state.set(Sha384.INITIAL);
     const words = Sha384.words;
     const K = Sha384.K;
     for (let block = 0; block < blockCount; block++) {

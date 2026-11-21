@@ -6,7 +6,6 @@
 // Run: node test/account-tree.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { createHash } from 'node:crypto';
 import { AccountTree } from '../src/blocks/account-tree.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { Bytes } from '../src/core/bytes.js';
@@ -31,8 +30,8 @@ class AccountTreeTest {
     const files = readdirSync(this.fixturesDirectory);
     const accountsFile = files.find((name) => name.startsWith('wallet_list_'));
     const saved = JSON.parse(gunzipSync(readFileSync(`${this.fixturesDirectory}/${accountsFile}`)));
-    // Node's own SHA-384 is synchronous, which makes the first full hash several times faster.
-    const tree = new AccountTree({ sha384: (bytes) => new Uint8Array(createHash('sha384').update(bytes).digest()) });
+    // The library's own SHA-384, as the page uses it.
+    const tree = new AccountTree();
     for (const json of saved.wallets) {
       const { addressBytes, account } = AccountTree.accountFromJson(json);
       tree.insert(addressBytes, account);
