@@ -1,0 +1,51 @@
+# Captures a short stretch of live mainnet (scripts/mainnet-capture.mjs): one block's every
+# account and histories, then the next blocks with their transactions and proven chunks,
+# committed to the mainnet-fixtures branch as one commit (replaced each time). The build's
+# checks replay it offline (test/mainnet-follow.test.mjs), so they stay fast and do not
+# depend on the network. Also measures the VDF's pace, which only the live network can show.
+name: Mainnet capture
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mainnet-capture
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Capture mainnet blocks and state
+        timeout-minutes: 18
+        run: node scripts/mainnet-capture.mjs mainnet_fixtures
+
+      - name: Replay the capture before keeping it
+        run: node test/mainnet-follow.test.mjs mainnet_fixtures
+
+      - name: Commit the capture to the mainnet-fixtures branch
+        run: |
+          git config user.name "mainnet capture workflow"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout --orphan mainnet-fixtures
+          git rm -rq --cached .
+          git add mainnet_fixtures
+          git commit -qm "Mainnet blocks and state captured $(date -u +%Y-%m-%d)"
+          git push -f origin mainnet-fixtures
+          du -sh mainnet_fixtures
+
+      - name: Measure the VDF's pace, on the network and from each server
+        if: always()
+        timeout-minutes: 8
+        run: node scripts/vdf-pace-check.mjs 60

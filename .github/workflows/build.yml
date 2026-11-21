@@ -80,6 +80,11 @@ jobs:
       - name: Fetch the localnet blocks and state (localnet-fixtures branch)
         run: git fetch --depth 1 origin localnet-fixtures && git archive FETCH_HEAD | tar x
 
+      - name: Follow a captured stretch of mainnet offline, picking and rebuilding its blocks (mainnet-fixtures branch)
+        run: |
+          if git fetch --depth 1 origin mainnet-fixtures; then git archive FETCH_HEAD | tar x; fi
+          node test/mainnet-follow.test.mjs mainnet_fixtures
+
       - name: Check the account tree against the localnet's blocks
         run: node test/account-tree.test.mjs localnet_fixtures
 
@@ -133,16 +138,6 @@ jobs:
         if: always()
         run: node test/mainnet-blocks.test.mjs
 
-      # The slow checks (minutes each) run daily and on request, not on every push.
-      - name: Daily, follow mainnet from every account and rebuild a real block from its solution
-        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-        timeout-minutes: 25
-        run: node test/mainnet-blocks.test.mjs --full
-
-      - name: Daily, measure the VDF's pace on the network and from each server
-        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-        timeout-minutes: 8
-        run: node scripts/vdf-pace-check.mjs 60
 
   page:
     runs-on: ubuntu-latest
