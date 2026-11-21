@@ -3,8 +3,9 @@
 // exercises the same XOR logic quickly). Run: node test/signing-guard-and-repack.test.mjs
 import { DoubleSigningGuard, MemoryStorage } from '../src/blocks/signing-guard.js';
 import { Bytes } from '../src/core/bytes.js';
-import { ChunkPacker, StubEntropySource } from '../src/mining/packing.js';
+import { ChunkPacker } from '../src/mining/packing.js';
 import { MiningIdentity } from '../src/mining/identity.js';
+import { RepeatedHashEntropySource } from './repeated-hash-entropy.mjs';
 
 class GuardAndRepackTest {
   constructor() {
@@ -30,7 +31,7 @@ class GuardAndRepackTest {
   }
 
   async checkRepack() {
-    const entropySource = new StubEntropySource();
+    const entropySource = new RepeatedHashEntropySource();
     const from = MiningIdentity.fromAddress('wYnRY0GUYWkoisS45Djguy5DZ5Xt3z1bE0KDPnq66c4');
     const to = MiningIdentity.fromAddress('pFgmLdTSvnNplpTQDalbOpxWv9Wntk-swLLJK0U684M');
     const plain = [0, 1].map((index) => ({ endOffset: 40_000_000_000_000n + BigInt(index) * 262144n, bytes: new Uint8Array(262144).map((_, byte) => (byte * 7 + index) & 255) }));

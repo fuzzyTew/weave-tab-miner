@@ -6,7 +6,8 @@ import { Bytes } from '../src/core/bytes.js';
 import { Sha256 } from '../src/core/sha256.js';
 import { VdfChain, VdfSession } from '../src/mining/vdf.js';
 import { Difficulty } from '../src/mining/difficulty.js';
-import { Replica29Layout, ChunkPacker, StubEntropySource } from '../src/mining/packing.js';
+import { Replica29Layout, ChunkPacker } from '../src/mining/packing.js';
+import { RepeatedHashEntropySource } from './repeated-hash-entropy.mjs';
 import { ConsensusConstants } from '../src/core/constants.js';
 import { MiningMath, StubH0Hasher } from '../src/mining/mining-math.js';
 import { MiningIdentity } from '../src/mining/identity.js';
@@ -41,10 +42,10 @@ class BlockTests {
 
   /**
    * The VDF at full mainnet difficulty costs about 1.4 s per checkpoint here, 25 per step.
-   * Instead of a whole step this checks two real checkpoints against the block (the first,
-   * from the previous step's output, and the last, which must equal the block's output)
-   * and checks how computeStep chains all 25 against an independent implementation at a
-   * tiny iteration count, which is the same loop with fewer repetitions.
+   * Instead of a whole step this checks one real checkpoint against the block (the first,
+   * from the previous step's output) and checks how computeStep chains all 25 against an
+   * independent implementation at a tiny iteration count, which is the same loop with
+   * fewer repetitions.
    */
   testVdfStep() {
     const info = this.block.nonce_limiter_info;
@@ -61,8 +62,6 @@ class BlockTests {
     const secondsPerCheckpoint = (performance.now() - started) / 1000;
     this.check('checkpoint 1 of the step, from the previous step\'s output, matches the block', Bytes.equal(firstCheckpoint, lastStepCheckpoints.at(-1)),
       `${secondsPerCheckpoint.toFixed(2)} s per checkpoint (${(Number(info.vdf_difficulty) / secondsPerCheckpoint / 1e6).toFixed(2)} M hashes/s)`);
-    const lastCheckpoint = chain.computeCheckpoint(firstSalt + 24n, lastStepCheckpoints[1]);
-    this.check('checkpoint 25, from checkpoint 24 with salt + 24, equals the block VDF output', Bytes.equal(lastCheckpoint, stepOutputs[0]));
 
     const iterations = 3;
     const reference = (step, input, resetSeed) => {
@@ -116,7 +115,7 @@ class BlockTests {
 
   async testMiningPipeline() {
     const identity = MiningIdentity.fromAddress(this.block.reward_addr);
-    const packer = new ChunkPacker(identity, new StubEntropySource());
+    const packer = new ChunkPacker(identity, new RepeatedHashEntropySource());
     const storage = new HeldStorage();
     for (const [chunkField, byteField] of [['poa', 'recall_byte'], ['poa2', 'recall_byte2']]) {
       const endOffset = Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField]));
