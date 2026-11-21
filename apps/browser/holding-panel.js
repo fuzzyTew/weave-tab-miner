@@ -298,19 +298,20 @@ export class HoldingPanel {
         // Not remembered; applies to this visit.
       }
       this.refreshStorageSlider();
-      if (this.running) this.fillStorageWhileMining();
+      this.fillStorageInBackground();
     });
     this.refreshStorageSlider();
   }
 
   /**
-   * Holding data is part of mining, so while mining on the live block the tab keeps
-   * fetching toward "Storage to use" in the background (packing shares the CPU with
-   * mining, which slows each step a little; storage is by far the larger factor).
+   * Holding data is the slow part of mining and worth having before mining starts, so
+   * with a live block loaded the tab fetches toward "Storage to use" in the background,
+   * mining or not (packing shares the CPU with mining, slowing each step a little;
+   * storage is by far the larger factor). Quick start fetches its own first batch.
    */
-  async fillStorageWhileMining() {
-    if (this.holdStopper || this.blockOrigin !== 'live' || !this.chunksToReachTarget()) return;
-    this.view.log(`filling storage toward ${PageView.formatBytes(this.storageTargetBytes)} while mining`);
+  async fillStorageInBackground() {
+    if (this.holdStopper || this.quickStarting || this.blockOrigin !== 'live' || !this.identity || !this.chunksToReachTarget()) return;
+    this.view.log(`filling storage toward ${PageView.formatBytes(this.storageTargetBytes)} in the background`);
     await this.holdChunks();
   }
 

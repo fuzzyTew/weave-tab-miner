@@ -36,6 +36,7 @@ export class QuickStartPanel {
   async quickStart() {
     const button = this.view.elements.quickStartButton;
     button.disabled = true;
+    this.quickStarting = true;
     this.view.elements.quickStartStages.replaceChildren();
     try {
       if (this.running) this.stop();
@@ -88,6 +89,9 @@ export class QuickStartPanel {
       this.view.log(`quick start: ${error.message}`, 'error');
     } finally {
       button.disabled = false;
+      this.quickStarting = false;
     }
+    // Its first batch held, keep filling toward "Storage to use" in the background.
+    this.fillStorageInBackground();
   }
 }

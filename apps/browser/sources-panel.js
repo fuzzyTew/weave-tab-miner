@@ -210,5 +210,6 @@ export class SourcesPanel {
     this.view.log(`using ${origin} block at height ${this.session.height}`);
     this.refreshSummary();
     this.refreshPoolOdds();
+    this.fillStorageInBackground();
   }
 }

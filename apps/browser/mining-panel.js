@@ -90,7 +90,7 @@ export class MiningPanel {
     else this.runReplay();
     if (this.blockOrigin === 'live') this.followTip();
     if (!this.follower) this.prepareToPublish();
-    this.fillStorageWhileMining();
+    this.fillStorageInBackground();
   }
 
   static TIP_POLL_MS = 20_000; // blocks come about every 2 minutes; a new tip changes the seed H0 uses
