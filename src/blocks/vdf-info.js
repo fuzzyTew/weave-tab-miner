@@ -43,9 +43,14 @@ export class RecordedVdfSteps {
     Object.assign(this, { outputsByStep, fallback, checkpointsByStep });
   }
 
+  /** The steps a block lists, with its own step's checkpoints (the block lists both newest first). */
   static fromBlock(block, fallback) {
     const info = block.nonce_limiter_info;
-    return new RecordedVdfSteps(new Map(info.checkpoints.map((output, index) => [Number(info.global_step_number) - index, Bytes.fromBase64Url(output)])), fallback);
+    const stepNumber = Number(info.global_step_number);
+    const outputsByStep = new Map(info.checkpoints.map((output, index) => [stepNumber - index, Bytes.fromBase64Url(output)]));
+    const checkpointsByStep = new Map();
+    if (info.last_step_checkpoints?.length) checkpointsByStep.set(stepNumber, info.last_step_checkpoints.map(Bytes.fromBase64Url).reverse());
+    return new RecordedVdfSteps(outputsByStep, fallback, checkpointsByStep);
   }
 
   async checkpoints(request) {
