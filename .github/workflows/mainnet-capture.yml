@@ -40,7 +40,7 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git checkout --orphan mainnet-fixtures
           git rm -rq --cached .
-          git add mainnet_fixtures
+          git add -f mainnet_fixtures
           git commit -qm "Mainnet blocks and state captured $(date -u +%Y-%m-%d)"
           git push -f origin mainnet-fixtures
           du -sh mainnet_fixtures
