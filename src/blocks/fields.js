@@ -108,7 +108,7 @@ export class NextBlockFields {
 
     const diff = BigInt(newDiff);
     const carried = BlockTransactions.fields(transactions, parent);
-    const fees = BlockTransactions.feeShares(transactions, Number(parent.denomination));
+    const fees = BlockTransactions.feeShares(transactions, Number(parent.denomination), height);
     const rewardFields = NextBlockFields.reward({
       height,
       // The new weave size, the block's own data included (update_accounts passes B's).

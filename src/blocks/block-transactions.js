@@ -11,8 +11,15 @@ import { Sha256 } from '../core/sha256.js';
 import { DataMerkle, DeepHash } from '../wallet/transaction.js';
 
 export class BlockTransactions {
-  /** ?MINER_FEE_SHARE: the miner keeps 1/21 of each fee; the endowment pool gets the rest. */
+  /**
+   * The miner's share of each fee; the endowment pool gets the rest. From the end of the
+   * 2.7.2 price transition (v2 pricing), ?MINER_FEE_SHARE: 1/21. Before it, the 2.5 rule
+   * (ar_pricing:distribute_transaction_fees with ?MINING_REWARD_MULTIPLIER {2, 10}): 2/12.
+   * Found by rebuilding mainnet block 2,047,038, whose four fees were split 1/6.
+   */
   static MINER_FEE_SHARE = [1n, 21n];
+  static PRE_V2_MINER_FEE_SHARE = [2n, 12n];
+  static V2_PRICING_HEIGHT = 2_069_870;
 
   /** The weave grows by a transaction's data, padded up to a whole number of chunks. */
   static weaveSizeIncrease(dataSize) {
@@ -63,9 +70,9 @@ export class BlockTransactions {
     };
   }
 
-  /** { minerShare, endowmentShare } of the fees, in `denomination` (BigInt). */
-  static feeShares(transactions, denomination) {
-    const [dividend, divisor] = BlockTransactions.MINER_FEE_SHARE;
+  /** { minerShare, endowmentShare } of the fees in a block at `height`, in `denomination` (BigInt). */
+  static feeShares(transactions, denomination, height) {
+    const [dividend, divisor] = height >= BlockTransactions.V2_PRICING_HEIGHT ? BlockTransactions.MINER_FEE_SHARE : BlockTransactions.PRE_V2_MINER_FEE_SHARE;
     let minerShare = 0n;
     let endowmentShare = 0n;
     for (const json of transactions) {
