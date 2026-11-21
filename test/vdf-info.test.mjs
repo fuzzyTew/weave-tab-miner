@@ -1,14 +1,16 @@
 // test/vdf-info.test.mjs — VdfInfo.afterParent against the saved localnet blocks: from each
 // block's parent, rebuild the block's whole nonce_limiter_info and require it to equal the
-// node's. Earlier steps' outputs are taken from the block's own list (RecordedVdfSteps), so
-// this checks the list, seeds and bounds; the final step's 25 checkpoints are computed for
-// real (about 8 s a block). Also the entropy reset points, as in ar_nonce_limiter's tests.
+// node's. Steps come from the block's own lists (RecordedVdfSteps), so this checks the
+// lists, seeds and bounds; one checkpoint of a block's own step is computed for real (a
+// third of a second; the whole step is 8 s), to check the localnet's VDF difficulty and the
+// step's salt. Also the entropy reset points, as in ar_nonce_limiter's tests.
 // Run: node test/vdf-info.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { Bytes } from '../src/core/bytes.js';
 import { ConsensusConstants } from '../src/core/constants.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { RecordedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
+import { VdfChain } from '../src/mining/vdf.js';
 
 class VdfInfoTest {
   constructor(fixturesDirectory) {
@@ -30,12 +32,28 @@ class VdfInfoTest {
     this.report('entropy reset points match ar_nonce_limiter\'s tests', wrong.length === 0, wrong.map(String).join('; '));
   }
 
+  /**
+   * The first checkpoint of the block's step, from the parent-side step before it, as
+   * VdfChain.computeStep starts it. Skipped on a reset step, whose input mixes in a seed.
+   */
+  firstCheckpoint(child) {
+    const info = child.nonce_limiter_info;
+    const stepNumber = Number(info.global_step_number);
+    if (VdfChain.isResetStep(stepNumber)) return;
+    const started = performance.now();
+    const chain = new VdfChain({ iterationsPerCheckpoint: Number(info.vdf_difficulty) });
+    const computed = chain.computeCheckpoint(VdfChain.saltNumberForStep(stepNumber - 1), Bytes.fromBase64Url(info.checkpoints[1]));
+    const expected = info.last_step_checkpoints.at(-1);
+    this.report(`block ${child.height}: its step's first checkpoint, computed, matches the node's`, Bytes.toBase64Url(computed) === expected, `${Math.round(performance.now() - started)} ms`);
+  }
+
   async run() {
     this.resetPoints();
     if (!existsSync(this.fixturesDirectory)) {
       console.log(`SKIP  no localnet fixtures at ${this.fixturesDirectory}`);
       return;
     }
+    let checkpointChecked = false;
     for (const name of readdirSync(this.fixturesDirectory).filter((file) => file.startsWith('block_')).sort()) {
       const { parent, child } = JSON.parse(readFileSync(`${this.fixturesDirectory}/${name}`, 'utf8'));
       const info = await VdfInfo.afterParent({
@@ -44,6 +62,10 @@ class VdfInfoTest {
         stepNumber: Number(child.nonce_limiter_info.global_step_number),
         stepSource: RecordedVdfSteps.fromBlock(child),
       });
+      if (!checkpointChecked && child.nonce_limiter_info.checkpoints.length > 1) {
+        this.firstCheckpoint(child);
+        checkpointChecked = true;
+      }
       const expected = child.nonce_limiter_info;
       const differing = [...new Set([...Object.keys(info), ...Object.keys(expected)])].filter((field) => JSON.stringify(info[field]) !== JSON.stringify(expected[field]));
       const steps = expected.global_step_number - parent.block.nonce_limiter_info.global_step_number;
