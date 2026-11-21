@@ -38,14 +38,28 @@ export class BlockTransactions {
   }
 
   /**
-   * The leaves tx_root is built from: each transaction's data root at its end offset in
-   * the block, then, when its data does not fill its last chunk, a padding leaf (empty data
-   * root) at the padded end.
+   * Transactions in the order their data is laid out in the weave: generate_size_tagged_
+   * list_from_txs sorts the tx records (lists:sort), which compares their fields in record
+   * order — format first, then id bytes — whatever order the block lists them in. Found by
+   * rebuilding mainnet block 2,047,060's tx_root.
+   */
+  static inWeaveOrder(transactions) {
+    const compareBytes = (left, right) => {
+      for (let index = 0; index < Math.min(left.length, right.length); index++) if (left[index] !== right[index]) return left[index] - right[index];
+      return left.length - right.length;
+    };
+    return transactions.slice().sort((left, right) => (Number(left.format) - Number(right.format)) || compareBytes(Bytes.fromBase64Url(left.id), Bytes.fromBase64Url(right.id)));
+  }
+
+  /**
+   * The leaves tx_root is built from, in weave order (inWeaveOrder): each transaction's data
+   * root at its end offset in the block, then, when its data does not fill its last chunk,
+   * a padding leaf (empty data root) at the padded end.
    */
   static sizeTaggedLeaves(transactions) {
     const leaves = [];
     let position = 0n;
-    for (const json of transactions) {
+    for (const json of BlockTransactions.inWeaveOrder(transactions)) {
       const dataSize = BigInt(json.data_size || 0);
       const end = position + dataSize;
       leaves.push({ dataHash: BlockTransactions.dataRoot(json), endOffset: end });
