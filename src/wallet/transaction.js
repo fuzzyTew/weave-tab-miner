@@ -34,9 +34,19 @@ export class DataMerkle {
   }
 
   static root(data) {
-    let layer = DataMerkle.chunkRanges(data.length).map(([start, end]) => ({
-      id: Sha256.hash(Sha256.hash(Sha256.hash(data.subarray(start, end))), Sha256.hash(DataMerkle.offsetBytes(end))),
-      maxByteRange: end,
+    return DataMerkle.rootOfLeaves(DataMerkle.chunkRanges(data.length).map(([start, end]) => ({ dataHash: Sha256.hash(data.subarray(start, end)), endOffset: end })));
+  }
+
+  /**
+   * The root of a Merkle tree over leaves { dataHash, endOffset } in order (ar_merkle:
+   * generate_tree): a leaf commits to its data hash and end offset, a branch to its two
+   * children and the split point, and an unpaired node passes up as it is. Data roots use
+   * chunk hashes as leaves; a block's tx_root uses its transactions' data roots.
+   */
+  static rootOfLeaves(leaves) {
+    let layer = leaves.map(({ dataHash, endOffset }) => ({
+      id: Sha256.hash(Sha256.hash(dataHash), Sha256.hash(DataMerkle.offsetBytes(endOffset))),
+      maxByteRange: endOffset,
     }));
     while (layer.length > 1) {
       const nextLayer = [];
