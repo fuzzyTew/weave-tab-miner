@@ -1,10 +1,12 @@
 // test/account-changes.test.mjs — AccountTree's account changes without fixtures: transactions as
 // ar_node_utils:apply_tx makes them (sender pays quantity and fee, target receives, a
 // missing sender changes nothing), and withUndoneChanges putting every touched account
-// back, including removing one it created, so the root returns to what it was.
+// back, including removing one it created, so the root returns to what it was; and a tree
+// saved and loaded as an AccountTreeSnapshot.
 // Run: node test/account-changes.test.mjs
 import { createHash, randomBytes } from 'node:crypto';
 import { AccountTree } from '../src/blocks/account-tree.js';
+import { AccountTreeSnapshot } from '../src/blocks/account-tree-snapshot.js';
 
 class AccountChangesTest {
   constructor() {
@@ -21,6 +23,24 @@ class AccountChangesTest {
     const bytes = new Uint8Array(randomBytes(32));
     bytes[0] = firstByte;
     return bytes;
+  }
+
+  /**
+   * A snapshot brings back the tree with its hashes: the same bytes when encoded again, and
+   * the same root after a change. It includes an empty address (the localnet has one), a
+   * long-form account, a banned one and a balance past 2^64.
+   */
+  async checkSnapshot(tree, rootBefore) {
+    tree.insert(new Uint8Array(0), { balance: 5n, lastTx: new Uint8Array(0) });
+    tree.insert(AccountChangesTest.address(6), { balance: 2n ** 70n, lastTx: new Uint8Array(32).fill(1), denomination: 2, miningPermission: false });
+    await tree.rootHash();
+    const bytes = AccountTreeSnapshot.encode(tree);
+    const copy = AccountTreeSnapshot.decode(bytes, { sha384: tree.sha384 });
+    const sameBytes = Buffer.from(AccountTreeSnapshot.encode(copy)).equals(Buffer.from(bytes));
+    const changed = AccountChangesTest.address(7);
+    for (const changing of [tree, copy]) changing.credit(changed, 3n, 1);
+    const sameRoot = Buffer.from(await copy.rootHash()).equals(Buffer.from(await tree.rootHash()));
+    this.report('a snapshot round-trips, and its tree hashes changes as the original does', sameBytes && sameRoot && copy.size === tree.size);
   }
 
   async run() {
@@ -48,6 +68,7 @@ class AccountChangesTest {
     });
     const after = Buffer.from(await tree.rootHash()).toString('hex');
     this.report('withUndoneChanges puts back a changed and a created account, and the root', changedRoot !== before && after === before && tree.get(created) === undefined && tree.get(sender).balance === 650n);
+    await this.checkSnapshot(tree, before);
     process.exitCode = this.failures ? 1 : 0;
   }
 }
