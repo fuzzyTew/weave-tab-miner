@@ -187,6 +187,8 @@ class MainnetBlocksTest {
       console.log('none  no node answered, so following the chain was not tried');
       return;
     }
+    // Gateways sometimes time out from CI; the account node and peers serve chunks too.
+    this.chunkSources = [node.baseUrl, ...(await this.peers()).slice(0, 5)];
     const start = await this.block(tip - MainnetBlocksTest.BLOCKS_FOLLOWED);
     const started = Date.now();
     // Progress every 50 pages, so a slow or stalled node shows where it stopped.
@@ -247,7 +249,7 @@ class MainnetBlocksTest {
     };
     const posted = [];
     const publisher = new BlockPublisher({
-      follower, ...this.randomx, fetchChunkJson: (offset) => this.get(`/chunk/${offset}`),
+      follower, ...this.randomx, fetchChunkJson: (offset) => this.get(`/chunk/${offset}`, 'json', [...this.gateways, ...this.chunkSources]),
       signer: {
         wallet: { addressBytes: Bytes.fromBase64Url(block.reward_addr), address: block.reward_addr, ownerBytes: Bytes.fromBase64Url(block.reward_key) },
         sign: async (built) => {
@@ -272,8 +274,8 @@ class MainnetBlocksTest {
       try {
         const fields = await BlockSolution.build({
           addressBytes: Bytes.fromBase64Url(block.reward_addr), vdfInfo: info, seed: Bytes.fromBase64Url(follower.state.block.nonce_limiter_info.seed), nonce: report.solution.nonce,
-          recallByte: report.solution.recallByte1, chunkJson: await this.get(`/chunk/${report.solution.recallByte1 + 1n}`),
-          ...(twoChunks ? { recallByte2: report.solution.recallByte2, chunk2Json: await this.get(`/chunk/${report.solution.recallByte2 + 1n}`) } : {}),
+          recallByte: report.solution.recallByte1, chunkJson: await this.get(`/chunk/${report.solution.recallByte1 + 1n}`, 'json', [...this.gateways, ...this.chunkSources]),
+          ...(twoChunks ? { recallByte2: report.solution.recallByte2, chunk2Json: await this.get(`/chunk/${report.solution.recallByte2 + 1n}`, 'json', [...this.gateways, ...this.chunkSources]) } : {}),
           ...this.randomx,
         });
         const compared = ['unpacked_chunk_hash', 'chunk_hash', 'unpacked_chunk2_hash', 'chunk2_hash', 'hash', 'partition_number', 'packing_difficulty', 'replica_format'];
