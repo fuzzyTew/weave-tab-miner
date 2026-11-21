@@ -58,6 +58,9 @@ jobs:
       - name: Apply transactions to accounts, and undo changes
         run: node test/account-changes.test.mjs
 
+      - name: Pick pending transactions only when certain they are valid
+        run: node test/transaction-picker.test.mjs
+
       - name: Read Erlang-format account pages, as browsers must
         run: node test/erlang-term.test.mjs
 
