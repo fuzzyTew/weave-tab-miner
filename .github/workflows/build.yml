@@ -59,7 +59,7 @@ jobs:
         run: node test/account-changes.test.mjs && node test/chain-state-store.test.mjs
 
       - name: Pick pending transactions only when certain they are valid
-        run: node test/transaction-picker.test.mjs
+        run: node test/transaction-picker.test.mjs && node test/pending-transactions.test.mjs
 
       - name: Read Erlang-format account pages, as browsers must
         run: node test/erlang-term.test.mjs
