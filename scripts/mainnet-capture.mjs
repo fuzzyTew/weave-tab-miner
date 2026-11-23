@@ -11,10 +11,13 @@ import { gzipSync } from 'node:zlib';
 import { Bytes } from '../src/core/bytes.js';
 import { ChainState } from '../src/blocks/assembler.js';
 import { NodeClient } from '../src/network/node-client.js';
+import { ArweaveGateway } from '../src/network/gateway.js';
 import { PendingTransactionPool } from '../src/network/pending-transactions.js';
 
 class MainnetCapture {
-  static GATEWAYS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
+  static GATEWAYS = ArweaveGateway.DEFAULT_GATEWAY_URLS;
+  /** Rounds through the sources before a request fails: a gateway sometimes drops one connection. */
+  static ROUNDS = 2;
   static BLOCKS_AFTER = 8;
   static DEADLINE_MS = 15 * 60_000;
   static REQUEST_TIMEOUT_MS = 30_000;
@@ -28,7 +31,7 @@ class MainnetCapture {
   async get(path, readAs = 'json', sources = MainnetCapture.GATEWAYS) {
     if (Date.now() - this.startedAt > MainnetCapture.DEADLINE_MS) throw new Error(`capture deadline of ${MainnetCapture.DEADLINE_MS / 60000} minutes passed`);
     const reasons = [];
-    for (const source of sources) {
+    for (let round = 0; round < MainnetCapture.ROUNDS; round++) for (const source of sources) {
       try {
         const response = await fetch(source + path, { signal: AbortSignal.timeout(MainnetCapture.REQUEST_TIMEOUT_MS) });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -77,11 +80,27 @@ class MainnetCapture {
   }
 
   static PENDING_HEADERS = 100;
+  static PENDING_ATTEMPTS = 3;
+
+  /** One block with its transactions and the chunks a rebuild from its solution fetches again. */
+  async capturedBlock(height, sources) {
+    const block = await this.get(`/block/height/${height}`, 'json', sources);
+    const transactions = [];
+    for (const id of block.txs) transactions.push(await this.get(`/tx/${id}`, 'json', sources));
+    const chunks = {};
+    if (block.replica_format === 1) {
+      for (const [byte, poa] of [[block.recall_byte, block.poa], [block.recall_byte2, block.poa2]]) {
+        if (byte === undefined || byte === null) continue;
+        chunks[String(BigInt(byte) + 1n)] = await this.chunkFor(byte, poa, sources);
+      }
+    }
+    console.log(`block ${height}: ${transactions.length} transactions, ${Object.values(chunks).filter(Boolean).length} of ${Object.keys(chunks).length} chunks`);
+    return { block, transactions, chunks };
+  }
 
   /**
    * Transactions pending at capture time, as PendingTransactionPool fetches them: the replay
-   * picks from them on the followed state. They are from a few blocks past the last captured
-   * one, so some are expected to be left out for anchors or senders newer than it.
+   * picks from them on the state after the last captured block.
    */
   async pendingTransactions(sources) {
     const pool = new PendingTransactionPool({ source: { get: (path) => this.get(path, 'json', sources) }, maxHeld: MainnetCapture.PENDING_HEADERS, log: console.log });
@@ -92,7 +111,9 @@ class MainnetCapture {
 
   async run() {
     mkdirSync(this.outputDirectory, { recursive: true });
-    const tip = (await this.get('/info')).height - 5; // a few blocks back, past short forks
+    // Up to the tip itself: a block later orphaned by a short fork is still valid on its
+    // parent, so the replay works the same, and pending transactions then match the state.
+    let tip = (await this.get('/info')).height;
     const startHeight = tip - MainnetCapture.BLOCKS_AFTER;
     const start = await this.get(`/block/height/${startHeight}`);
     const { node, wallets, rewardHistory, blockTimeHistory, peers } = await this.stateFromSomeNode(start);
@@ -103,25 +124,20 @@ class MainnetCapture {
       block: start, rewardHistory: Bytes.toBase64Url(rewardHistory), blockTimeHistory: Bytes.toBase64Url(blockTimeHistory), recentBlocks,
     }));
 
+    // Blocks up to the tip, then the pending list; if a block came meanwhile, take it too and
+    // read the list again, so the list belongs to the last captured block.
     const blocks = [];
-    for (let height = startHeight + 1; height <= tip; height++) {
-      const block = await this.get(`/block/height/${height}`);
-      const transactions = [];
-      for (const id of block.txs) transactions.push(await this.get(`/tx/${id}`, 'json', sources));
-      // The chunks a rebuild from the solution fetches again (replica 2.9 blocks only).
-      const chunks = {};
-      if (block.replica_format === 1) {
-        for (const [byte, poa] of [[block.recall_byte, block.poa], [block.recall_byte2, block.poa2]]) {
-          if (byte === undefined || byte === null) continue;
-          chunks[String(BigInt(byte) + 1n)] = await this.chunkFor(byte, poa, sources);
-        }
-      }
-      blocks.push({ block, transactions, chunks });
-      console.log(`block ${height}: ${transactions.length} transactions, ${Object.values(chunks).filter(Boolean).length} of ${Object.keys(chunks).length} chunks`);
+    let pending = [];
+    for (let attempt = 0; attempt < MainnetCapture.PENDING_ATTEMPTS; attempt++) {
+      for (let height = startHeight + 1 + blocks.length; height <= tip; height++) blocks.push(await this.capturedBlock(height, sources));
+      pending = await this.pendingTransactions(sources);
+      const newTip = (await this.get('/info', 'json', sources)).height;
+      if (newTip === tip) break;
+      console.log(`the tip moved to ${newTip} while reading pending transactions`);
+      tip = newTip;
     }
-    writeFileSync(`${this.outputDirectory}/blocks.json.gz`, gzipSync(JSON.stringify(blocks)));
-    const pending = await this.pendingTransactions(sources);
     writeFileSync(`${this.outputDirectory}/pending.json.gz`, gzipSync(JSON.stringify(pending)));
+    writeFileSync(`${this.outputDirectory}/blocks.json.gz`, gzipSync(JSON.stringify(blocks)));
     console.log(`captured blocks ${startHeight}–${tip} in ${Math.round((Date.now() - this.startedAt) / 1000)} s`);
   }
 }
