@@ -85,6 +85,18 @@ export class Replica29Layout {
     }
   }
 
+  /**
+   * The end offset a chunk's entropy is worked out from (ar_poa:validate3 takes the chunk's
+   * absolute end): GET /chunk's `absolute_end_offset` when it has one, else the end of the
+   * bucket holding `weaveByte`. The two agree above the strict data split threshold, where
+   * chunks fill whole buckets; below it chunks have their own sizes and borders, so only the
+   * chunk's real end is right there.
+   */
+  static chunkEndOffset(chunkJson, weaveByte) {
+    if (chunkJson?.absolute_end_offset !== undefined) return BigInt(chunkJson.absolute_end_offset);
+    return Replica29Layout.bucketEndOffsetForByte(weaveByte);
+  }
+
   /** The end offset of the 256 KiB bucket holding `weaveByte` (above the split threshold). */
   static bucketEndOffsetForByte(weaveByte) {
     const chunkSize = BigInt(ConsensusConstants.DATA_CHUNK_SIZE);

@@ -38,7 +38,7 @@ export class BlockSolution {
     // the recall byte, the sub-chunk within it by the nonce's remainder.
     const subChunkIndex = nonce % ConsensusConstants.SUB_CHUNK_COUNT;
     const unpacked = BlockSolution.padded(Bytes.fromBase64Url(chunkJson.chunk));
-    const endOffset = Replica29Layout.bucketEndOffsetForByte(recallByte);
+    const endOffset = Replica29Layout.chunkEndOffset(chunkJson, recallByte);
     const entropy = await entropySource.entropy(Replica29Layout.entropyKey(addressBytes, endOffset, subChunkIndex * size));
     const slice = entropy.subarray(Replica29Layout.sliceIndex(endOffset) * size, (Replica29Layout.sliceIndex(endOffset) + 1) * size);
     const packedSubChunk = unpacked.subarray(subChunkIndex * size, (subChunkIndex + 1) * size).map((byte, index) => byte ^ slice[index]);
