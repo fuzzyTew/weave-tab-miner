@@ -13,6 +13,8 @@ import { BlockSigner } from '../../src/blocks/signer.js';
 import { DoubleSigningGuard, MemoryStorage } from '../../src/blocks/signing-guard.js';
 import { ComputedVdfSteps, RecordedVdfSteps } from '../../src/blocks/vdf-info.js';
 import { NodeClient } from '../../src/network/node-client.js';
+import { PendingTransactionPool } from '../../src/network/pending-transactions.js';
+import { TransactionPicker } from '../../src/blocks/transaction-picker.js';
 import { PeerAccess } from '../../src/network/peers.js';
 import { BundledResources } from './resources.js';
 
@@ -24,6 +26,11 @@ export class PublishingPanel {
    * older one is read again from a node (about 2 minutes a block, so 200 is most of a day).
    */
   static MAX_CATCH_UP_BLOCKS = 200;
+  /**
+   * The most pending transactions one block carries. Nodes allow 1000; fewer keeps the
+   * block small, so it travels to nodes quickly (blocks rarely carry more than 20).
+   */
+  static MAX_CARRIED_TRANSACTIONS = 300;
   /** The followed state is saved after this many blocks (saving takes about a second). */
   static SAVE_EVERY_BLOCKS = 10;
 
@@ -87,8 +94,11 @@ export class PublishingPanel {
             if (index % 5000 === 4999) await new Promise((resolve) => setTimeout(resolve, 0));
           }
           if (Bytes.toBase64Url(await accountTree.rootHash()) !== tip.wallet_list) throw new Error('its accounts do not hash to the block\'s root');
+          // Only the tip is known as a recent block at first (each is up to a megabyte with its
+          // proofs); following adds one a block, so transactions anchored to older blocks wait
+          // (see TransactionPicker.pick for why fewer stay safe).
           const state = new ChainState({
-            block: tip, accountTree,
+            block: tip, accountTree, recentBlocks: [{ indepHash: tip.indep_hash, txIds: tip.txs ?? [] }],
             rewardHistory: RewardHistory.fromBinary(await node.rewardHistory(tip.indep_hash)),
             blockTimeHistory: BlockTimeHistory.fromBinary(await node.blockTimeHistory(tip.indep_hash)),
           });
@@ -173,10 +183,49 @@ export class PublishingPanel {
       await this.advanceFollower(this.follower, tip);
       if (this.blocksSinceSave >= PublishingPanel.SAVE_EVERY_BLOCKS) this.saveChainState();
       this.setPublishStatus(`Ready to publish: following the chain at block ${this.follower.state.block.height}.`);
+      this.refreshPendingTransactions();
     } catch (error) {
       this.view.log(`lost track of the chain (${error.message}); reading it again`, 'warn');
       this.follower = null;
       this.prepareToPublish();
+    }
+  }
+
+  /** Pending transactions, fetched through the gateway's sources (asking two at most for each). */
+  pendingTransactions() {
+    this.pendingPool ??= new PendingTransactionPool({
+      source: { get: (path) => this.gateway.request(path, { maxSources: 2, timeoutMs: 10000 }) },
+      log: (message) => this.view.log(message, 'warn'),
+    });
+    return this.pendingPool;
+  }
+
+  /** Refreshes the pending transactions in the background; a failure only means fewer are carried. */
+  async refreshPendingTransactions() {
+    try {
+      const { pending, held, failed } = await this.pendingTransactions().refresh();
+      this.pendingSummary = `${held} of ${pending} pending transactions held${failed ? ` (${failed} not fetched)` : ''}`;
+    } catch (error) {
+      this.pendingSummary = `pending transactions unavailable: ${error.message.split('\n')[0]}`;
+    }
+  }
+
+  /**
+   * The pending transactions a block on the followed state can surely carry. Any failure
+   * gives none: a block without them is still a block, while one bad transaction would
+   * make the whole block invalid.
+   */
+  async transactionsToCarry() {
+    try {
+      const { picked, rejected } = await TransactionPicker.pick(this.pendingTransactions().candidates(), this.follower.state, { limit: PublishingPanel.MAX_CARRIED_TRANSACTIONS });
+      const reasons = new Map();
+      for (const { reason } of rejected) reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
+      const left = [...reasons].map(([reason, count]) => `${count} ${reason}`).join('; ');
+      this.view.log(`carrying ${picked.length} pending transactions${left ? `; left out: ${left}` : ''}`);
+      return picked;
+    } catch (error) {
+      this.view.log(`carrying no transactions: picking them failed (${error.message})`, 'warn');
+      return [];
     }
   }
 
@@ -203,7 +252,7 @@ export class PublishingPanel {
     });
     try {
       const { block, replies } = await publisher.publish({
-        report, stepSource: new RecordedVdfSteps(this.vdfSteps.outputsByStep, new ComputedVdfSteps(), this.vdfSteps.checkpointsByStep),
+        report, transactions: await this.transactionsToCarry(), stepSource: new RecordedVdfSteps(this.vdfSteps.outputsByStep, new ComputedVdfSteps(), this.vdfSteps.checkpointsByStep),
       });
       const taken = replies.filter((reply) => reply.status === 200 || reply.status === 208);
       const summary = replies.map((reply) => `${reply.node} ${reply.status || 'unreachable'}${reply.text ? ` ${reply.text.slice(0, 60)}` : ''}`).join('; ');
