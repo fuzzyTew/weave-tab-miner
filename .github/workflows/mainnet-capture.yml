@@ -34,16 +34,17 @@ jobs:
       - name: Replay the capture before keeping it
         run: node test/mainnet-follow.test.mjs mainnet_fixtures
 
-      - name: Keep a capture whose replay failed, to reproduce it offline
+      - name: Keep a capture whose replay failed on the mainnet-fixtures-failed branch, to reproduce it offline
         if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: failed-mainnet-capture
-          path: |
-            mainnet_fixtures
-            !mainnet_fixtures/*.snapshot
-          retention-days: 7
-          if-no-files-found: ignore
+        run: |
+          test -d mainnet_fixtures || exit 0
+          git config user.name "mainnet capture workflow"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout --orphan mainnet-fixtures-failed
+          git rm -rq --cached .
+          git add -f mainnet_fixtures ':!*.snapshot'
+          git commit -qm "Mainnet capture whose replay failed, $(date -u +%Y-%m-%d)"
+          git push -f origin mainnet-fixtures-failed
 
       - name: Commit the capture to the mainnet-fixtures branch
         run: |
