@@ -367,9 +367,11 @@ export class HoldingPanel {
     } catch {
       // Storage refused: a fresh random pick each visit still spreads tabs out.
     }
-    // The last partition may be partly filled; the random pick avoids it.
-    if (remembered !== null && Number(remembered) < partitionCount) return Number(remembered);
-    const picked = Math.floor(Math.random() * Math.max(1, partitionCount - 1));
+    // The last partition may be partly filled, and the first few hold chunks that do not
+    // fill whole buckets (see Replica29Layout.firstBucketAlignedPartition); the pick avoids both.
+    const first = Replica29Layout.firstBucketAlignedPartition();
+    if (remembered !== null && Number(remembered) >= first && Number(remembered) < partitionCount) return Number(remembered);
+    const picked = first + Math.floor(Math.random() * Math.max(1, partitionCount - 1 - first));
     try {
       localStorage.setItem(HoldingPanel.PARTITION_STORAGE_KEY, String(picked));
     } catch {
@@ -434,6 +436,9 @@ export class HoldingPanel {
       this.view.setText('holdStatus', `Holding the block's own packed sub-chunk ${subChunkIndex} of each recall chunk, exactly as its miner held them.`);
       return;
     }
+    // Approximation: below the strict data split threshold a chunk's entropy comes from its
+    // own end offset, which the block's proof gives only with the block's start offset; the
+    // bucket's end is used, so packing there differs from a real miner's (mining still runs).
     const chunks = proofs.slice(0, chunkCount).map(([proof, byteField]) => ({
       bytes: Bytes.fromBase64Url(this.block[proof].unpacked_chunk),
       endOffset: Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField])),
@@ -460,6 +465,11 @@ export class HoldingPanel {
     const partitionStart = BigInt(this.partitionNumber) * ConsensusConstants.PARTITION_SIZE;
     if (partitionStart >= this.session.partitionUpperBound) {
       this.view.log(`partition ${this.partitionNumber} is past the end of the weave`, 'error');
+      return;
+    }
+    if (this.partitionNumber < Replica29Layout.firstBucketAlignedPartition()) {
+      this.view.log(`partition ${this.partitionNumber} holds the weave's oldest data, whose chunks do not fill whole 256 KiB buckets, which this miner cannot yet hold; choose partition ${Replica29Layout.firstBucketAlignedPartition()} or later`, 'error');
+      this.view.setText('holdStatus', `Not fetching: partition ${this.partitionNumber} is too early in the weave. Choose ${Replica29Layout.firstBucketAlignedPartition()} or later under Storage.`);
       return;
     }
     // Chunks at one bucket position in successive sectors share all 32 entropies.

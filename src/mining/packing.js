@@ -97,6 +97,16 @@ export class Replica29Layout {
     return Replica29Layout.bucketEndOffsetForByte(weaveByte);
   }
 
+  /**
+   * The first partition lying wholly above the strict data split threshold, where every
+   * chunk fills one bucket. Below it a recall byte's chunk has its own borders, which held
+   * storage does not track (it files chunks by bucket), so only these partitions are held.
+   */
+  static firstBucketAlignedPartition() {
+    const partitionSize = ConsensusConstants.PARTITION_SIZE;
+    return Number((ConsensusConstants.STRICT_DATA_SPLIT_THRESHOLD + partitionSize - 1n) / partitionSize);
+  }
+
   /** The end offset of the 256 KiB bucket holding `weaveByte` (above the split threshold). */
   static bucketEndOffsetForByte(weaveByte) {
     const chunkSize = BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
