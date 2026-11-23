@@ -1,6 +1,7 @@
 // scripts/mainnet-capture.mjs — saves a stretch of live mainnet for offline checks: one block's
 // whole state (every account, its reward and block-time histories, the 50 blocks before
-// it), then the next blocks with their transactions and the chunks their solutions prove.
+// it), then the next blocks with their transactions and the chunks their solutions prove,
+// then the transactions pending at the end.
 // test/mainnet-follow.test.mjs replays it offline in seconds; the daily workflow captures it
 // and commits it to the mainnet-fixtures branch. Every request has a time limit, and the
 // whole capture a deadline, so a slow network fails it with the cause instead of hanging.
@@ -10,6 +11,7 @@ import { gzipSync } from 'node:zlib';
 import { Bytes } from '../src/core/bytes.js';
 import { ChainState } from '../src/blocks/assembler.js';
 import { NodeClient } from '../src/network/node-client.js';
+import { PendingTransactionPool } from '../src/network/pending-transactions.js';
 
 class MainnetCapture {
   static GATEWAYS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
@@ -74,6 +76,20 @@ class MainnetCapture {
     }
   }
 
+  static PENDING_HEADERS = 100;
+
+  /**
+   * Transactions pending at capture time, as PendingTransactionPool fetches them: the replay
+   * picks from them on the followed state. They are from a few blocks past the last captured
+   * one, so some are expected to be left out for anchors or senders newer than it.
+   */
+  async pendingTransactions(sources) {
+    const pool = new PendingTransactionPool({ source: { get: (path) => this.get(path, 'json', sources) }, maxHeld: MainnetCapture.PENDING_HEADERS, log: console.log });
+    const { pending, held, failed } = await pool.refresh();
+    console.log(`${held} of ${pending} pending transactions${failed ? `, ${failed} not fetched` : ''}`);
+    return pool.candidates();
+  }
+
   async run() {
     mkdirSync(this.outputDirectory, { recursive: true });
     const tip = (await this.get('/info')).height - 5; // a few blocks back, past short forks
@@ -104,6 +120,8 @@ class MainnetCapture {
       console.log(`block ${height}: ${transactions.length} transactions, ${Object.values(chunks).filter(Boolean).length} of ${Object.keys(chunks).length} chunks`);
     }
     writeFileSync(`${this.outputDirectory}/blocks.json.gz`, gzipSync(JSON.stringify(blocks)));
+    const pending = await this.pendingTransactions(sources);
+    writeFileSync(`${this.outputDirectory}/pending.json.gz`, gzipSync(JSON.stringify(pending)));
     console.log(`captured blocks ${startHeight}–${tip} in ${Math.round((Date.now() - this.startedAt) / 1000)} s`);
   }
 }

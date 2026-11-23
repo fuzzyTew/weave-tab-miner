@@ -83,6 +83,25 @@ class MainnetFollowTest {
     }
   }
 
+  /**
+   * Reasons a pending transaction may be left out that come from the capture's gap: its
+   * pending list is read a few blocks past the last captured block.
+   */
+  static GAP_REASONS = [/anchor/, /already in a recent block/, /has no account/, /cannot pay/, /target with no account/];
+
+  /** Picks from the transactions pending at capture time, on the state after the last block. */
+  async pickPending(state) {
+    const file = `${this.fixturesDirectory}/pending.json.gz`;
+    if (!existsSync(file)) return console.log('SKIP  pending transactions: none were captured');
+    const pending = JSON.parse(gunzipSync(readFileSync(file)));
+    const { picked, rejected } = await TransactionPicker.pick(pending, state);
+    const reasons = new Map();
+    for (const { reason } of rejected) reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
+    const unexpected = rejected.filter(({ reason }) => !MainnetFollowTest.GAP_REASONS.some((pattern) => pattern.test(reason)));
+    const summary = [...reasons].map(([reason, count]) => `${count} ${reason}`).join('; ');
+    this.report(`of ${pending.length} pending transactions, ${picked.length} picked and the rest left out only for the capture's gap`, unexpected.length === 0, summary);
+  }
+
   async run() {
     if (!existsSync(`${this.fixturesDirectory}/start.json`)) {
       console.log(`SKIP  no mainnet fixtures at ${this.fixturesDirectory}`);
@@ -113,6 +132,7 @@ class MainnetFollowTest {
         break;
       }
     }
+    await this.pickPending(state);
     console.log(`(${Math.round((Date.now() - started) / 1000)} s)`);
     process.exitCode = this.failures ? 1 : 0;
   }
