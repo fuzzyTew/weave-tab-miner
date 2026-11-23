@@ -1,7 +1,8 @@
 // test/transaction-picker.test.mjs — TransactionPicker's checks on made-up transactions: a valid
 // one is picked and its effects seen by the next; a bad anchor, a repeat, an overspend, a
 // fee under the least, and an id that is not its signature's hash are each refused with
-// their reason; the account tree is left as it was. (The daily mainnet check runs it on
+// their reason; the account tree is left as it was; and one anchored to its sender's last
+// transaction is picked even knowing no recent blocks. (The daily mainnet check runs it on
 // real blocks' transactions, which it must all accept.)
 // Run: node test/transaction-picker.test.mjs
 import { createHash, randomBytes } from 'node:crypto';
@@ -23,6 +24,12 @@ class TransactionPickerTest {
       last_tx: lastTx, target, quantity: String(quantity), reward: String(reward), data_size: String(dataSize),
       data_root: dataSize ? Bytes.toBase64Url(new Uint8Array(32).fill(1)) : '', tags: [],
     };
+  }
+
+  /** Knowing no recent blocks, a transaction anchored to its sender's last one is still picked. */
+  async pickedWithNoRecentBlocks(state, transaction) {
+    const { picked } = await TransactionPicker.pick([transaction], new ChainState({ ...state, recentBlocks: [] }));
+    return picked.length === 1;
   }
 
   async run() {
@@ -56,6 +63,7 @@ class TransactionPickerTest {
       ['an id that is not the hash of the signature is refused', /hash of its signature/.test(reasonFor(forged))],
       ['the same transaction twice is refused', rejected.filter((entry) => entry.id === good.id).some((entry) => /already/.test(entry.reason))],
       ['the account tree is left as it was', Bytes.toBase64Url(await tree.rootHash()) === before],
+      ['knowing no recent blocks, one anchored to its sender\'s last transaction is still picked', await this.pickedWithNoRecentBlocks(state, good)],
     ];
     let failures = 0;
     for (const [name, passed] of checks) {

@@ -72,8 +72,14 @@ export class TransactionPicker {
 
   /**
    * Picks from `candidates` (transaction JSON, as pending at a node) for a block on
-   * `state` (a ChainState with recentBlocks). Resolves { picked, rejected: [{ id, reason }] }.
-   * The account tree is left as it was.
+   * `state` (a ChainState). Resolves { picked, rejected: [{ id, reason }] }. The account
+   * tree is left as it was.
+   *
+   * `state.recentBlocks` may hold fewer than the last 50 blocks (newest first, unbroken),
+   * as a page that has just read the chain state does. That stays safe: only those blocks
+   * are taken as anchors, and a transaction anchored to one could only have been mined in
+   * it or a later one, all of which are checked for repeats. A transaction anchored to its
+   * sender's last transaction cannot repeat, since mining it changes that last transaction.
    */
   static async pick(candidates, state, { limit = TransactionPicker.MAX_TRANSACTIONS } = {}) {
     const parent = state.block;
