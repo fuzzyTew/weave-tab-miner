@@ -5,7 +5,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Task | State |
 |---|---|
 | Turn a solution into a block | 6 of 7 steps done, and most of mainnet's rules; a real solution left |
-| Check what peers and gateways say | started: followed blocks' ids and signatures are checked |
+| Check what peers and gateways say | started: followed blocks' ids and signatures, and VDF servers' steps by sampling |
 | Reach networks that block Arweave | partly: gathered sources, seeds, a source test |
 | Hold more data | mostly done; storage, not memory, is the limit |
 | Host the page on Arweave | not started |
@@ -116,8 +116,9 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
       (`Replica29Layout.storedEndOffset`).
 
 #### VDF servers
-- [ ] Check that each step from a VDF server follows from the previous one, at least by
-      sampling: recompute one checkpoint per step in a worker and drop the server on a mismatch.
+- [x] Check that steps from a VDF server follow, by sampling (`VdfSpotCheck`): every 30 s
+      one checkpoint of the newest step is recomputed in a worker; a server that fails is
+      dropped (or flagged, if it is the only one).
 - [ ] Check the update's seed and upper bound against the current block.
 - [x] Use more than one server when several answer (`VdfServerPool` merges their steps);
       comparing their steps is left.
