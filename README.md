@@ -10,7 +10,8 @@ solution comes out with the same id.
 ## Use it
 
 Build the page, then open `dist/weave-tab-miner.html` by double-clicking it. No web server or
-Python needed.
+Python needed. Opened from the published site instead, it installs like an app (the browser's
+install or "Add to home screen") and then opens without a connection.
 
     npm run build
 
