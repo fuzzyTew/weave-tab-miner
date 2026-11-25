@@ -120,8 +120,9 @@ jobs:
           node_pid=$!
           shown=0
           last_growth=$(date +%s)
-          # Gives up at once if the node exits, or after 60 s without a new log line: a
-          # healthy start logs each stage as it goes (a cold start took about 3 minutes).
+          # Gives up at once if the node exits, or after 180 s without a new log line. A cold
+          # start logs: RandomX dataset by 45 s, services by 95 s, accounts by 131 s, then
+          # seeds the snapshot data with over a minute of silence (ready by about 175 s).
           for tick in $(seq 1 1200); do
             if ! kill -0 "$node_pid" 2>/dev/null; then echo "the node exited during startup; its log:"; tail -200 .tmp/localnet.log; exit 1; fi
             # Each new log line, marked with the seconds since this step began.
@@ -131,7 +132,7 @@ jobs:
               shown=$total
               last_growth=$(date +%s)
             fi
-            if [ $(( $(date +%s) - last_growth )) -gt 60 ]; then echo "no new log line for 60 s; the node's log:"; tail -200 .tmp/localnet.log; exit 1; fi
+            if [ $(( $(date +%s) - last_growth )) -gt 180 ]; then echo "no new log line for 180 s; the node's log:"; tail -200 .tmp/localnet.log; exit 1; fi
             info=$(curl -fsS --max-time 1 -H 'x-network: arweave.localnet' http://127.0.0.1:1984/info 2>/dev/null || true)
             if echo "$info" | grep -q '"height":[0-9]'; then echo "$(( $(date +%s) - started )) s: ready: $info"; exit 0; fi
             sleep 0.5
