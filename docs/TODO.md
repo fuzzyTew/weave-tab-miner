@@ -7,6 +7,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Chunks "not found" everywhere | reported: in the downloaded page (file://), chunk requests sometimes got "not found" from every source, though earlier versions filled from nodes. Check the byte position sent (`chunkJson(weaveByte + 1n)`, `storedEndOffset`), partition 9, and how a file:// page's requests are treated |
 | Turn a solution into a block | 6 of 7 steps done, and most of mainnet's rules; a real solution left |
 | Check what peers and gateways say | started: followed blocks' ids and signatures, and VDF servers' steps by sampling |
+| Fetch chunks from nodes that hold them | not started: chunks now ask gateways first, for stability (see gateway.js chunkJson). Read nodes' `/data_sync_record`, ask the nodes covering each chunk, and keep gateways as the last fallback, so the page does not depend on them |
 | Reach networks that block Arweave | partly: gathered sources, seeds, a source test |
 | Hold more data | mostly done; storage, not memory, is the limit |
 | Host the page on Arweave | not started |
