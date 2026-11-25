@@ -234,7 +234,7 @@ export class PublishingPanel {
   /**
    * The VDF facts a node checks first (ar_block_pre_validator, the global step number check):
    * a node takes a posted block only if its step is past its parent's, it lists exactly the
-   * steps between, and its prev_output is the parent's output. A 200 reply only means the
+   * steps between (JSON `checkpoints`), and its prev_output is the parent's output. A 200 reply only means the
    * block arrived, so these say why one might still be dropped.
    */
   static vdfSummary(block, parent) {
@@ -242,7 +242,7 @@ export class PublishingPanel {
     const parentInfo = parent.nonce_limiter_info;
     const stepsBetween = Number(info.global_step_number) - Number(parentInfo.global_step_number);
     return `block ${block.height} VDF: step ${info.global_step_number} after parent step ${parentInfo.global_step_number} (${stepsBetween} between), `
-      + `${info.steps?.length ?? 'no'} steps listed, prev_output ${info.prev_output === parentInfo.output ? 'is' : 'is NOT'} the parent's output`;
+      + `${info.checkpoints?.length ?? 'no'} steps listed, prev_output ${info.prev_output === parentInfo.output ? 'is' : 'is NOT'} the parent's output`;
   }
 
   blockSigner() {
