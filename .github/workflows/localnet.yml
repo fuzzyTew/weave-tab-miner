@@ -71,7 +71,7 @@ jobs:
       # unable to load them.
       - name: Reuse an earlier build
         id: arweave-build
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             arweave/_build
@@ -88,6 +88,16 @@ jobs:
         if: steps.arweave-build.outputs.cache-hit != 'true'
         working-directory: arweave
         run: ./ar-rebar3 localnet compile
+
+      # Saved now rather than at the end, which happens only if every later step passes.
+      - name: Save the build for later runs
+        if: steps.arweave-build.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            arweave/_build
+            arweave/apps/arweave/priv
+          key: arweave-localnet-with-native-${{ env.ARWEAVE_COMMIT }}
 
       # The node's data directory just after it first started (accounts and blocks copied
       # from the snapshot, seed data stored and, if packed, packed), so later runs start
