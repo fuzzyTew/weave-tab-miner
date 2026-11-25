@@ -72,6 +72,7 @@ branch).
   read that as a 10 GiB cap. It now says so and lets an amount past it be typed.
 - Smaller texts: a button that named Firefox's limit on Chrome, an eight-line storage
   note, an out-of-date claim under "What is real here".
+- Sixteen tests carried the same reporting code; they now extend `test/test-case.mjs`.
 
 ### To do, in order
 
@@ -92,8 +93,6 @@ branch).
    steps in four minutes, because background packing and each step's H0 share one
    RandomX worker. H0 should go first (a priority queue in the worker host, or a second
    worker where memory allows), and the page should say when packing is slowing mining.
-4. **One test helper.** Eighteen tests each define the same `report()`; a small
-   `test/test-report.mjs` removes the copies, and `npm test` should run the fast set.
 
 ## User stories
 
