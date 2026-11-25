@@ -131,6 +131,15 @@ export class PackedChunkStore extends BrowserObjectStore {
     }
   }
 
+  /** Whether the browser already keeps this site's storage (asks nothing), or null if it cannot say. */
+  static async persisted() {
+    try {
+      return navigator.storage?.persisted ? await navigator.storage.persisted() : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Bytes used and available to this site, if the browser says. */
   static async estimate() {
     try {

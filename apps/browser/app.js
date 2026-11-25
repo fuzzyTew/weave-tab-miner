@@ -197,6 +197,7 @@ class BrowserNodeApp {
     onClick('liveButton', this.loadLiveBlock);
     onClick('sampleButton', this.loadSampleBlock);
     onClick('holdButton', this.holdChunks);
+    onClick('keepStorageButton', this.askToKeepStorage);
     onClick('stopHoldButton', this.stopHolding);
     onClick('exportChunksButton', this.exportChunks);
     this.view.elements.importChunksInput.addEventListener('change', () => this.importChunks());
