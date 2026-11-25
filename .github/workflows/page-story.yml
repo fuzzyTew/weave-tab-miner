@@ -43,7 +43,7 @@ jobs:
           git config user.name "page story workflow"
           git config user.email "actions@users.noreply.github.com"
           git checkout --orphan page-story
-          git rm -rq --cached .
+          git rm -rqf --cached .
           git add -f page-story
           git commit -qm "Page story, $(date -u +%Y-%m-%d) from $(git rev-parse --short HEAD@{1} 2>/dev/null || echo main)"
           git push -f origin page-story
