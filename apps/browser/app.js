@@ -11,6 +11,7 @@ import { MiningIdentity } from '../../src/mining/identity.js';
 import { StubH0Hasher } from '../../src/mining/mining-math.js';
 import { HeldStorage } from '../../src/mining/held-storage.js';
 import { ArweaveGateway } from '../../src/network/gateway.js';
+import { NetworkTarget } from '../../src/network/network-target.js';
 import { ArweaveWallet } from '../../src/wallet/wallet.js';
 import { ChunkShareBridge } from '../../src/storage/chunk-share.js';
 import { RandomxWorkerHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/mining/randomx.js';
@@ -36,9 +37,11 @@ class BrowserNodeApp {
   constructor() {
     this.view = new PageView();
     this.explorer = new StepExplorer(this.view);
-    this.gateway = new ArweaveGateway({ log: (message) => this.view.log(message, 'warn') });
+    // The mainnet, unless the page address names a localnet node (?localnet=<URL>).
+    this.network = NetworkTarget.fromPageAddress(location.href);
+    this.gateway = new ArweaveGateway({ gatewayUrls: this.network.nodeUrls ?? undefined, log: (message) => this.view.log(message, 'warn') });
     this.store = new PackedChunkStore({ log: (message) => this.view.log(message, 'warn') });
-    this.chainStateStore = new ChainStateStore({ log: (message) => this.view.log(message, 'warn') });
+    this.chainStateStore = new ChainStateStore({ network: this.network, log: (message) => this.view.log(message, 'warn') });
     this.pace = new StepPace();
     this.identity = null;
     this.session = null;

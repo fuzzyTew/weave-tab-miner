@@ -334,8 +334,11 @@ export class HoldingPanel {
   }
 
   /** Chunks still to fetch to reach the slider's setting; 0 when it is reached. */
+  /** Chunks still to fetch to reach the storage setting, or the network's limit (a localnet's) if lower. */
   chunksToReachTarget() {
-    return Math.max(0, Math.ceil((this.storageTargetBytes - this.storage.byteCount) / ConsensusConstants.DATA_CHUNK_SIZE));
+    const toTarget = Math.ceil((this.storageTargetBytes - this.storage.byteCount) / ConsensusConstants.DATA_CHUNK_SIZE);
+    const limit = this.network.heldChunkLimit;
+    return Math.max(0, limit === null ? toTarget : Math.min(toTarget, limit - this.storage.packedChunks.size));
   }
 
   async refreshStorageNote() {
@@ -360,6 +363,7 @@ export class HoldingPanel {
    * held data. Within the partition, each fetch also starts at a random position.
    */
   browserPartition() {
+    if (this.network.seededDataBytes !== null) return 0; // a localnet's data is all at its start
     const partitionCount = Number((this.session.partitionUpperBound + ConsensusConstants.PARTITION_SIZE - 1n) / ConsensusConstants.PARTITION_SIZE);
     let remembered = null;
     try {
@@ -467,10 +471,8 @@ export class HoldingPanel {
       this.view.log(`partition ${this.partitionNumber} is past the end of the weave`, 'error');
       return;
     }
-    if (this.partitionNumber < Replica29Layout.firstBucketAlignedPartition()) {
-      this.view.log(`partition ${this.partitionNumber} holds the weave's oldest data, whose chunks do not fill whole 256 KiB buckets, which this miner cannot yet hold; choose partition ${Replica29Layout.firstBucketAlignedPartition()} or later`, 'error');
-      this.view.setText('holdStatus', `Not fetching: partition ${this.partitionNumber} is too early in the weave. Choose ${Replica29Layout.firstBucketAlignedPartition()} or later under Storage.`);
-      return;
+    if (this.network.isMainnet && this.partitionNumber < Replica29Layout.firstBucketAlignedPartition()) {
+      this.view.log(`partition ${this.partitionNumber} holds the weave's oldest data, whose chunks do not fill whole 256 KiB buckets; they are held by their own ends, which has not yet been seen to make a mainnet block`, 'warn');
     }
     // Chunks at one bucket position in successive sectors share all 32 entropies.
     const firstByte = partitionStart + BigInt(Math.floor(Math.random() * Number(ConsensusConstants.entropySectorSize)));
@@ -481,7 +483,8 @@ export class HoldingPanel {
     let held = 0;
     let lastProgress = null;
     try {
-      const batches = fetcher.batches(Replica29Layout.entropySharingPositions(firstByte, this.session.partitionUpperBound), {
+      const positions = this.network.chunkPositions(partitionStart, Replica29Layout.entropySharingPositions(firstByte, this.session.partitionUpperBound), ConsensusConstants.DATA_CHUNK_SIZE);
+      const batches = fetcher.batches(positions, {
         wanted, batchSize: HoldingPanel.CHUNK_BATCH_SIZE, signal: stopper.signal,
         onProgress: (progress) => { lastProgress = progress; this.showFetchProgress(progress, held); },
         onSkip: (weaveByte, error) => this.view.log(`skipping the chunk at byte ${weaveByte}: no source had it (${error.message.split('\n')[1] ?? error.message})`, 'warn'),

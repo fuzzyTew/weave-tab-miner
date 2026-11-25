@@ -19,10 +19,15 @@ export class MiningPanel {
     return this.view.elements.aimCheckbox.checked || Number(this.view.elements.easeSelect.value) !== 1;
   }
 
+  /** A Miner with the test settings, and whatever the network's rules allow on top (a localnet's). */
   makeMiner() {
+    const allowed = this.network.rules.minerAllowance();
     return new Miner({
       identity: this.identity, partitionNumber: this.partitionNumber, storage: this.storage, h0Hasher: this.h0Hasher,
-      testMode: { aimRange1AtHeldData: this.view.elements.aimCheckbox.checked, difficultyEase: Number(this.view.elements.easeSelect.value) },
+      testMode: {
+        aimRange1AtHeldData: this.view.elements.aimCheckbox.checked || allowed.aimRange1AtHeldData,
+        difficultyEase: Math.max(Number(this.view.elements.easeSelect.value), allowed.difficultyEase),
+      },
     });
   }
 

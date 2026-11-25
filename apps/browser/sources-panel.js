@@ -173,7 +173,7 @@ export class SourcesPanel {
 
   async testSources() {
     const seeds = this.applySeeds();
-    const candidates = this.sourceCandidates(seeds);
+    const candidates = this.network.nodeUrls ?? this.sourceCandidates(seeds);
     this.view.setText('peerStatus', `Testing up to ${candidates.length} sources…`);
     const results = await new SourceTester().testAll(candidates, {
       concurrency: 4,
@@ -221,8 +221,10 @@ export class SourcesPanel {
     this.block = block;
     this.blockOrigin = origin;
     this.session = VdfSession.fromBlock(block);
-    // The sample can only replay its own steps; a live block mines new ones from VDF servers.
-    this.view.elements[origin === 'sample' ? 'vdfModeReplay' : 'vdfModeServer'].checked = true;
+    // The sample can only replay its own steps; a live block mines new ones from VDF servers,
+    // or from steps computed here where they keep up (a localnet).
+    const liveMode = this.network.stepsComputedHere ? 'vdfModeLocal' : 'vdfModeServer';
+    this.view.elements[origin === 'sample' ? 'vdfModeReplay' : liveMode].checked = true;
     const partitionInput = this.view.elements.partitionInput;
     // The browser's own partition unless the person chose one or chunks are held elsewhere;
     // "Verify against the sample" sets the sample's own partition for its replay.

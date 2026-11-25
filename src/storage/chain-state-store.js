@@ -4,7 +4,6 @@
 import { ChainState } from '../blocks/assembler.js';
 import { AccountTreeSnapshot } from '../blocks/account-tree-snapshot.js';
 import { BlockTimeHistory } from '../blocks/history.js';
-import { NetworkRules } from '../blocks/network-rules.js';
 import { RewardHistory } from '../blocks/rewards.js';
 import { BrowserObjectStore } from './browser-object-store.js';
 
@@ -12,20 +11,23 @@ export class ChainStateStore extends BrowserObjectStore {
   /**
    * One saved ChainState, the latest, under SAVED_KEY. IndexedDB keeps BigInts and byte
    * arrays as they are, so the histories are stored as their entries; the account tree as
-   * an AccountTreeSnapshot, with its hashes. Only the mainnet's state is kept.
+   * an AccountTreeSnapshot, with its hashes. Each network (a NetworkTarget) has its own.
    */
   static DATABASE_NAME = 'weave-tab-miner-chain-state';
   static STORE_NAME = 'chain-state';
   static SAVED_KEY = 'latest';
   static FORMAT = 1;
 
-  constructor({ log = () => {} } = {}) {
+  constructor({ network, log = () => {} }) {
     super({ databaseName: ChainStateStore.DATABASE_NAME, storeName: ChainStateStore.STORE_NAME, log });
+    this.network = network;
+    // The mainnet keeps the key saves have always used.
+    this.savedKey = network.isMainnet ? ChainStateStore.SAVED_KEY : `${ChainStateStore.SAVED_KEY}-${network.name}`;
   }
 
   /** Saves `state` (its tree fully hashed, as after following a block); resolves whether saved. */
   async save(state) {
-    return this.put(ChainStateStore.SAVED_KEY, {
+    return this.put(this.savedKey, {
       format: ChainStateStore.FORMAT,
       block: state.block,
       rewardHistory: state.rewardHistory.entries,
@@ -37,7 +39,7 @@ export class ChainStateStore extends BrowserObjectStore {
 
   /** The saved ChainState, or null if there is none (or it is from another format). */
   async load() {
-    const saved = await this.get(ChainStateStore.SAVED_KEY);
+    const saved = await this.get(this.savedKey);
     if (!saved || saved.format !== ChainStateStore.FORMAT) return null;
     return new ChainState({
       block: saved.block,
@@ -45,7 +47,7 @@ export class ChainStateStore extends BrowserObjectStore {
       blockTimeHistory: new BlockTimeHistory(saved.blockTimeHistory),
       recentBlocks: saved.recentBlocks,
       accountTree: AccountTreeSnapshot.decode(saved.accountTree),
-      rules: NetworkRules.MAINNET,
+      rules: this.network.rules,
     });
   }
 }

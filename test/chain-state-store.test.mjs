@@ -7,6 +7,7 @@ import { ChainState } from '../src/blocks/assembler.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { ChainStateStore } from '../src/storage/chain-state-store.js';
+import { NetworkTarget } from '../src/network/network-target.js';
 
 /** A ChainStateStore whose object store is a Map, cloning values as IndexedDB would. */
 class MapChainStateStore extends ChainStateStore {
@@ -33,7 +34,7 @@ class ChainStateStoreTest {
   }
 
   async run() {
-    const store = new MapChainStateStore();
+    const store = new MapChainStateStore({ network: NetworkTarget.MAINNET });
     this.report('nothing saved loads as null', await store.load() === null);
 
     const sha384 = (bytes) => new Uint8Array(createHash('sha384').update(bytes).digest());
@@ -56,6 +57,9 @@ class ChainStateStoreTest {
       && loaded.rewardHistory.entries[0].addressBytes[0] === 7 && loaded.blockTimeHistory.entries[0].vdfInterval === 125n
       && loaded.recentBlocks[0].txIds[0] === 't1' && loadedRoot === root && loaded.accountTree.size === 500);
 
+    const localnet = new MapChainStateStore({ network: NetworkTarget.localnet('http://127.0.0.1:1985') });
+    localnet.values = store.values;
+    this.report('a localnet keeps its own state, under its own rules', await localnet.load() === null && await localnet.save(state) && (await localnet.load()).rules.name === 'localnet');
     store.values.set(ChainStateStore.SAVED_KEY, { ...store.values.get(ChainStateStore.SAVED_KEY), format: ChainStateStore.FORMAT + 1 });
     this.report('a state saved in another format loads as null', await store.load() === null);
     process.exitCode = this.failures ? 1 : 0;

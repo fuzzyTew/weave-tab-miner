@@ -41,7 +41,8 @@ export class PublishingPanel {
     if (this.blockOrigin !== 'live') return 'Mining a sample block; load the live block to mine for real.';
     // Replayed steps are old, and steps computed here fall ever further behind the network's,
     // so a solution on them would come after newer blocks and could not be built on the tip.
-    if (!this.view.elements.vdfModeServer.checked) return 'Only VDF steps from a server keep pace with the network; choose "Live: steps from every VDF server that answers" in Mine (on an https copy, servers need insecure content allowed).';
+    const keepsPace = this.view.elements.vdfModeServer.checked || (this.network.stepsComputedHere && this.view.elements.vdfModeLocal.checked);
+    if (!keepsPace) return 'Only VDF steps from a server keep pace with the network; choose "Live: steps from every VDF server that answers" in Mine (on an https copy, servers need insecure content allowed).';
     if (!this.identity?.wallet) return 'Mining for an address without its key, so a block could not be signed; use the shared key or a keyfile.';
     const blocked = PeerAccess.blockedReason();
     if (blocked) return `Publishing needs Arweave nodes directly, and ${blocked}. Allow insecure content for this site in the browser's settings and reload, or use the downloaded copy.`;
@@ -54,6 +55,7 @@ export class PublishingPanel {
 
   /** Nodes to read state from and post to: found peers, then gathered ones. */
   publishNodeUrls() {
+    if (this.network.nodeUrls) return this.network.nodeUrls;
     const gathered = BundledResources.gatheredSources().nodes ?? [];
     return [...new Set([...(this.peerUrls ?? []), ...gathered.map((entry) => entry.url)])];
   }
@@ -98,7 +100,7 @@ export class PublishingPanel {
           // proofs); following adds one a block, so transactions anchored to older blocks wait
           // (see TransactionPicker.pick for why fewer stay safe).
           const state = new ChainState({
-            block: tip, accountTree, recentBlocks: [{ indepHash: tip.indep_hash, txIds: tip.txs ?? [] }],
+            block: tip, accountTree, recentBlocks: [{ indepHash: tip.indep_hash, txIds: tip.txs ?? [] }], rules: this.network.rules,
             rewardHistory: RewardHistory.fromBinary(await node.rewardHistory(tip.indep_hash)),
             blockTimeHistory: BlockTimeHistory.fromBinary(await node.blockTimeHistory(tip.indep_hash)),
           });

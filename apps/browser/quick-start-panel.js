@@ -3,6 +3,8 @@
 // Its methods are mixed into BrowserNodeApp (see app.js), so `this` is the app.
 import { VdfServerClient } from '../../src/network/vdf-client.js';
 import { PeerAccess } from '../../src/network/peers.js';
+import { ConsensusConstants } from '../../src/core/constants.js';
+import { PageView } from './page-view.js';
 
 export class QuickStartPanel {
   // Packed data to fetch when nothing is held yet: 64 chunks (16 MiB), a few minutes of
@@ -26,6 +28,20 @@ export class QuickStartPanel {
       }
     }
     list.append(item);
+  }
+
+  /** Picks the first VDF server that answers, or computing steps here when none does. */
+  async chooseVdfServer() {
+    this.quickStartStage('Looking for a VDF server…');
+    const client = new VdfServerClient({ baseUrls: this.vdfServerCandidates(), log: () => {} });
+    if (await client.findServer()) {
+      this.view.elements.vdfModeServer.checked = true;
+      this.quickStartStage(`VDF steps from ${client.serverUrl}`, 'done');
+      return;
+    }
+    this.view.elements.vdfModeLocal.checked = true;
+    const hint = PeerAccess.blockedReason() ? ' (on this https copy, tick "insecure content allowed" in Network, or use a downloaded copy, to reach the public servers)' : '';
+    this.quickStartStage(`No VDF server answered${hint}; computing steps in this tab, which uses a whole CPU core`, 'done');
   }
 
   /**
@@ -59,8 +75,9 @@ export class QuickStartPanel {
       await this.randomxReady;
       const savedElsewhere = (await this.store.addresses()).filter(({ address }) => address !== this.identity.address);
       if (this.storage.bytesInPartition(this.partitionNumber) === 0 && savedElsewhere.length === 0) {
-        this.quickStartStage(`Fetching and packing ${QuickStartPanel.QUICK_START_CHUNKS} chunks (16 MiB) to start with…`);
-        await this.holdChunks({ chunkCount: Math.min(QuickStartPanel.QUICK_START_CHUNKS, this.chunksToReachTarget() || QuickStartPanel.QUICK_START_CHUNKS) });
+        const chunkCount = Math.min(QuickStartPanel.QUICK_START_CHUNKS, this.chunksToReachTarget() || QuickStartPanel.QUICK_START_CHUNKS);
+        this.quickStartStage(`Fetching and packing ${chunkCount} chunks (${PageView.formatBytes(chunkCount * ConsensusConstants.DATA_CHUNK_SIZE)}) to start with…`);
+        await this.holdChunks({ chunkCount });
       }
       const heldChunks = this.storage.packedChunks.size;
       if (savedElsewhere.length) this.quickStartStage(`Chunks saved for ${savedElsewhere.length} other address${savedElsewhere.length === 1 ? '' : 'es'} will be repacked for this one first`, 'note');
@@ -70,15 +87,11 @@ export class QuickStartPanel {
       }
       this.quickStartStage(`Holding ${heldChunks} chunk${heldChunks === 1 ? '' : 's'}`, 'done');
 
-      this.quickStartStage('Looking for a VDF server…');
-      const client = new VdfServerClient({ baseUrls: this.vdfServerCandidates(), log: () => {} });
-      if (await client.findServer()) {
-        this.view.elements.vdfModeServer.checked = true;
-        this.quickStartStage(`VDF steps from ${client.serverUrl}`, 'done');
-      } else {
+      if (this.network.stepsComputedHere) {
         this.view.elements.vdfModeLocal.checked = true;
-        const hint = PeerAccess.blockedReason() ? ' (on this https copy, tick "insecure content allowed" in Network, or use a downloaded copy, to reach the public servers)' : '';
-        this.quickStartStage(`No VDF server answered${hint}; computing steps in this tab, which uses a whole CPU core`, 'done');
+        this.quickStartStage(`VDF steps computed in this tab, which keep up on a ${this.network.name}`, 'done');
+      } else {
+        await this.chooseVdfServer();
       }
       await this.start();
       this.quickStartStage('Mining. The wait and what limits it are under "Why the wait is this long".', 'done');
