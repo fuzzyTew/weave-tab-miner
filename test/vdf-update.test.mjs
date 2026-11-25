@@ -52,6 +52,12 @@ class VdfUpdateTest {
         const after = record.stepsAfter(119_924_199).map(([step]) => step);
         return record.newestStep === 119_924_202 && after.join() === '119924200,119924202' && record.missingSteps(119_924_199, 119_924_202).join() === '119924201';
       })()],
+      ['a step computed here is kept with its checkpoints, the last being its output', (() => {
+        const record = new VdfStepRecord();
+        const checkpoints = Array.from({ length: 25 }, (_, index) => new Uint8Array(32).fill(index));
+        record.addComputedStep(7, checkpoints);
+        return record.outputsByStep.get(7)[0] === 24 && record.checkpointsByStep.get(7) === checkpoints;
+      })()],
       ['newer steps, oldest first', fresh.length === 2 && fresh[0][0] === 119_924_199 && fresh[0][1][0] === 2 && fresh[1][1][0] === 3],
     ];
     // Two servers at different paces, the faster one with a gap since the last mined step.

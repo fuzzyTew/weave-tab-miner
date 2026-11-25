@@ -57,8 +57,8 @@ export class VdfUpdate {
 
 export class VdfStepRecord {
   /**
-   * Every step output seen from VDF server updates, by step number, and the checkpoints of
-   * steps that came as an update's newest: what a block's nonce_limiter_info lists for the
+   * Every step output seen from VDF server updates (or computed here), by step number, and
+   * the checkpoints of steps that came as an update's newest (or were computed here): what a block's nonce_limiter_info lists for the
    * steps since its parent. Keeps the newest `keepSteps` (a block may list 10,800).
    */
   constructor({ keepSteps = 12_000, keepCheckpointSteps = 64 } = {}) {
@@ -71,6 +71,14 @@ export class VdfStepRecord {
     for (const [stepNumber, output] of VdfUpdate.steps(update, -1)) this.outputsByStep.set(stepNumber, output);
     const checkpoints = VdfUpdate.lastStepCheckpoints(update);
     if (checkpoints) this.checkpointsByStep.set(update.stepNumber, checkpoints);
+    VdfStepRecord.trimOldest(this.outputsByStep, this.keepSteps);
+    VdfStepRecord.trimOldest(this.checkpointsByStep, this.keepCheckpointSteps);
+  }
+
+  /** A step computed here: its 25 checkpoints, oldest first, the last being its output. */
+  addComputedStep(stepNumber, checkpoints) {
+    this.outputsByStep.set(stepNumber, checkpoints.at(-1));
+    this.checkpointsByStep.set(stepNumber, checkpoints);
     VdfStepRecord.trimOldest(this.outputsByStep, this.keepSteps);
     VdfStepRecord.trimOldest(this.checkpointsByStep, this.keepCheckpointSteps);
   }

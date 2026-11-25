@@ -1,6 +1,6 @@
 // src/mining/workers/vdf-worker.js — computes VDF steps off the page's main thread so the page stays responsive.
 // Messages in:  { stepNumber, previousOutput (Uint8Array), iterationsPerCheckpoint, resetSeed (Uint8Array|null) }
-// Messages out: { stepNumber, output (Uint8Array), seconds } or { error }
+// Messages out: { stepNumber, output (Uint8Array), checkpoints (25, oldest first), seconds } or { error }
 import { VdfChain } from '../vdf.js';
 
 class VdfWorker {
@@ -17,7 +17,8 @@ class VdfWorker {
     }
     const started = performance.now();
     const checkpoints = this.chain.computeStep(stepNumber, previousOutput, resetSeed);
-    return { stepNumber, output: checkpoints.at(-1), seconds: (performance.now() - started) / 1000 };
+    // The checkpoints go back too (800 bytes): a block built on this step lists them.
+    return { stepNumber, output: checkpoints.at(-1), checkpoints, seconds: (performance.now() - started) / 1000 };
   }
 
   run() {

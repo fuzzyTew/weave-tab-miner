@@ -264,6 +264,7 @@ export class MiningPanel {
       }
       stepNumber = data.stepNumber;
       previousOutput = data.output;
+      this.vdfSteps.addComputedStep(stepNumber, data.checkpoints);
       this.localStepNumber = stepNumber;
       this.localOutput = previousOutput;
       lastStepSeconds = data.seconds;
