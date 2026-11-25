@@ -288,7 +288,7 @@
         <p class="stage-note">With a live block, each browser gets its own randomly picked partition (kept between visits), and each fetch starts at a random position in it, so tabs sharing a key rarely hold the same data. A live block fetches chunks at one position in successive 3.5 GB sectors of your partition: they share their 32 packing entropies, so 1 or 1,024 of them cost the same packing time. Packed chunks are kept in this browser for this address.</p>
       </details>
       <p class="stage-note" id="storageNote"></p>
-      <div class="row"><button id="keepStorageButton" type="button" hidden>Keep this site's data (raises Firefox's 10 GiB limit)</button></div>
+      <div class="row"><button id="keepStorageButton" type="button" hidden>Ask the browser to keep this site's data</button></div>
       <div class="row">
         <button id="exportChunksButton" type="button">Export packed chunks</button>
         <label class="button-link" for="importChunksInput">Import packed chunks<input id="importChunksInput" type="file" accept=".bin,application/octet-stream" hidden></label>
@@ -427,7 +427,7 @@
       <div class="stage">
         <span class="chip chip-stub">Not yet seen on mainnet</span>
         <ul>
-          <li>Blocks built here were taken by an Arweave test network (a localnet), 37 in a row; none has reached mainnet yet, because that needs a real solution.</li>
+          <li>This page, in a browser tab, mines blocks an Arweave test network (a localnet) takes, one per VDF step, from its own accounts, packing, VDF steps and signatures; none has reached mainnet yet, because that needs a real solution.</li>
           <li>If the 512 MiB RandomX cache cannot be allocated, the page falls back to SHA-256 stand-ins and says so.</li>
         </ul>
       </div>

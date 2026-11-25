@@ -402,9 +402,9 @@ export class HoldingPanel {
     this.storageQuotaBytes = estimate?.quota ?? null;
     this.storageQuotaFloats = Boolean(estimate && HoldingPanel.isFloatingQuota(estimate));
     this.refreshStorageSlider();
-    const kept = { true: ' The browser keeps it when space runs low.', false: ' The browser may clear it when space runs low, and may allow more once it agrees to keep it ("Keep this site\'s data" below).', null: '' }[String(this.storageKept ?? null)];
+    const kept = { true: ' The browser keeps it when space runs low.', false: ' The browser may clear it when space runs low; asking it to keep it (below) prevents that, and in Firefox raises the limit.', null: '' }[String(this.storageKept ?? null)];
     const floating = this.storageQuotaFloats
-      ? ' Chrome reports 10 GiB more than this site uses rather than its real limit (about 60% of the disk), so the allowance grows as chunks are saved, and filling goes on with it.'
+      ? ' (Chrome reports 10 GiB more than is used, not its real limit, so this grows as chunks are saved.)'
       : '';
     this.view.setText('storageNote', estimate
       ? `This site uses ${PageView.formatBytes(estimate.usage ?? 0)} of browser storage, of ${PageView.formatBytes(estimate.quota ?? 0)} allowed.${floating}${kept}`
