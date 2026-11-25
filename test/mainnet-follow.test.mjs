@@ -17,7 +17,7 @@ import { BlockHash } from '../src/blocks/hash.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { TransactionPicker } from '../src/blocks/transaction-picker.js';
-import { RecordedVdfSteps } from '../src/blocks/vdf-info.js';
+import { RecordedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 
 class MainnetFollowTest {
@@ -89,6 +89,22 @@ class MainnetFollowTest {
    */
   static GAP_REASONS = [/anchor/, /already in a recent block/, /has no account/, /cannot pay/, /target with no account/];
 
+  /**
+   * The newest VDF difficulty retarget height's next_vdf_difficulty, worked out from its
+   * parent and the parent's block-time history. Whether the difficulty actually moved there
+   * depends on the previous change having taken effect, which the detail says.
+   */
+  checkVdfRetarget() {
+    const file = `${this.fixturesDirectory}/vdf_retarget.json`;
+    if (!existsSync(file)) return console.log('SKIP  VDF retarget: no block-time history was served for one');
+    const { parent, blockTimeHistory, child } = JSON.parse(readFileSync(file, 'utf8'));
+    const computed = VdfInfo.nextVdfDifficulty(parent, BlockTimeHistory.fromBinary(Bytes.fromBase64Url(blockTimeHistory)));
+    const info = parent.nonce_limiter_info;
+    const moved = String(info.vdf_difficulty) === String(info.next_vdf_difficulty);
+    this.report(`block ${child.height}'s next VDF difficulty, from its parent's block-time history`, String(computed) === String(child.nonce_limiter_info.next_vdf_difficulty),
+      `${moved ? 'retargeted' : 'carried over, the last change not yet in effect'}: ${info.next_vdf_difficulty} → ${computed}`);
+  }
+
   /** Picks from the transactions pending at capture time, on the state after the last block. */
   async pickPending(state) {
     const file = `${this.fixturesDirectory}/pending.json.gz`;
@@ -133,6 +149,7 @@ class MainnetFollowTest {
       }
     }
     await this.pickPending(state);
+    this.checkVdfRetarget();
     console.log(`(${Math.round((Date.now() - started) / 1000)} s)`);
     process.exitCode = this.failures ? 1 : 0;
   }
