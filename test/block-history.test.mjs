@@ -5,17 +5,14 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { BlockHistoryHashes, BlockTimeHistory } from '../src/blocks/history.js';
 import { Bytes } from '../src/core/bytes.js';
+import { TestCase } from './test-case.mjs';
 
-class BlockHistoryTest {
+class BlockHistoryTest extends TestCase {
   constructor(fixturesDirectory) {
+    super();
     this.fixturesDirectory = fixturesDirectory;
-    this.failures = 0;
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   async run() {
     if (!existsSync(this.fixturesDirectory)) {
@@ -31,7 +28,7 @@ class BlockHistoryTest {
       const merkle = await BlockHistoryHashes.hashListMerkle(parent.block);
       this.report(`block ${child.height}: hash_list_merkle`, Bytes.toBase64Url(merkle) === child.hash_list_merkle);
     }
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

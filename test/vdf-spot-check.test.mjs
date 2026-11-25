@@ -6,16 +6,9 @@ import { readFileSync } from 'node:fs';
 import { Bytes } from '../src/core/bytes.js';
 import { VdfChain } from '../src/mining/vdf.js';
 import { VdfSpotCheck } from '../src/network/vdf-spot-check.js';
+import { TestCase } from './test-case.mjs';
 
-class VdfSpotCheckTest {
-  constructor() {
-    this.failures = 0;
-  }
-
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
+class VdfSpotCheckTest extends TestCase {
 
   /** The sample block's newest step as a VDF server update carries it (both lists newest first). */
   static updateFromBlock(block) {
@@ -52,7 +45,7 @@ class VdfSpotCheckTest {
 
     const tooLittle = await standIn.check({ ...update, checkpoints: [] }, [difficulty], 0);
     this.report('an update without its step\'s checkpoints is not counted as checked', tooLittle.checked === false);
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

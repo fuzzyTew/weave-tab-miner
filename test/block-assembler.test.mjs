@@ -13,20 +13,17 @@ import { BlockAssembler, ChainState } from '../src/blocks/assembler.js';
 import { BlockHash } from '../src/blocks/hash.js';
 import { ChainFollower } from '../src/blocks/chain-follower.js';
 import { Bytes } from '../src/core/bytes.js';
+import { TestCase } from './test-case.mjs';
 
-class BlockAssemblerTest {
+class BlockAssemblerTest extends TestCase {
   // Set by the signer, not the assembler.
   static SIGNING_FIELDS = ['signature', 'indep_hash'];
 
   constructor(fixturesDirectory) {
+    super();
     this.fixturesDirectory = fixturesDirectory;
-    this.failures = 0;
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   async firstState(files) {
     const { parent } = JSON.parse(readFileSync(`${this.fixturesDirectory}/${files.find((name) => name.startsWith('block_'))}`, 'utf8'));
@@ -59,7 +56,7 @@ class BlockAssemblerTest {
       // Move on by following our own block, as a light client follows any block.
       await new ChainFollower({ state, fetchTransaction: null }).apply({ ...block, signature: child.signature, indep_hash: id });
     }
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

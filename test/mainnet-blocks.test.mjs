@@ -11,23 +11,20 @@ import { NextBlockFields } from '../src/blocks/fields.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { RecordedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
+import { TestCase } from './test-case.mjs';
 
-class MainnetBlocksTest {
+class MainnetBlocksTest extends TestCase {
   static DEFAULT_GATEWAYS = ['https://arweave.net', 'https://ar-io.net', 'https://permagate.io'];
   static RETARGETS_CHECKED = 6;
   static ADJUSTMENTS_CHECKED = 2;
   static VDF_BLOCKS_CHECKED = 40;
 
   constructor(gateways) {
+    super();
     this.gateways = gateways.length ? gateways : MainnetBlocksTest.DEFAULT_GATEWAYS;
-    this.failures = 0;
     this.blocks = new Map();
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   /**
    * The first answer for `path` from `sources` (default: the gateways), as JSON or bytes,
@@ -156,7 +153,7 @@ class MainnetBlocksTest {
         this.report(`${section}: ran to the end`, false, error.stack);
       }
     }
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

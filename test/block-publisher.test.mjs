@@ -19,17 +19,14 @@ import { BlockBinary } from '../src/blocks/binary.js';
 import { NetworkRules } from '../src/blocks/network-rules.js';
 import { RecordedVdfSteps } from '../src/blocks/vdf-info.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
+import { TestCase } from './test-case.mjs';
 
-class BlockPublisherTest {
+class BlockPublisherTest extends TestCase {
   constructor(fixturesDirectory) {
+    super();
     this.fixturesDirectory = fixturesDirectory;
-    this.failures = 0;
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   async firstState(files) {
     const { parent } = JSON.parse(readFileSync(`${this.fixturesDirectory}/${files.find((name) => name.startsWith('block_'))}`, 'utf8'));
@@ -94,7 +91,7 @@ class BlockPublisherTest {
       this.report(`block ${child.height}${child.recall_byte2 ? ' (two chunks)' : ''}: published, and with the node's zero preimage it is the node's block byte for byte`, id === child.indep_hash && bytesMatch && posted.length === 1);
       await follower.apply(child);
     }
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

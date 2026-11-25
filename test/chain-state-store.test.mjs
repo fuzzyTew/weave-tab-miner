@@ -8,6 +8,7 @@ import { BlockTimeHistory } from '../src/blocks/history.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { ChainStateStore } from '../src/storage/chain-state-store.js';
 import { NetworkTarget } from '../src/network/network-target.js';
+import { TestCase } from './test-case.mjs';
 
 /** A ChainStateStore whose object store is a Map, cloning values as IndexedDB would. */
 class MapChainStateStore extends ChainStateStore {
@@ -23,15 +24,7 @@ class MapChainStateStore extends ChainStateStore {
   }
 }
 
-class ChainStateStoreTest {
-  constructor() {
-    this.failures = 0;
-  }
-
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
+class ChainStateStoreTest extends TestCase {
 
   async run() {
     const store = new MapChainStateStore({ network: NetworkTarget.MAINNET });
@@ -62,7 +55,7 @@ class ChainStateStoreTest {
     this.report('a localnet keeps its own state, under its own rules', await localnet.load() === null && await localnet.save(state) && (await localnet.load()).rules.name === 'localnet');
     store.values.set(ChainStateStore.SAVED_KEY, { ...store.values.get(ChainStateStore.SAVED_KEY), format: ChainStateStore.FORMAT + 1 });
     this.report('a state saved in another format loads as null', await store.load() === null);
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

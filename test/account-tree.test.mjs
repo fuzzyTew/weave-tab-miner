@@ -9,17 +9,14 @@ import { AccountTree } from '../src/blocks/account-tree.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { Bytes } from '../src/core/bytes.js';
 import { FixtureAccountTree } from './fixture-account-tree.mjs';
+import { TestCase } from './test-case.mjs';
 
-class AccountTreeTest {
+class AccountTreeTest extends TestCase {
   constructor(fixturesDirectory) {
+    super();
     this.fixturesDirectory = fixturesDirectory;
-    this.failures = 0;
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   async run() {
     if (!existsSync(this.fixturesDirectory)) {
@@ -43,7 +40,7 @@ class AccountTreeTest {
       const root = Bytes.toBase64Url(await tree.rootHash());
       this.report(`block ${child.height}: releasing ${released.reward} winston gives its root`, root === child.wallet_list, root.slice(0, 12) + '…');
     }
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

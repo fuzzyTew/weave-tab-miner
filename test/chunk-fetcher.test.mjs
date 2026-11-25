@@ -4,6 +4,7 @@
 // asked, and stops starting requests when told. Run: node test/chunk-fetcher.test.mjs
 import { ChunkFetcher } from '../src/network/chunk-fetcher.js';
 import { Bytes } from '../src/core/bytes.js';
+import { TestCase } from './test-case.mjs';
 
 class FakeGateway {
   /** Answers chunkJson after 1–5 ms; positions divisible by `missingEvery` have no chunk. */
@@ -22,15 +23,7 @@ class FakeGateway {
   }
 }
 
-class ChunkFetcherTest {
-  constructor() {
-    this.failures = 0;
-  }
-
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
+class ChunkFetcherTest extends TestCase {
 
   async collect(fetcher, positions, options) {
     const batchSizes = [];
@@ -65,7 +58,7 @@ class ChunkFetcherTest {
 
     const short = await this.collect(new ChunkFetcher({ gateway: new FakeGateway({ missingEvery: 2 }), concurrency: 3 }), (function* () { for (let index = 1n; index <= 10n; index++) yield index; })(), { wanted: 50 });
     this.report('ends when positions run out', short.chunks.length === 5, `${short.chunks.length} of 50 wanted from 10 positions, half missing`);
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

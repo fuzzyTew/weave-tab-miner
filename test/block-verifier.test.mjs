@@ -5,17 +5,14 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { BlockVerifier } from '../src/blocks/block-verifier.js';
 import { BlockHash } from '../src/blocks/hash.js';
+import { TestCase } from './test-case.mjs';
 
-class BlockVerifierTest {
+class BlockVerifierTest extends TestCase {
   constructor({ mainnetDirectory = 'mainnet_fixtures', localnetDirectory = 'localnet_fixtures' } = {}) {
+    super();
     Object.assign(this, { mainnetDirectory, localnetDirectory });
-    this.failures = 0;
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   /** The captured blocks of each kind present, or [] (the fixtures live on their own branches). */
   blocks() {
@@ -45,7 +42,7 @@ class BlockVerifierTest {
     forged.indep_hash = Buffer.from(await BlockHash.indepHash(forged)).toString('base64url');
     const badSignature = await BlockVerifier.problem(forged);
     this.report('a block re-hashed around a changed signature is caught by its key', /signature/.test(badSignature ?? ''), badSignature ?? '');
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

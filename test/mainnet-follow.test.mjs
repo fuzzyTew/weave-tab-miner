@@ -19,17 +19,14 @@ import { RewardHistory } from '../src/blocks/rewards.js';
 import { TransactionPicker } from '../src/blocks/transaction-picker.js';
 import { RecordedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
 import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
+import { TestCase } from './test-case.mjs';
 
-class MainnetFollowTest {
+class MainnetFollowTest extends TestCase {
   constructor(fixturesDirectory) {
+    super();
     this.fixturesDirectory = fixturesDirectory;
-    this.failures = 0;
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   async startState() {
     const start = JSON.parse(readFileSync(`${this.fixturesDirectory}/start.json`, 'utf8'));
@@ -156,7 +153,7 @@ class MainnetFollowTest {
     await this.pickPending(state);
     this.checkVdfRetarget();
     console.log(`(${Math.round((Date.now() - started) / 1000)} s)`);
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

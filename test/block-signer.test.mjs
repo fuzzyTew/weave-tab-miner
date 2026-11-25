@@ -9,17 +9,14 @@ import { BlockHash } from '../src/blocks/hash.js';
 import { DoubleSigningGuard, MemoryStorage } from '../src/blocks/signing-guard.js';
 import { ArweaveWallet } from '../src/wallet/wallet.js';
 import { Bytes } from '../src/core/bytes.js';
+import { TestCase } from './test-case.mjs';
 
-class BlockSignerTest {
+class BlockSignerTest extends TestCase {
   constructor(fixturesDirectory) {
+    super();
     this.fixturesDirectory = fixturesDirectory;
-    this.failures = 0;
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   async run() {
     if (!existsSync(this.fixturesDirectory)) {
@@ -49,7 +46,7 @@ class BlockSignerTest {
     this.report('the guard names the block signed on a parent, so a sibling need not be built',
       guard.signedChildOf(wallet.address, BigInt(signed.previous_cumulative_diff))?.height === signed.height
       && guard.signedChildOf(wallet.address, BigInt(signed.previous_cumulative_diff) + 12345n) === null);
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

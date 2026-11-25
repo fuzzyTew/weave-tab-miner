@@ -3,6 +3,7 @@
 // left out, and a header that fails to fetch is counted, not fatal.
 // Run: node test/pending-transactions.test.mjs
 import { PendingTransactionPool } from '../src/network/pending-transactions.js';
+import { TestCase } from './test-case.mjs';
 
 /** A node whose mempool the test sets, counting header requests. */
 class MadeUpNode {
@@ -18,15 +19,7 @@ class MadeUpNode {
   }
 }
 
-class PendingTransactionsTest {
-  constructor() {
-    this.failures = 0;
-  }
-
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
+class PendingTransactionsTest extends TestCase {
 
   async run() {
     const node = new MadeUpNode();
@@ -48,7 +41,7 @@ class PendingTransactionsTest {
     const capped = new PendingTransactionPool({ source: node, maxHeld: 1 });
     await capped.refresh();
     this.report('only the first maxHeld pending ids are held', capped.candidates().length === 1 && capped.candidates()[0].id === 'b');
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

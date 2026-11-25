@@ -7,17 +7,14 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { AccountTree } from '../src/blocks/account-tree.js';
 import { AccountTreeSnapshot } from '../src/blocks/account-tree-snapshot.js';
+import { TestCase } from './test-case.mjs';
 
-class AccountChangesTest {
+class AccountChangesTest extends TestCase {
   constructor() {
-    this.failures = 0;
+    super();
     this.tree = new AccountTree({ sha384: (bytes) => new Uint8Array(createHash('sha384').update(bytes).digest()) });
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   static address(firstByte) {
     const bytes = new Uint8Array(randomBytes(32));
@@ -69,7 +66,7 @@ class AccountChangesTest {
     const after = Buffer.from(await tree.rootHash()).toString('hex');
     this.report('withUndoneChanges puts back a changed and a created account, and the root', changedRoot !== before && after === before && tree.get(created) === undefined && tree.get(sender).balance === 650n);
     await this.checkSnapshot(tree, before);
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

@@ -6,16 +6,9 @@ import { Bytes } from '../src/core/bytes.js';
 import { ChunkPacker } from '../src/mining/packing.js';
 import { MiningIdentity } from '../src/mining/identity.js';
 import { RepeatedHashEntropySource } from './repeated-hash-entropy.mjs';
+import { TestCase } from './test-case.mjs';
 
-class GuardAndRepackTest {
-  constructor() {
-    this.failures = 0;
-  }
-
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
+class GuardAndRepackTest extends TestCase {
 
   checkGuard() {
     const guard = new DoubleSigningGuard({ storage: new MemoryStorage() });
@@ -45,7 +38,7 @@ class GuardAndRepackTest {
   async run() {
     this.checkGuard();
     await this.checkRepack();
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 

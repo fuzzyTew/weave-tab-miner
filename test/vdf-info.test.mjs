@@ -11,17 +11,14 @@ import { ConsensusConstants } from '../src/core/constants.js';
 import { BlockTimeHistory } from '../src/blocks/history.js';
 import { RecordedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
 import { VdfChain } from '../src/mining/vdf.js';
+import { TestCase } from './test-case.mjs';
 
-class VdfInfoTest {
+class VdfInfoTest extends TestCase {
   constructor(fixturesDirectory) {
+    super();
     this.fixturesDirectory = fixturesDirectory;
-    this.failures = 0;
   }
 
-  report(name, passed, detail = '') {
-    if (!passed) this.failures++;
-    console.log(`${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
-  }
 
   resetPoints() {
     // ar_nonce_limiter:get_entropy_reset_point_test/0.
@@ -93,7 +90,7 @@ class VdfInfoTest {
       const steps = expected.global_step_number - parent.block.nonce_limiter_info.global_step_number;
       this.report(`block ${child.height} (${steps} steps after its parent): nonce_limiter_info matches the node's`, differing.length === 0 && JSON.stringify(info) === JSON.stringify(expected), differing.length ? `differ: ${differing.join(', ')}` : '');
     }
-    process.exitCode = this.failures ? 1 : 0;
+    this.finish();
   }
 }
 
