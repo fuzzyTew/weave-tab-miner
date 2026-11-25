@@ -280,6 +280,7 @@ export class PublishingPanel {
       });
       const taken = replies.filter((reply) => reply.status === 200 || reply.status === 208);
       this.view.log(PublishingPanel.vdfSummary(block, parent));
+      if (taken.length) this.checkTipNow();
       const summary = replies.map((reply) => `${reply.node} ${reply.status || 'unreachable'}${reply.text ? ` ${reply.text.slice(0, 60)}` : ''}`).join('; ');
       this.setPublishStatus(`Posted block ${block.height} (${block.indep_hash.slice(0, 12)}…): ${taken.length} of ${replies.length} nodes took it. ${summary}`);
       this.view.log(`posted block ${block.height}: ${summary}`, taken.length ? 'good' : 'warn');

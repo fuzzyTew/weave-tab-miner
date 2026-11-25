@@ -107,6 +107,13 @@ export class MiningPanel {
    */
   async followTip() {
     if (!this.running) return;
+    // One check at a time; a call during one asks it to check again straight after.
+    if (this.followingTip) {
+      this.tipCheckWanted = true;
+      return;
+    }
+    this.followingTip = true;
+    this.tipCheckWanted = false;
     try {
       const block = await this.gateway.currentBlock();
       if (Number(block.height) > Number(this.block.height)) {
@@ -120,7 +127,18 @@ export class MiningPanel {
     } catch (error) {
       this.view.log(`could not check for a new block: ${error.message.split('\n')[0]}`, 'warn');
     }
-    if (this.running) this.tipTimer = setTimeout(() => this.followTip(), MiningPanel.TIP_POLL_MS);
+    this.followingTip = false;
+    if (this.running) this.tipTimer = setTimeout(() => this.followTip(), this.tipCheckWanted ? 0 : MiningPanel.TIP_POLL_MS);
+  }
+
+  /**
+   * Checks for a new tip now instead of at the next TIP_POLL_MS, keeping one polling loop:
+   * after a node takes this tab's block, mining moves onto it at once.
+   */
+  checkTipNow() {
+    if (!this.running) return;
+    clearTimeout(this.tipTimer);
+    this.followTip();
   }
 
   /**
