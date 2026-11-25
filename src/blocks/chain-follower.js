@@ -6,6 +6,7 @@
 import { Bytes } from '../core/bytes.js';
 import { BlockAssembler } from './assembler.js';
 import { BlockTransactions } from './block-transactions.js';
+import { BlockVerifier } from './block-verifier.js';
 
 export class ChainFollowError extends Error {
   /** A block that does not follow from the state (wrong parent, or a different root). */
@@ -35,6 +36,9 @@ export class ChainFollower {
     if (block.previous_block !== parent.indep_hash) {
       throw new ChainFollowError(`block ${block.height} is not on ${parent.height} (${parent.indep_hash.slice(0, 12)}…)`, { block });
     }
+    // A peer could hand over a forged block; its id and signature must check out first.
+    const forged = await BlockVerifier.problem(block);
+    if (forged) throw new ChainFollowError(`block ${block.height} is not genuine: ${forged}`, { block });
     if (block.double_signing_proof && Object.keys(block.double_signing_proof).length) {
       throw new ChainFollowError(`block ${block.height} carries a double-signing proof, whose ban and prover reward are not implemented`, { block });
     }

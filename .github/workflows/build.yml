@@ -85,6 +85,9 @@ jobs:
           if git fetch --depth 1 origin mainnet-fixtures; then git archive FETCH_HEAD | tar x; fi
           node test/mainnet-follow.test.mjs mainnet_fixtures
 
+      - name: Check captured blocks' ids and signatures, RSA and secp256k1
+        run: node test/block-verifier.test.mjs
+
       - name: Check the account tree against the localnet's blocks
         run: node test/account-tree.test.mjs localnet_fixtures
 
