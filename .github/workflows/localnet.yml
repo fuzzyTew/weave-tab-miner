@@ -35,6 +35,8 @@ env:
   # The Arweave commit this project's citations and ports were read from.
   ARWEAVE_COMMIT: 18d402c714132e1de3962b12ff32a420127e0c02
   LOCALNET_NODE: main-localnet@127.0.0.1
+  # The node mines its own blocks only in capture mode, which needs its data packed.
+  LOCALNET_PACKING: ${{ inputs.mode == 'capture' && 'replica_2_9' || 'unpacked' }}
   ERL_EPMD_ADDRESS: 127.0.0.1
 
 jobs:
@@ -82,19 +84,54 @@ jobs:
         working-directory: arweave
         run: ./ar-rebar3 localnet compile
 
+      # The node's data directory just after it first started (accounts and blocks copied
+      # from the snapshot, seed data stored and, if packed, packed), so later runs start
+      # from it. Saved right after starting, before any block is mined or posted, while the
+      # node idles (mining off, no syncing); RocksDB recovers a copy taken then as from a
+      # crash. If a restored copy ever fails to start, delete this cache in the Actions tab.
+      - name: Reuse the node's data directory from an earlier start
+        id: localnet-data
+        uses: actions/cache/restore@v4
+        with:
+          path: arweave/.tmp/data_localnet_main
+          key: localnet-data-${{ env.ARWEAVE_COMMIT }}-${{ env.LOCALNET_PACKING }}
+
       - name: Start the localnet
         working-directory: arweave
         run: |
           mkdir -p .tmp
+          started=$(date +%s)
           ERL_LOCALNET_OPTS="-pa $(./rebar3 as localnet path) $(./rebar3 as localnet path --base)/lib/arweave/test -config config/sys.config"
+          echo "$(( $(date +%s) - started )) s: paths ready; starting the node with $LOCALNET_PACKING storage"
+          # An unpacked storage module needs no RandomX packing; only capture mode, where the
+          # node mines its own blocks, needs it packed (ar_localnet:start uses any modules set).
+          if [ "$LOCALNET_PACKING" = unpacked ]; then
+            START='arweave_config:start(), ok = arweave_config:set([storage_modules], [{0, 21 * 1048576, unpacked}]), ar:shell_localnet().'
+          else
+            START='ar:shell_localnet().'
+          fi
           nohup erl $ERL_LOCALNET_OPTS -name "$LOCALNET_NODE" -setcookie localnet -noshell \
-            -s ar shell_localnet -eval "timer:sleep(infinity)." > .tmp/localnet.log 2>&1 &
-          for second in $(seq 1 600); do
-            info=$(curl -fsS --max-time 2 -H 'x-network: arweave.localnet' http://127.0.0.1:1984/info || true)
-            if echo "$info" | grep -q '"height":[0-9]'; then echo "ready after ${second} s: $info"; exit 0; fi
-            sleep 1
+            -eval "$START" -eval "timer:sleep(infinity)." > .tmp/localnet.log 2>&1 &
+          shown=0
+          for tick in $(seq 1 1200); do
+            # Each new log line, marked with the seconds since this step began.
+            total=$(wc -l < .tmp/localnet.log)
+            if [ "$total" -gt "$shown" ]; then
+              tail -n +$((shown + 1)) .tmp/localnet.log | head -n $((total - shown)) | sed "s/^/$(( $(date +%s) - started )) s: /"
+              shown=$total
+            fi
+            info=$(curl -fsS --max-time 1 -H 'x-network: arweave.localnet' http://127.0.0.1:1984/info 2>/dev/null || true)
+            if echo "$info" | grep -q '"height":[0-9]'; then echo "$(( $(date +%s) - started )) s: ready: $info"; exit 0; fi
+            sleep 0.5
           done
           echo "localnet did not start; its log:"; tail -200 .tmp/localnet.log; exit 1
+
+      - name: Save the node's data directory for later runs
+        if: steps.localnet-data.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: arweave/.tmp/data_localnet_main
+          key: localnet-data-${{ env.ARWEAVE_COMMIT }}-${{ env.LOCALNET_PACKING }}
 
       - name: Mine and save blocks
         if: inputs.mode == 'capture'
