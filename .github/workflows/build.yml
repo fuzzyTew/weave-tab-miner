@@ -56,7 +56,7 @@ jobs:
         run: node test/peer-access.test.mjs
 
       - name: Apply transactions to accounts, undo changes, and save and load the state
-        run: node test/account-changes.test.mjs && node test/chain-state-store.test.mjs
+        run: node test/account-changes.test.mjs && node test/chain-state-store.test.mjs && node test/network-target.test.mjs
 
       - name: Pick pending transactions only when certain they are valid
         run: node test/transaction-picker.test.mjs && node test/pending-transactions.test.mjs

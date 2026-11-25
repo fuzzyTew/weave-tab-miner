@@ -1,10 +1,13 @@
 # Starts an Arweave localnet (a private chain started from the snapshot in Arweave's
-# repository). Two modes:
+# repository). Three modes:
 #   capture — the node's own miner makes a few blocks, and each is committed with its
 #             parent's state to the localnet-fixtures branch; the block builder is checked
 #             against those blocks offline.
 #   post    — this library mines blocks itself and posts them (scripts/localnet-post.mjs);
 #             the run passes when the node takes every one as its new tip.
+#   page    — the built page, in headless Chrome, presses its one-button start against the
+#             node (through scripts/localnet-proxy.mjs) and mines and posts blocks on its own
+#             (scripts/localnet-page.mjs); the run passes when the node takes `blocks` of them.
 # Manual only: building Arweave takes a while, so it stays out of the per-push checks.
 name: Localnet fixtures
 
@@ -12,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "capture: the node mines blocks and they are saved as fixtures; post: this library mines blocks and posts them to the node"
+        description: "capture: the node mines blocks and they are saved as fixtures; post: this library mines blocks and posts them to the node; page: a browser tab does, from its one button"
         type: choice
-        options: [capture, post]
+        options: [capture, post, page]
         default: capture
       blocks:
         description: Blocks to mine (and save, or post)
@@ -99,6 +102,26 @@ jobs:
       - name: Mine blocks with this library and post them to the node
         if: inputs.mode == 'post'
         run: node scripts/localnet-post.mjs "${{ inputs.blocks }}" "${{ inputs.vdf_steps }}"
+
+      - name: Let a browser tab mine and post blocks to the node
+        if: inputs.mode == 'page'
+        env:
+          PLAYWRIGHT_CHANNEL: chrome
+        run: |
+          npm ci --ignore-scripts
+          node scripts/build-single-file.mjs
+          nohup node scripts/localnet-proxy.mjs 1985 http://127.0.0.1:1984 > localnet-proxy.log 2>&1 &
+          node scripts/localnet-page.mjs "${{ inputs.blocks }}" 40 http://127.0.0.1:1985
+
+      - name: Keep the page's last screenshot
+        if: always() && inputs.mode == 'page'
+        uses: actions/upload-artifact@v4
+        with:
+          name: localnet-page
+          path: |
+            localnet-page.png
+            localnet-proxy.log
+          if-no-files-found: ignore
 
       - name: Show the localnet log
         if: always()
