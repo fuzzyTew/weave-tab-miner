@@ -14,6 +14,9 @@ export class ArweaveGateway {
     // fastest first), then directly reachable nodes, then gateways.
     this.firstUrls = [];
     this.peerUrls = [];
+    // Addresses known to be Arweave nodes rather than gateways: most nodes do not serve
+    // chunks unpacked, so chunk requests try them last (see chunkJson).
+    this.nodeUrls = new Set();
     this.fallbackUrls = gatewayUrls;
     this.timeoutMs = timeoutMs;
     this.log = log;
@@ -28,7 +31,19 @@ export class ArweaveGateway {
   /** Try these node URLs (see src/network/peers.js) before the gateways; [] goes back to gateways only. */
   preferPeers(peerUrls) {
     this.peerUrls = peerUrls;
+    this.noteNodes(peerUrls);
     this.reorder();
+  }
+
+  /** Remembers these addresses as nodes, not gateways (for requests that try nodes last). */
+  noteNodes(urls) {
+    for (const url of urls) this.nodeUrls.add(url);
+  }
+
+  /** Sources in order, nodes moved after everything else when `nodesLast`. */
+  sourcesInOrder({ nodesLast = false } = {}) {
+    if (!nodesLast) return this.gatewayUrls;
+    return [...this.gatewayUrls.filter((url) => !this.nodeUrls.has(url)), ...this.gatewayUrls.filter((url) => this.nodeUrls.has(url))];
   }
 
   /** Try these sources before all others, in this order. */
@@ -48,9 +63,9 @@ export class ArweaveGateway {
    * requests a source may simply not have (a chunk it never stored answers 404), so one
    * missing item cannot wait on every source's timeout in turn.
    */
-  async request(path, { method = 'GET', body = undefined, headers = {}, readAs = 'json', firstGatewayOnly = false, maxSources = Infinity, timeoutMs = this.timeoutMs } = {}) {
+  async request(path, { method = 'GET', body = undefined, headers = {}, readAs = 'json', firstGatewayOnly = false, maxSources = Infinity, timeoutMs = this.timeoutMs, nodesLast = false } = {}) {
     const failures = [];
-    const gatewayUrls = this.gatewayUrls.slice(0, firstGatewayOnly ? 1 : maxSources);
+    const gatewayUrls = this.sourcesInOrder({ nodesLast }).slice(0, firstGatewayOnly ? 1 : maxSources);
     for (const gatewayUrl of gatewayUrls) {
       const url = gatewayUrl + path;
       try {
@@ -83,7 +98,9 @@ export class ArweaveGateway {
   /** The unpacked chunk covering a weave byte, as raw base64url text plus proofs. */
   /** GET /chunk/{endOffset}: the chunk holding byte endOffset - 1, with its proofs and absolute end. */
   async chunkJson(endOffset) {
-    return this.request(`/chunk/${endOffset.toString()}`, { maxSources: ArweaveGateway.CHUNK_MAX_SOURCES, timeoutMs: ArweaveGateway.CHUNK_TIMEOUT_MS });
+    // Gateways first: most mining nodes keep chunks packed and answer 404 for unpacked ones,
+    // and only CHUNK_MAX_SOURCES are asked, so nodes first would starve fetching.
+    return this.request(`/chunk/${endOffset.toString()}`, { maxSources: ArweaveGateway.CHUNK_MAX_SOURCES, timeoutMs: ArweaveGateway.CHUNK_TIMEOUT_MS, nodesLast: true });
   }
 
   // ---- wallets ----

@@ -74,6 +74,7 @@ jobs:
         run: |
           node test/held-storage.test.mjs
           node test/chunk-fetcher.test.mjs
+          node test/gateway-order.test.mjs
           node test/storage-archive.test.mjs
           node test/signing-guard-and-repack.test.mjs
 

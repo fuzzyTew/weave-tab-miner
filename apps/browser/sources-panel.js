@@ -123,6 +123,7 @@ export class SourcesPanel {
   sourceCandidates(seeds) {
     const gathered = BundledResources.gatheredSources();
     const nodeUrls = PeerAccess.blockedReason() ? [] : gathered.nodes.map((entry) => entry.url);
+    this.gateway.noteNodes(nodeUrls);
     return [...new Set([...seeds, ...this.gateway.gatewayUrls, ...gathered.gateways.map((entry) => entry.url), ...nodeUrls])];
   }
 
