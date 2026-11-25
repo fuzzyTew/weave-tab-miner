@@ -345,8 +345,9 @@ export class HoldingPanel {
     const estimate = await PackedChunkStore.estimate();
     this.storageQuotaBytes = estimate?.quota ?? null;
     this.refreshStorageSlider();
+    const kept = { true: ' The browser keeps it when space runs low.', false: ' The browser may clear it when space runs low, and may allow more once it agrees to keep it (asked when data is first fetched).', null: '' }[String(this.storageKept ?? null)];
     this.view.setText('storageNote', estimate
-      ? `This site uses ${PageView.formatBytes(estimate.usage ?? 0)} of browser storage, of ${PageView.formatBytes(estimate.quota ?? 0)} allowed.`
+      ? `This site uses ${PageView.formatBytes(estimate.usage ?? 0)} of browser storage, of ${PageView.formatBytes(estimate.quota ?? 0)} allowed (the browser sets this from the disk's free space).${kept}`
       : 'This browser does not report its storage limits.');
     await this.refreshSavedAddresses();
     this.refreshSummary();
@@ -399,6 +400,13 @@ export class HoldingPanel {
     if (this.holdStopper) {
       this.view.setText('holdStatus', 'Already fetching; "Stop early" ends it.');
       return;
+    }
+    if (this.storageKept === undefined) {
+      // Asked once, as data is first fetched: kept storage is not cleared under disk
+      // pressure, and Firefox then allows far more than its usual 10 GiB.
+      this.storageKept = await PackedChunkStore.persist();
+      if (this.storageKept !== null) this.view.log(this.storageKept ? 'the browser keeps this site\'s storage' : 'the browser did not agree to keep this site\'s storage; it may clear it when space runs low', this.storageKept ? 'info' : 'warn');
+      this.refreshStorageNote();
     }
     if (!this.identity || !this.session) {
       this.view.log('pick an identity and load a block first', 'warn');

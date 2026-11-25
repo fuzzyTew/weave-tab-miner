@@ -116,6 +116,21 @@ export class PackedChunkStore extends BrowserObjectStore {
     }
   }
 
+  /**
+   * Asks the browser to keep this site's storage (navigator.storage.persist), so it is not
+   * cleared when the disk runs low; Firefox also raises the site's limit from 10 GiB to up
+   * to half the free disk. Chrome decides silently, Firefox may ask the person. Resolves
+   * whether storage is kept, or null where the browser has no such setting.
+   */
+  static async persist() {
+    try {
+      if (!navigator.storage?.persist) return null;
+      return (await navigator.storage.persisted()) || (await navigator.storage.persist());
+    } catch {
+      return null;
+    }
+  }
+
   /** Bytes used and available to this site, if the browser says. */
   static async estimate() {
     try {
