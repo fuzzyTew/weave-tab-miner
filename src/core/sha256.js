@@ -10,6 +10,8 @@ export class Sha256 {
    * their padding block is the same every time, so its message schedule (the 64
    * expanded words SHA-256 derives from each block) is computed once and reused.
    */
+  /** One instance for the static helpers, made when the class is defined. */
+  static shared = new Sha256();
   static ROUND_CONSTANTS = new Uint32Array([
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -120,4 +122,3 @@ export class Sha256 {
     return Sha256.shared.digest(Bytes.concat(...parts));
   }
 }
-Sha256.shared = new Sha256();

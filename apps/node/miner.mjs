@@ -42,6 +42,16 @@ class CommandLineOptions {
 }
 
 class ServerMiner {
+  /** The command's entry point: parses `argv`, runs, and reports an error as the exit code. */
+  static async main(argv) {
+    try {
+      await new ServerMiner(CommandLineOptions.parse(argv)).run();
+    } catch (error) {
+      console.error(`error: ${error.message}`);
+      process.exitCode = 1;
+    }
+  }
+
   /**
    * Loads a block, holds packed chunks, and mines VDF steps from the chosen source,
    * printing one line per step and stopping at the first solution.
@@ -160,9 +170,4 @@ class ServerMiner {
   }
 }
 
-try {
-  await new ServerMiner(CommandLineOptions.parse(process.argv.slice(2))).run();
-} catch (error) {
-  console.error(`error: ${error.message}`);
-  process.exitCode = 1;
-}
+await ServerMiner.main(process.argv.slice(2));

@@ -31,6 +31,27 @@ import { InstalledApp } from './installed-app.js';
 
 class BrowserNodeApp {
   /**
+   * Each page section's logic lives in its own panel class; their methods join the app's,
+   * running with `this` as the app, so panels share its state (view, gateway, storage…).
+   * docs/ARCHITECTURE.md says why this is to become panels with their own state.
+   */
+  static PANELS = [SourcesPanel, HoldingPanel, MiningPanel, RecordsPanel, QuickStartPanel, PublishingPanel];
+
+  static includePanels() {
+    for (const panel of BrowserNodeApp.PANELS) {
+      for (const name of Object.getOwnPropertyNames(panel.prototype)) {
+        if (name !== 'constructor') Object.defineProperty(BrowserNodeApp.prototype, name, Object.getOwnPropertyDescriptor(panel.prototype, name));
+      }
+    }
+  }
+
+  /** The page's entry point: joins the panels' methods, then starts the app. */
+  static main() {
+    BrowserNodeApp.includePanels();
+    new BrowserNodeApp().run();
+  }
+
+  /**
    * The in-browser node: picks an identity, holds packed chunks (kept in browser storage),
    * follows the VDF and mines each step with real RandomX; it can also look up a wallet
    * and send a data transaction. Keys live in memory only.
@@ -239,12 +260,4 @@ class BrowserNodeApp {
   }
 }
 
-// Each page section's logic lives in its own panel class; their methods join the app's,
-// running with `this` as the app, so panels share its state (view, gateway, storage…).
-for (const panel of [SourcesPanel, HoldingPanel, MiningPanel, RecordsPanel, QuickStartPanel, PublishingPanel]) {
-  for (const name of Object.getOwnPropertyNames(panel.prototype)) {
-    if (name !== 'constructor') Object.defineProperty(BrowserNodeApp.prototype, name, Object.getOwnPropertyDescriptor(panel.prototype, name));
-  }
-}
-
-new BrowserNodeApp().run();
+BrowserNodeApp.main();
