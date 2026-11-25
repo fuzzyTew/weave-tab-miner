@@ -11,9 +11,12 @@ import { LocalnetClient } from './localnet-client.mjs';
 
 class LocalnetPageRun {
   static POLL_MS = 2000;
-  // Fails this soon after the page's status texts and the node's height stop changing, so
-  // a hang shows where it stopped instead of waiting out the whole allowance.
+  // Fails this soon after progress stops, so a hang shows where it stopped instead of
+  // waiting out the whole allowance. Before the tab first tries a block, progress is any
+  // status text changing (but the VDF line, which changes every step regardless); after
+  // it, only a block the node takes counts, since failed tries change the text too.
   static STALL_MS = 180000;
+  static FIRST_TRY = /Building the block/;
   // Page text worth following as it changes: where the tab is, stage by stage.
   static STATUS_ELEMENTS = ['quickStartStages', 'holdStatus', 'packStatus', 'vdfStatus', 'publishStatus'];
 
@@ -44,6 +47,7 @@ class LocalnetPageRun {
     const shown = {};
     let taken = [];
     let lastChange = Date.now();
+    let tried = false;
     let stalled = false;
     while (Date.now() < deadline) {
       if (Date.now() - lastChange > LocalnetPageRun.STALL_MS) {
@@ -54,7 +58,8 @@ class LocalnetPageRun {
       for (const [id, text] of Object.entries(await this.statuses(page))) {
         if (text && text !== shown[id]) {
           console.log(`[${id}] ${id === 'quickStartStages' ? text.split('\n').at(-1) : text}`);
-          lastChange = Date.now();
+          if (id === 'publishStatus' && LocalnetPageRun.FIRST_TRY.test(text)) tried = true;
+          if (!tried && id !== 'vdfStatus') lastChange = Date.now();
         }
         shown[id] = text;
       }
