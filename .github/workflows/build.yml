@@ -47,7 +47,7 @@ jobs:
         run: node test/randomx-against-block.test.mjs
 
       - name: Check the VDF server reply parser
-        run: node test/vdf-update.test.mjs
+        run: node test/vdf-update.test.mjs && node test/vdf-spot-check.test.mjs
 
       - name: Check the Solana gateway registry decoder against ar.io's encoder
         run: node test/solana-registry.test.mjs

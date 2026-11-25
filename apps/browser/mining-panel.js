@@ -7,6 +7,7 @@ import { VdfSession } from '../../src/mining/vdf.js';
 import { SolutionOdds } from '../../src/mining/odds.js';
 import { PeerAccess } from '../../src/network/peers.js';
 import { VdfServerClient, VdfServerPool } from '../../src/network/vdf-client.js';
+import { VdfSpotCheck } from '../../src/network/vdf-spot-check.js';
 import { BundledResources } from './resources.js';
 import { PageView } from './page-view.js';
 
@@ -222,11 +223,12 @@ export class MiningPanel {
       if (!this.running) return;
       try {
         const pollStarted = performance.now();
-        const { newest, fresh, gapFilled, missing } = await pool.poll(this.lastMinedStep);
+        const { newest, newestFrom, fresh, gapFilled, missing } = await pool.poll(this.lastMinedStep);
         this.pollMs.push(performance.now() - pollStarted);
         if (this.pollMs.length > 20) this.pollMs.shift();
         this.latestVdfUpdate = newest;
         this.session = this.session.withVdfUpdate(newest);
+        this.spotCheckVdf(pool, newest, newestFrom);
         if (gapFilled) this.gapsFilled++;
         this.stepsMissed += missing;
         // Steps well behind the newest are stale, so only the newest few are mined: at the
@@ -304,6 +306,49 @@ export class MiningPanel {
       if (this.running) await this.mineOne(stepNumber, previousOutput, 'this tab');
     };
     requestNext();
+  }
+
+  /**
+   * Now and then, recomputes one checkpoint of the newest server step in a worker of its
+   * own (VdfSpotCheck); a server whose step does not match is dropped from the pool.
+   */
+  async spotCheckVdf(pool, update, serverUrl) {
+    this.vdfSpotCheck ??= new VdfSpotCheck({ computeCheckpoint: (request) => this.computeCheckpointInWorker(request) });
+    if (!this.vdfSpotCheck.due(Date.now())) return;
+    try {
+      const result = await this.vdfSpotCheck.check(update, [this.session.vdfDifficulty, update.nextVdfDifficulty]);
+      if (!result.checked || result.matches) return;
+      const problem = `VDF server ${serverUrl} sent step ${result.stepNumber} with a checkpoint (${result.index + 1} of 25) that does not follow`;
+      // The last server is kept (mining would stop), but flagged: its steps may be worthless.
+      if (pool.clients.length === 1) {
+        this.view.log(`${problem}; it is the only server answering, so it is kept, but solutions on its steps may be worthless`, 'error');
+        return;
+      }
+      const remaining = pool.drop(serverUrl);
+      this.view.log(`${problem}; it is dropped, ${remaining} server${remaining === 1 ? '' : 's'} left`, 'error');
+    } catch (error) {
+      this.view.log(`could not spot-check the VDF server's step: ${error.message}`, 'warn');
+    }
+  }
+
+  /** One VDF checkpoint, computed in a worker kept for spot checks. */
+  computeCheckpointInWorker({ saltNumber, input, iterationsPerCheckpoint }) {
+    if (!this.vdfCheckWorker) {
+      this.vdfCheckWorker = BundledResources.worker('vdfWorkerSource');
+      this.vdfCheckRequests = new Map();
+      this.vdfCheckWorker.onmessage = ({ data }) => {
+        const request = this.vdfCheckRequests.get(data.checkpointRequest);
+        if (!request) return;
+        this.vdfCheckRequests.delete(data.checkpointRequest);
+        if (data.error) request.reject(new Error(data.error));
+        else request.resolve(data.output);
+      };
+    }
+    const id = (this.vdfCheckSequence = (this.vdfCheckSequence ?? 0) + 1);
+    return new Promise((resolve, reject) => {
+      this.vdfCheckRequests.set(id, { resolve, reject });
+      this.vdfCheckWorker.postMessage({ checkpointRequest: id, saltNumber, input, iterationsPerCheckpoint });
+    });
   }
 
   // ---- odds ----

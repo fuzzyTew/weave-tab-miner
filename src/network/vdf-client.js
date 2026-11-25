@@ -279,10 +279,16 @@ export class VdfServerPool {
       gapFilled = true;
     }
     return {
-      newest, gapFilled,
+      newest, gapFilled, newestFrom: this.clients[answers.findIndex((answer) => answer.value === newest)].serverUrl,
       missing: afterStep >= 0 ? this.record.missingSteps(afterStep, newest.stepNumber).length : 0,
       fresh: this.record.stepsAfter(afterStep).filter(([step]) => step <= newest.stepNumber),
     };
+  }
+
+  /** Stops polling `serverUrl` (one whose steps failed a check); resolves how many servers remain. */
+  drop(serverUrl) {
+    this.clients = this.clients.filter((client) => client.serverUrl !== serverUrl);
+    return this.clients.length;
   }
 
   /** Fills `record` with the steps since `afterStep`, from the previous and current sessions. */
