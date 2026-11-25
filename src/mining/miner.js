@@ -41,8 +41,10 @@ export class Miner {
     const h0 = await this.h0Hasher.hash(h0Preimage);
     let [range1Start, range2Start] = MiningMath.recallRangeStarts(h0, this.partitionNumber, session.partitionUpperBound);
     if (this.testMode.aimRange1AtHeldData) {
+      // The held chunk's last byte: inside it whatever its size (a small chunk below the
+      // strict data split threshold starts later than one chunk size before its end).
       const firstHeld = this.storage.packedChunks.keys().next().value;
-      if (firstHeld) range1Start = BigInt(firstHeld) - BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
+      if (firstHeld) range1Start = BigInt(firstHeld) - 1n;
     }
 
     const trace = {
