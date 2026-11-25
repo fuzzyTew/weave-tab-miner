@@ -56,6 +56,7 @@ export * from './storage/browser-object-store.js';
 export * from './storage/chain-state-store.js';
 export * from './storage/chunk-share.js';
 export * from './storage/chunk-store.js';
+export * from './storage/storage-allowance.js';
 export * from './wallet/bundle.js';
 export * from './wallet/transaction.js';
 export * from './wallet/wallet.js';

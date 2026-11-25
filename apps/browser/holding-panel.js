@@ -8,6 +8,7 @@ import { HeldStorage } from '../../src/mining/held-storage.js';
 import { ChunkFetcher } from '../../src/network/chunk-fetcher.js';
 import { ChunkShareBridge } from '../../src/storage/chunk-share.js';
 import { PackedChunkStore, PackedChunkArchive } from '../../src/storage/chunk-store.js';
+import { StorageAllowance } from '../../src/storage/storage-allowance.js';
 import { PageView } from './page-view.js';
 
 export class HoldingPanel {
@@ -268,24 +269,26 @@ export class HoldingPanel {
 
   // A new key: settings saved under the first slider were clamped to its 2 GiB range.
   static STORAGE_TARGET_KEY = 'weave-tab-miner.storage-target';
-  static STORAGE_STEP_BYTES = 64 * 2 ** 20;
 
-  /** The slider's setting in bytes: how much this tab aims to hold for its address. */
-  /**
-   * Bytes to fill: "max" is the usable share of the allowance; a set amount is kept as set,
-   * except where the browser's figure is a real limit (Firefox's), which caps it. Chrome's
-   * figure floats above what is used, so an amount past it is honoured.
-   */
+  /** The browser's allowance and the person's setting (rules in StorageAllowance). */
+  get storageAllowance() {
+    this.storageAllowanceState ??= new StorageAllowance();
+    return this.storageAllowanceState;
+  }
+
+  /** The browser's reported allowance in bytes, or null before it is known. */
+  get storageQuotaBytes() {
+    return this.storageAllowance.quotaBytes;
+  }
+
+  /** Bytes to fill toward; the slider's own range stands in before the allowance is known. */
   get storageTargetBytes() {
-    const usable = this.usableStorageBytes() ?? Number(this.view.elements.storageTargetInput.max);
-    const setting = this.storageTargetSetting ?? 'max';
-    if (setting === 'max') return usable;
-    return this.storageQuotaFloats ? setting : Math.min(setting, usable);
+    return this.storageAllowance.targetBytes ?? Number(this.view.elements.storageTargetInput.max);
   }
 
   /** Remembers the storage setting ("max" or bytes) and fills toward it. */
   setStorageTarget(setting) {
-    this.storageTargetSetting = setting;
+    this.storageAllowance.setting = setting;
     try {
       localStorage.setItem(HoldingPanel.STORAGE_TARGET_KEY, String(setting));
     } catch {
@@ -303,26 +306,22 @@ export class HoldingPanel {
    */
   setUpStorageSlider() {
     const slider = this.view.elements.storageTargetInput;
-    this.storageTargetSetting = 'max';
     try {
-      const saved = localStorage.getItem(HoldingPanel.STORAGE_TARGET_KEY);
-      if (Number(saved) > 0) this.storageTargetSetting = Number(saved);
+      this.storageAllowance.setting = StorageAllowance.parseSetting(localStorage.getItem(HoldingPanel.STORAGE_TARGET_KEY));
     } catch {
       // Storage refused: the default applies each visit.
     }
     slider.addEventListener('input', () => {
       // The track spans the whole allowance; the knob stops where the usable share ends.
-      const usable = this.usableStorageBytes();
+      const usable = this.storageAllowance.usableBytes;
       if (usable && Number(slider.value) > usable) slider.value = String(usable);
-      this.setStorageTarget(usable && Number(slider.value) >= usable ? 'max' : Number(slider.value));
+      this.setStorageTarget(this.storageAllowance.settingForPosition(Number(slider.value)));
     });
     // A typed amount, in GiB: the only way past Chrome's floating figure before it grows.
     const amount = this.view.elements.storageAmountInput;
     amount.addEventListener('change', () => {
       const gibibytes = Number(amount.value);
-      if (!(gibibytes > 0)) return;
-      const step = HoldingPanel.STORAGE_STEP_BYTES;
-      this.setStorageTarget(Math.max(step, Math.round(gibibytes * 2 ** 30 / step) * step));
+      if (gibibytes > 0) this.setStorageTarget(StorageAllowance.roundedToStep(gibibytes * 2 ** 30));
     });
     this.refreshStorageSlider();
   }
@@ -340,46 +339,34 @@ export class HoldingPanel {
   }
 
   /**
-   * The share of the browser's allowance chunks may fill. The allowance is an estimate,
-   * writes close to it fail, and the saved chain state (tens of MB) and the page's other
-   * data need room too, so the last tenth is left free.
-   */
-  static USABLE_STORAGE_SHARE = 0.9;
-
-  /** The most the slider may be set to, in whole steps, or null before the allowance is known. */
-  usableStorageBytes() {
-    if (!this.storageQuotaBytes) return null;
-    const step = HoldingPanel.STORAGE_STEP_BYTES;
-    return Math.max(step, Math.floor(this.storageQuotaBytes * HoldingPanel.USABLE_STORAGE_SHARE / step) * step);
-  }
-
-  /**
    * The slider's track (the whole allowance, so the knob's place shows the share used),
    * its position from the setting (at most the usable share), and its text and meter.
    */
   refreshStorageSlider() {
     const { storageTargetInput: slider, storageFillMeter: meter } = this.view.elements;
-    const step = HoldingPanel.STORAGE_STEP_BYTES;
-    if (this.storageQuotaBytes) slider.max = String(Math.max(step, Math.floor(this.storageQuotaBytes / step) * step));
+    const allowance = this.storageAllowance;
+    if (allowance.wholeBytes) slider.max = String(allowance.wholeBytes);
     const target = this.storageTargetBytes;
-    slider.value = String(Math.min(target, this.usableStorageBytes() ?? Number(slider.max)));
+    slider.value = String(Math.min(target, allowance.usableBytes ?? Number(slider.max)));
     const amount = this.view.elements.storageAmountInput;
     if (document.activeElement !== amount) amount.value = (target / 2 ** 30).toFixed(1);
     const held = this.storage.byteCount;
     meter.value = target ? Math.min(1, held / target) : 0;
-    const allowed = !this.storageQuotaBytes ? ''
-      : this.storageQuotaFloats ? `; Chrome now reports ${PageView.formatBytes(this.storageQuotaBytes)}, a figure that grows as chunks are saved`
-        : ` of about ${PageView.formatBytes(this.storageQuotaBytes)} this browser allows (the last tenth is left free)`;
+    const allowed = !allowance.quotaBytes ? ''
+      : allowance.quotaFloats ? `; Chrome now reports ${PageView.formatBytes(allowance.quotaBytes)}, a figure that grows as chunks are saved`
+        : ` of about ${PageView.formatBytes(allowance.quotaBytes)} this browser allows (the last tenth is left free)`;
     const over = held > target ? ' — more than set, so nothing more is fetched' : '';
     this.view.setText('storageTargetText', `${PageView.formatBytes(target)}${allowed}; ${PageView.formatBytes(held)} held (${target ? Math.round(held / target * 100) : 0}%)${over}`);
   }
 
-  /** Chunks still to fetch to reach the slider's setting; 0 when it is reached. */
   /** Chunks still to fetch to reach the storage setting, or the network's limit (a localnet's) if lower. */
   chunksToReachTarget() {
-    const toTarget = Math.ceil((this.storageTargetBytes - this.storage.byteCount) / ConsensusConstants.DATA_CHUNK_SIZE);
-    const limit = this.network.heldChunkLimit;
-    return Math.max(0, limit === null ? toTarget : Math.min(toTarget, limit - this.storage.packedChunks.size));
+    return this.storageAllowance.chunksToReach({
+      heldBytes: this.storage.byteCount,
+      heldChunkCount: this.storage.packedChunks.size,
+      chunkLimit: this.network.heldChunkLimit,
+      targetBytes: this.storageTargetBytes,
+    });
   }
 
   /**
@@ -399,11 +386,10 @@ export class HoldingPanel {
     if (this.storageKept === undefined) this.storageKept = await PackedChunkStore.persisted();
     this.view.elements.keepStorageButton.hidden = this.storageKept !== false;
     const estimate = await PackedChunkStore.estimate();
-    this.storageQuotaBytes = estimate?.quota ?? null;
-    this.storageQuotaFloats = Boolean(estimate && HoldingPanel.isFloatingQuota(estimate));
+    this.storageAllowance.estimate = estimate ?? null;
     this.refreshStorageSlider();
     const kept = { true: ' The browser keeps it when space runs low.', false: ' The browser may clear it when space runs low; asking it to keep it (below) prevents that, and in Firefox raises the limit.', null: '' }[String(this.storageKept ?? null)];
-    const floating = this.storageQuotaFloats
+    const floating = this.storageAllowance.quotaFloats
       ? ' (Chrome reports 10 GiB more than is used, not its real limit, so this grows as chunks are saved.)'
       : '';
     this.view.setText('storageNote', estimate
@@ -477,7 +463,7 @@ export class HoldingPanel {
     } else {
       const wanted = chunkCount ?? this.chunksToReachTarget();
       if (!wanted) {
-        this.view.setText('holdStatus', `Already holding ${PageView.formatBytes(this.storage.byteCount)}, at or over the ${PageView.formatBytes(this.storageTargetBytes)} set in "Storage to use". Move it up to hold more${this.storageTargetSetting === 'max' ? '; it is at the most this browser allows (a browser setting, or more free disk, raises that)' : ''}.`);
+        this.view.setText('holdStatus', `Already holding ${PageView.formatBytes(this.storage.byteCount)}, at or over the ${PageView.formatBytes(this.storageTargetBytes)} set in "Storage to use". Move it up to hold more${this.storageAllowance.setting === 'max' ? '; it is at the most this browser allows (a browser setting, or more free disk, raises that)' : ''}.`);
         return;
       }
       this.holdStoppedByPerson = false;
@@ -497,18 +483,10 @@ export class HoldingPanel {
    * or a fill adds nothing (the caller checks that, so this cannot loop on an empty fill).
    */
   continueFillingIfAllowedMore(chunkCount) {
-    if (chunkCount !== null || this.storageTargetSetting !== 'max' || this.holdStoppedByPerson || this.lastSaveFailed) return;
+    if (chunkCount !== null || this.storageAllowance.setting !== 'max' || this.holdStoppedByPerson || this.lastSaveFailed) return;
     if (!this.chunksToReachTarget()) return;
     this.view.log(`the browser now allows about ${PageView.formatBytes(this.storageQuotaBytes)}; filling on toward it`);
     setTimeout(() => this.fillStorageInBackground(), 0);
-  }
-
-  /** Bytes Chrome adds to a site's usage to report its quota (its "predictable" figure). */
-  static CHROME_REPORTED_HEADROOM = 10 * 2 ** 30;
-
-  /** Whether `estimate` is Chrome's usage-plus-10-GiB figure rather than a real limit. */
-  static isFloatingQuota(estimate) {
-    return Math.abs(estimate.quota - (estimate.usage ?? 0) - HoldingPanel.CHROME_REPORTED_HEADROOM) < 2 ** 20;
   }
 
   /**
