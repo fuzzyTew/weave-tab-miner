@@ -1,5 +1,6 @@
 // src/network/gateway.js — HTTP access to Arweave through public gateways, shared by the miner,
 // the wallet lookups and transaction submission. Works in browsers and in Node 18+.
+import { SourceRecord } from './source-record.js';
 
 export class ArweaveGateway {
   /**
@@ -14,9 +15,8 @@ export class ArweaveGateway {
     // fastest first), then directly reachable nodes, then gateways.
     this.firstUrls = [];
     this.peerUrls = [];
-    // Addresses known to be Arweave nodes rather than gateways: most nodes do not serve
-    // chunks unpacked, so chunk requests try them last (see chunkJson).
-    this.nodeUrls = new Set();
+    // Which sources have served chunks: chunk requests ask the best of them first.
+    this.chunkSources = new SourceRecord();
     this.fallbackUrls = gatewayUrls;
     this.timeoutMs = timeoutMs;
     this.log = log;
@@ -31,19 +31,7 @@ export class ArweaveGateway {
   /** Try these node URLs (see src/network/peers.js) before the gateways; [] goes back to gateways only. */
   preferPeers(peerUrls) {
     this.peerUrls = peerUrls;
-    this.noteNodes(peerUrls);
     this.reorder();
-  }
-
-  /** Remembers these addresses as nodes, not gateways (for requests that try nodes last). */
-  noteNodes(urls) {
-    for (const url of urls) this.nodeUrls.add(url);
-  }
-
-  /** Sources in order, nodes moved after everything else when `nodesLast`. */
-  sourcesInOrder({ nodesLast = false } = {}) {
-    if (!nodesLast) return this.gatewayUrls;
-    return [...this.gatewayUrls.filter((url) => !this.nodeUrls.has(url)), ...this.gatewayUrls.filter((url) => this.nodeUrls.has(url))];
   }
 
   /** Try these sources before all others, in this order. */
@@ -63,19 +51,26 @@ export class ArweaveGateway {
    * requests a source may simply not have (a chunk it never stored answers 404), so one
    * missing item cannot wait on every source's timeout in turn.
    */
-  async request(path, { method = 'GET', body = undefined, headers = {}, readAs = 'json', firstGatewayOnly = false, maxSources = Infinity, timeoutMs = this.timeoutMs, nodesLast = false } = {}) {
+  /**
+   * Asks sources in order until one answers. With `sourceRecord` (a SourceRecord), sources
+   * are asked best first by that record, and each outcome is added to it.
+   */
+  async request(path, { method = 'GET', body = undefined, headers = {}, readAs = 'json', firstGatewayOnly = false, maxSources = Infinity, timeoutMs = this.timeoutMs, sourceRecord = null } = {}) {
     const failures = [];
-    const gatewayUrls = this.sourcesInOrder({ nodesLast }).slice(0, firstGatewayOnly ? 1 : maxSources);
+    const ordered = sourceRecord ? sourceRecord.ranked(this.gatewayUrls) : this.gatewayUrls;
+    const gatewayUrls = ordered.slice(0, firstGatewayOnly ? 1 : maxSources);
     for (const gatewayUrl of gatewayUrls) {
       const url = gatewayUrl + path;
       try {
         const response = await fetch(url, { method, body, headers, signal: AbortSignal.timeout(timeoutMs) });
         if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}: ${(await response.text()).slice(0, 300)}`);
+        const answer = readAs === 'bytes' ? new Uint8Array(await response.arrayBuffer())
+          : readAs === 'json' ? JSON.parse(await response.text()) : await response.text();
         this.lastAnsweredBy = gatewayUrl;
-        if (readAs === 'bytes') return new Uint8Array(await response.arrayBuffer());
-        const text = await response.text();
-        return readAs === 'json' ? JSON.parse(text) : text;
+        sourceRecord?.record(gatewayUrl, true);
+        return answer;
       } catch (error) {
+        sourceRecord?.record(gatewayUrl, false);
         const reason = `${method} ${url}: ${error.name}: ${error.message}`;
         failures.push(reason);
         this.log(`request failed — ${reason}`);
@@ -95,12 +90,13 @@ export class ArweaveGateway {
   static CHUNK_MAX_SOURCES = 4;
   static CHUNK_TIMEOUT_MS = 10000;
 
-  /** The unpacked chunk covering a weave byte, as raw base64url text plus proofs. */
-  /** GET /chunk/{endOffset}: the chunk holding byte endOffset - 1, with its proofs and absolute end. */
+  /**
+   * GET /chunk/{endOffset}: the chunk holding byte endOffset - 1, with its proofs and
+   * absolute end. Sources are asked best first by their chunk record (chunkSources), so
+   * whichever serve, nodes or gateways, are asked first, and ones that do not drop back.
+   */
   async chunkJson(endOffset) {
-    // Gateways first: most mining nodes keep chunks packed and answer 404 for unpacked ones,
-    // and only CHUNK_MAX_SOURCES are asked, so nodes first would starve fetching.
-    return this.request(`/chunk/${endOffset.toString()}`, { maxSources: ArweaveGateway.CHUNK_MAX_SOURCES, timeoutMs: ArweaveGateway.CHUNK_TIMEOUT_MS, nodesLast: true });
+    return this.request(`/chunk/${endOffset.toString()}`, { maxSources: ArweaveGateway.CHUNK_MAX_SOURCES, timeoutMs: ArweaveGateway.CHUNK_TIMEOUT_MS, sourceRecord: this.chunkSources });
   }
 
   // ---- wallets ----

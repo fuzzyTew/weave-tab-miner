@@ -261,6 +261,8 @@ export class HoldingPanel {
     if (!this.lastSaveFailed) {
       this.storage.markReloadable(entries.map(([offset]) => offset));
       this.view.log(`saved ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} to browser storage${this.storageKept === false ? ' (the browser may clear it if disk runs low)' : ''}`);
+      const sources = this.gateway.chunkSources.summary();
+      if (sources) this.view.log(`chunks served so far, by source (served of asked): ${sources}`);
     }
     await this.refreshStorageNote();
   }
