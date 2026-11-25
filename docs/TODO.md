@@ -69,9 +69,10 @@ height 2,069,866 with their parents' state, captured).
        - A browser tab, from its one button: the workflow's `page` mode opens the built
          page in headless Chrome at `?localnet=` (a `NetworkTarget`, through
          `scripts/localnet-proxy.mjs`) and waits for the node to take its blocks. The node
-         took the tab's blocks 2,069,866 and 2,069,867 (its own accounts, packing, VDF steps
-         and signatures) in 107 s from pressing the button. One earlier run had its second
-         block dropped at the node's step-number check; each post now logs its VDF facts.
+         took 5 blocks in a row from the tab, one per VDF step (its own accounts, packing,
+         VDF steps and signatures), 157 s from pressing the button. One early run had its
+         second block dropped at the node's step-number check; each post now logs its VDF
+         facts, and it has not recurred.
        - The VDF difficulty retarget (every 720 heights): the daily capture keeps the newest
          retarget block, and the replay matched block 2,049,120's move from 1,170,436 to
          1,172,665 (`test/mainnet-follow.test.mjs`).
