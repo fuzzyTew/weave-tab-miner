@@ -227,6 +227,9 @@ class BrowserNodeApp {
     // switches to the sample's own miner to replay its solution.
     this.loadSampleBlock();
     await this.useSharedKey();
+    if (!this.network.isMainnet) {
+      this.view.log(`on a ${this.network.name} at ${this.network.nodeUrls.join(', ')}, not the mainnet: its rules take any held chunk and any hash, and VDF steps are computed here`, 'warn');
+    }
     this.view.log('ready: the shared key and the sample block. "Verify against the sample" replays a real solution; load the live block to mine.');
   }
 }
