@@ -55,7 +55,7 @@ grouped by area; each file holds one concern and opens with a line saying what i
 | `src/wallet/` | `wallet.js` RSA keys · `transaction.js` signed transactions · `bundle.js` ANS-104 items for Turbo |
 | `apps/browser/` | The page: `index.html`; `app.js` (startup, identity, RandomX, wiring) and one panel module per page section — `sources-panel.js`, `holding-panel.js`, `mining-panel.js`, `publishing-panel.js`, `records-panel.js`, `quick-start-panel.js` — whose methods join the app's; `page-view.js`, `step-explorer.js`, `resources.js` |
 | `apps/node/miner.mjs` | Server mode, same library |
-| `scripts/` | The single-file build (follows imports, so new modules need no list), source gathering, the live network check, the localnet workflow's capture and post, page screenshots |
+| `scripts/` | The single-file build (follows imports, so new modules need no list), source gathering, the live network check, the localnet workflow's capture, post, and page run (with the proxy a page needs to reach a localnet node), page screenshots |
 | `test/` | Tests (`*.test.mjs`, run by `npm test`; the localnet ones read the `localnet-fixtures` branch, `mainnet-blocks.test.mjs` needs the network), the page check, and `fixtures/` |
 | `data/` | Build inputs: the sample block, gathered sources, the shared key, the page's permaweb id |
 | `vendor/randomx-arweave/` | randomx.js built for Arweave, with its patch and build notes |

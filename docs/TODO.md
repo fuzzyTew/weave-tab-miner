@@ -66,6 +66,9 @@ height 2,069,866 with their parents' state, captured).
          a row across a price adjustment; the localnet never retargets, so retargets are
          checked against live mainnet blocks (`test/mainnet-blocks.test.mjs`, 6 of 6, and a
          price adjustment).
+       - A browser tab, from its one button: the workflow's `page` mode opens the built
+         page in headless Chrome at `?localnet=` (a `NetworkTarget`, through
+         `scripts/localnet-proxy.mjs`) and waits for the node to take its blocks.
        Left: the VDF difficulty retarget (every 720 heights; written, not yet met by a
        test), secp256k1 signing (optional; RSA keys also mine), transactions in blocks
        (empty blocks only so far), and the true end: a real solution beating the real
