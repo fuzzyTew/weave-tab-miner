@@ -111,7 +111,7 @@ jobs:
           npm ci --ignore-scripts
           node scripts/build-single-file.mjs
           nohup node scripts/localnet-proxy.mjs 1985 http://127.0.0.1:1984 > localnet-proxy.log 2>&1 &
-          node scripts/localnet-page.mjs "${{ inputs.blocks }}" 40 http://127.0.0.1:1985
+          node scripts/localnet-page.mjs "${{ inputs.blocks }}" 20 http://127.0.0.1:1985
 
       - name: Keep the page's last screenshot
         if: always() && inputs.mode == 'page'

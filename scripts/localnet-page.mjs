@@ -10,7 +10,10 @@ import { resolve } from 'node:path';
 import { LocalnetClient } from './localnet-client.mjs';
 
 class LocalnetPageRun {
-  static POLL_MS = 10000;
+  static POLL_MS = 2000;
+  // Fails this soon after the page's status texts and the node's height stop changing, so
+  // a hang shows where it stopped instead of waiting out the whole allowance.
+  static STALL_MS = 180000;
   // Page text worth following as it changes: where the tab is, stage by stage.
   static STATUS_ELEMENTS = ['quickStartStages', 'holdStatus', 'packStatus', 'vdfStatus', 'publishStatus'];
 
@@ -40,16 +43,26 @@ class LocalnetPageRun {
     const deadline = Date.now() + this.minutesAllowed * 60000;
     const shown = {};
     let taken = [];
+    let lastChange = Date.now();
+    let stalled = false;
     while (Date.now() < deadline) {
+      if (Date.now() - lastChange > LocalnetPageRun.STALL_MS) {
+        stalled = true;
+        break;
+      }
       await new Promise((done) => setTimeout(done, LocalnetPageRun.POLL_MS));
       for (const [id, text] of Object.entries(await this.statuses(page))) {
-        if (text && text !== shown[id]) console.log(`[${id}] ${id === 'quickStartStages' ? text.split('\n').at(-1) : text}`);
+        if (text && text !== shown[id]) {
+          console.log(`[${id}] ${id === 'quickStartStages' ? text.split('\n').at(-1) : text}`);
+          lastChange = Date.now();
+        }
         shown[id] = text;
       }
       const height = await this.client.height();
       for (let next = startHeight + 1 + taken.length; next <= height; next++) {
         const block = await this.client.get(`/block/height/${next}`);
         taken.push(block);
+        lastChange = Date.now();
         console.log(`TAKEN  block ${next} (${block.indep_hash.slice(0, 12)}…) rewarding ${block.reward_addr.slice(0, 12)}…, ${block.txs.length} transactions, VDF step ${block.nonce_limiter_info.global_step_number}`);
       }
       if (taken.length >= this.blocksWanted) break;
@@ -59,7 +72,8 @@ class LocalnetPageRun {
     await page.screenshot({ path: 'localnet-page.png', fullPage: true });
     await browser.close();
     if (taken.length < this.blocksWanted) {
-      console.log(`FAIL  the node took ${taken.length} of ${this.blocksWanted} blocks from the tab in ${this.minutesAllowed} minutes`);
+      const why = stalled ? `nothing changed for ${LocalnetPageRun.STALL_MS / 1000} s` : `${this.minutesAllowed} minutes passed`;
+      console.log(`FAIL  the node took ${taken.length} of ${this.blocksWanted} blocks from the tab before ${why}`);
       process.exitCode = 1;
     } else {
       console.log(`PASS  the node took ${taken.length} blocks mined and posted by the tab`);
