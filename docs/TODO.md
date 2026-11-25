@@ -72,10 +72,14 @@ height 2,069,866 with their parents' state, captured).
          took the tab's blocks 2,069,866 and 2,069,867 (its own accounts, packing, VDF steps
          and signatures) in 107 s from pressing the button. One earlier run had its second
          block dropped at the node's step-number check; each post now logs its VDF facts.
-       Left: the VDF difficulty retarget (every 720 heights; written, not yet met by a
-       test), secp256k1 signing (optional; RSA keys also mine), transactions in blocks
-       (empty blocks only so far), and the true end: a real solution beating the real
-       difficulty, posted to peers, and kept by the network against competing blocks.
+       - The VDF difficulty retarget (every 720 heights): the daily capture keeps the newest
+         retarget block, and the replay matched block 2,049,120's move from 1,170,436 to
+         1,172,665 (`test/mainnet-follow.test.mjs`).
+       - Transactions in blocks: mainnet blocks with up to 170 rebuild with their ids, and
+         pending transactions are picked on followed state (localnet blocks carry none).
+       Left: secp256k1 signing (optional; RSA keys also mine), and the true end: a real
+       solution beating the real difficulty, posted to peers, and kept by the network
+       against competing blocks.
 
 To continue in a new conversation with Claude, a prompt like this works:
 
