@@ -179,9 +179,10 @@
       <div class="reminder">
         <h3>Not finished yet</h3>
         <ul class="stage-note">
-          <li>Blocks this tab builds carry no transactions yet, so they earn the reward but store nobody's data.</li>
+          <li>No block from a tab has yet been seen on the mainnet. A test network has taken a tab's block, with the tab's own accounts, packing, VDF steps and signature; its second block is under study.</li>
           <li>Tabs sharing a key on different devices could both solve at one height; signing both would get the key banned. Rare; waits on tabs being able to talk to each other.</li>
-          <li>Each visit reads all accounts (about 300,000) from a node again before it can publish.</li>
+          <li>The first visit reads all accounts (about 300,000) from a node before it can publish, which takes minutes on a phone; later visits within a day catch up block by block.</li>
+          <li>The weave's oldest partitions (0–8) are held by their chunks' own ends, not yet seen in a mainnet block, so the page picks partitions from 9 on.</li>
         </ul>
         <p class="stage-note">The full list, with what is done, is docs/TODO.md. To continue with Claude, ask: “Continue weave-tab-miner (github.com/fuzzyTew/weave-tab-miner): pick the next task in docs/TODO.md, test it against real nodes, and commit each step separately.”</p>
       </div>
