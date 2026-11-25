@@ -200,10 +200,9 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
 - [ ] Phones: see what an old phone manages for the first read and hash, and the snapshot's
       save (about 1 s in Node, every 10 blocks).
 - [ ] Hold the weave's oldest partitions (0–8, below the strict data split threshold), where
-      chunks have their own sizes and borders: file each by its own end offset (GET /chunk's
-      `absolute_end_offset`), find a recall byte's chunk by containment, and pack each at its
-      end. Until then the page holds partitions from 9 on; a solution rebuild already packs
-      at the chunk's end.
+      chunks have their own sizes and borders: they are now filed by their own end offset
+      (GET /chunk's `absolute_end_offset`), found by containment and packed at their end, as
+      a localnet holds them; see one make a mainnet block before the random pick includes them.
 - [ ] Shared-key tabs on different devices could each solve at one height and both sign,
       which is double-signing; each tab's guard knows only its own signatures. Rare, so
       postponed until tabs can talk to each other (libp2p or similar).

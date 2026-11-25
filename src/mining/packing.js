@@ -98,9 +98,21 @@ export class Replica29Layout {
   }
 
   /**
+   * The end offset a held chunk is filed and packed under: above the strict data split
+   * threshold the end of the bucket holding `weaveByte` (the chunk's own bucket, and the
+   * key earlier saves used); below it the chunk's own end, from GET /chunk's
+   * `absolute_end_offset`, since chunks there have their own borders. Both give the
+   * entropy ar_poa expects.
+   */
+  static storedEndOffset(chunkJson, weaveByte) {
+    if (weaveByte >= ConsensusConstants.STRICT_DATA_SPLIT_THRESHOLD) return Replica29Layout.bucketEndOffsetForByte(weaveByte);
+    return Replica29Layout.chunkEndOffset(chunkJson, weaveByte);
+  }
+
+  /**
    * The first partition lying wholly above the strict data split threshold, where every
    * chunk fills one bucket. Below it a recall byte's chunk has its own borders, which held
-   * storage does not track (it files chunks by bucket), so only these partitions are held.
+   * storage finds by the chunk's end (HeldStorage.keyForByte); not yet seen in a mainnet block.
    */
   static firstBucketAlignedPartition() {
     const partitionSize = ConsensusConstants.PARTITION_SIZE;

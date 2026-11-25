@@ -81,8 +81,9 @@ export class ArweaveGateway {
   static CHUNK_TIMEOUT_MS = 10000;
 
   /** The unpacked chunk covering a weave byte, as raw base64url text plus proofs. */
-  async chunkJson(weaveByte) {
-    return this.request(`/chunk/${weaveByte.toString()}`, { maxSources: ArweaveGateway.CHUNK_MAX_SOURCES, timeoutMs: ArweaveGateway.CHUNK_TIMEOUT_MS });
+  /** GET /chunk/{endOffset}: the chunk holding byte endOffset - 1, with its proofs and absolute end. */
+  async chunkJson(endOffset) {
+    return this.request(`/chunk/${endOffset.toString()}`, { maxSources: ArweaveGateway.CHUNK_MAX_SOURCES, timeoutMs: ArweaveGateway.CHUNK_TIMEOUT_MS });
   }
 
   // ---- wallets ----

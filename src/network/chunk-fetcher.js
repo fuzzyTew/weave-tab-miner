@@ -55,12 +55,10 @@ export class ChunkFetcher {
       if (next.done) { positionsLeft = false; return; }
       const weaveByte = next.value;
       inFlight++;
-      this.gateway.chunkJson(weaveByte).then((reply) => {
+      // GET /chunk/{offset} answers the chunk holding byte offset - 1.
+      this.gateway.chunkJson(weaveByte + 1n).then((reply) => {
         const bytes = Bytes.fromBase64Url(reply.chunk);
-        // Filed under the 256 KiB bucket holding the byte asked for, which is the chunk's
-        // own bucket above the strict data split threshold, where held partitions lie
-        // (Replica29Layout.firstBucketAlignedPartition).
-        ready.push({ bytes, endOffset: Replica29Layout.bucketEndOffsetForByte(weaveByte) });
+        ready.push({ bytes, endOffset: Replica29Layout.storedEndOffset(reply, weaveByte) });
         progress.fetched++;
         progress.bytes += bytes.length;
       }, (error) => {

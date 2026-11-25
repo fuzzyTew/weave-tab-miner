@@ -66,6 +66,17 @@ class HeldStorageTest {
     const stepReport = await miner.mineStep({ seed: new Uint8Array(48), partitionUpperBound: 10n ** 15n, networkDiff: (1n << 256n) - 1n }, 1, new Uint8Array(32));
     report(`a step over ${chunksPerRange} held chunks with room for 4 in memory tries every nonce`, stepReport.noncesTried === ConsensusConstants.noncesPerRecallRange && ranged.residentCount <= 4 + 2,
       `${stepReport.noncesTried} of ${ConsensusConstants.noncesPerRecallRange} tried, ${rangeReads} reads, ${ranged.residentCount} in memory after; ${stepReport.timings.totalMs.toFixed(0)} ms`);
+
+    // Below the strict data split threshold chunks keep their own ends, off the bucket grid:
+    // a byte is found in the first held chunk ending past it, within one chunk's size.
+    const unaligned = new HeldStorage();
+    const bucket = BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
+    const ends = [1000n + bucket, 1000n + 2n * bucket, 1000n + 5n * bucket];
+    ends.forEach((end, index) => unaligned.add(end, chunkFor(index)));
+    report('below the threshold, a byte is found in the chunk holding it by its own end',
+      unaligned.chunkForByte(1000n)?.[0] === 1 && unaligned.chunkForByte(1000n + bucket)?.[0] === 2
+      && unaligned.chunkForByte(1000n + 2n * bucket) === null && unaligned.chunkForByte(1000n + 4n * bucket + 5n)?.[0] === 3
+      && unaligned.chunkForByte(999n) === null);
     return failures;
   }
 }

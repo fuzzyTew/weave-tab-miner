@@ -372,7 +372,8 @@ export class HoldingPanel {
       // Storage refused: a fresh random pick each visit still spreads tabs out.
     }
     // The last partition may be partly filled, and the first few hold chunks that do not
-    // fill whole buckets (see Replica29Layout.firstBucketAlignedPartition); the pick avoids both.
+    // fill whole buckets (see Replica29Layout.firstBucketAlignedPartition), whose holding is
+    // not yet proven on the mainnet; the pick avoids both.
     const first = Replica29Layout.firstBucketAlignedPartition();
     if (remembered !== null && Number(remembered) >= first && Number(remembered) < partitionCount) return Number(remembered);
     const picked = first + Math.floor(Math.random() * Math.max(1, partitionCount - 1 - first));

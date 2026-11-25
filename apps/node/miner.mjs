@@ -83,8 +83,9 @@ class ServerMiner {
       const firstByte = partitionStart + BigInt(Math.floor(Math.random() * Number(ConsensusConstants.entropySectorSize)));
       for (const weaveByte of Replica29Layout.entropySharingBytes(firstByte, Number(this.options.chunks), this.session.partitionUpperBound)) {
         try {
-          const chunk = Bytes.fromBase64Url((await this.gateway.chunkJson(weaveByte)).chunk);
-          fetched.push({ bytes: chunk, endOffset: Replica29Layout.bucketEndOffsetForByte(weaveByte) });
+          const reply = await this.gateway.chunkJson(weaveByte + 1n);
+          const chunk = Bytes.fromBase64Url(reply.chunk);
+          fetched.push({ bytes: chunk, endOffset: Replica29Layout.storedEndOffset(reply, weaveByte) });
           console.log(`fetched ${chunk.length} bytes at weave byte ${weaveByte}`);
         } catch (error) {
           console.error(`chunk at ${weaveByte} failed: ${error.message}`);

@@ -58,10 +58,10 @@ class LiveNetworkCheck {
       });
       await this.attempt(url, 'GET /chunk/{offset} for a byte in the block\'s partition', true, async () => {
         const byte = BigInt(block.recall_byte);
-        const reply = await gateway.chunkJson(byte);
+        const reply = await gateway.chunkJson(byte + 1n);
         const chunk = Bytes.fromBase64Url(reply.chunk);
         if (!reply.data_path || !reply.tx_path) throw new Error('no data_path or tx_path in the reply');
-        return `${chunk.length} bytes, bucket end ${Replica29Layout.bucketEndOffsetForByte(byte)}`;
+        return `${chunk.length} bytes, filed at ${Replica29Layout.storedEndOffset(reply, byte)}`;
       });
     }
     await this.attempt(url, 'GET /price/1000', true, async () => `${await gateway.priceWinston(1000)} winston`);

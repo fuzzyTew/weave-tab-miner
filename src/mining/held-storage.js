@@ -5,8 +5,9 @@ import { Replica29Layout } from './packing.js';
 
 export class HeldStorage {
   /**
-   * The packed chunks this node holds, keyed by bucket end offset, each one 256 KiB buffer
-   * of 32 packed sub-chunks. A real node keeps terabytes on disk; a tab keeps what its
+   * The packed chunks this node holds, keyed by end offset (Replica29Layout.storedEndOffset:
+   * the bucket's end above the strict data split threshold, the chunk's own end below it,
+   * where chunks do not fill whole buckets), each one 256 KiB buffer of 32 packed sub-chunks. A real node keeps terabytes on disk; a tab keeps what its
    * browser storage allows (see src/storage/chunk-store.js).
    *
    * Every held chunk is known by its offset, but only some need to be in memory. Given
@@ -21,19 +22,54 @@ export class HeldStorage {
     this.loadChunk = loadChunk;
     this.residentLimit = residentLimit;
     this.resident = new Set(); // offsets in memory, least recently used first
+    this.unalignedEnds = []; // held end offsets below the threshold, ascending (BigInt)
   }
 
-  add(bucketEndOffset, packedChunk, { reloadable = false } = {}) {
-    const key = bucketEndOffset.toString();
+  /** Notes an end offset below the threshold, where finding a byte's chunk needs a search. */
+  noteEnd(key) {
+    const end = BigInt(key);
+    if (end > ConsensusConstants.STRICT_DATA_SPLIT_THRESHOLD || this.packedChunks.has(key)) return;
+    const index = this.firstEndAfter(end - 1n);
+    this.unalignedEnds.splice(index, 0, end);
+  }
+
+  /** The index of the first unaligned end offset past `weaveByte` (a binary search). */
+  firstEndAfter(weaveByte) {
+    let low = 0;
+    let high = this.unalignedEnds.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (this.unalignedEnds[middle] > weaveByte) high = middle;
+      else low = middle + 1;
+    }
+    return low;
+  }
+
+  /**
+   * The key of the held chunk holding `weaveByte`: its bucket's end above the threshold;
+   * below it, the first held end past the byte, if within a chunk's size (chunks there
+   * are contiguous, so that one holds the byte).
+   */
+  keyForByte(weaveByte) {
+    if (weaveByte >= ConsensusConstants.STRICT_DATA_SPLIT_THRESHOLD) return Replica29Layout.bucketEndOffsetForByte(weaveByte).toString();
+    const end = this.unalignedEnds[this.firstEndAfter(weaveByte)];
+    if (end !== undefined && end - weaveByte <= BigInt(ConsensusConstants.DATA_CHUNK_SIZE)) return end.toString();
+    return null;
+  }
+
+  add(endOffset, packedChunk, { reloadable = false } = {}) {
+    const key = endOffset.toString();
+    this.noteEnd(key);
     this.packedChunks.set(key, packedChunk);
     if (reloadable) this.reloadable.add(key);
     this.touch(key);
   }
 
   /** A chunk saved where loadChunk can read it, known by offset only until needed. */
-  addOnDisk(bucketEndOffset) {
-    const key = bucketEndOffset.toString();
+  addOnDisk(endOffset) {
+    const key = endOffset.toString();
     if (this.packedChunks.get(key)) return;
+    this.noteEnd(key);
     this.packedChunks.set(key, null);
     this.reloadable.add(key);
   }
@@ -66,8 +102,8 @@ export class HeldStorage {
    * than `residentLimit` chunks at once, or the first may leave memory again before use.
    */
   async ensureLoaded(weaveBytes) {
-    const keys = [...new Set(weaveBytes.map((byte) => Replica29Layout.bucketEndOffsetForByte(byte).toString()))]
-      .filter((key) => this.packedChunks.has(key));
+    const keys = [...new Set(weaveBytes.map((byte) => this.keyForByte(byte)))]
+      .filter((key) => key !== null && this.packedChunks.has(key));
     const onDisk = keys.filter((key) => this.packedChunks.get(key) === null && this.loadChunk);
     const read = await Promise.all(onDisk.map((key) => this.loadChunk(BigInt(key))));
     onDisk.forEach((key, index) => {
@@ -85,7 +121,8 @@ export class HeldStorage {
 
   /** The packed chunk holding `weaveByte`, if held and in memory; else null. */
   chunkForByte(weaveByte) {
-    return this.packedChunks.get(Replica29Layout.bucketEndOffsetForByte(weaveByte).toString()) ?? null;
+    const key = this.keyForByte(weaveByte);
+    return key === null ? null : this.packedChunks.get(key) ?? null;
   }
 
   /** Sub-chunk `subChunkIndex` of a packed chunk, or null for no chunk. */
