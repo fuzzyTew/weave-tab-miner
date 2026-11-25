@@ -25,9 +25,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build the page
+      - name: Build the page, with sources gathered as the published build does
         run: |
           npm ci --ignore-scripts
+          node scripts/gather-sources.mjs data/sources.json || echo "gathering failed; the page looks for peers itself"
           node scripts/build-single-file.mjs
 
       - name: Follow the page from the one-button start

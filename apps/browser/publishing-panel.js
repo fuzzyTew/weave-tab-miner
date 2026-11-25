@@ -75,9 +75,16 @@ export class PublishingPanel {
     this.preparingFollower = true;
     this.follower = null;
     try {
-      const urls = this.publishNodeUrls();
+      let urls = this.publishNodeUrls();
       if (!urls.length) {
-        this.setPublishStatus('Not publishing: no Arweave nodes known yet. Press "Find gateways and peers" in Network, then start again.');
+        // No nodes gathered with this copy (or the gathering failed): look for peers now
+        // rather than ask the person to, since the one-button start relies on this.
+        this.setPublishStatus('Getting ready to publish: looking for Arweave nodes…');
+        await this.findPeers();
+        urls = this.publishNodeUrls();
+      }
+      if (!urls.length) {
+        this.setPublishStatus('Not publishing: no Arweave node answered. "Find gateways and peers" in Network tries again; the activity log says why each failed.');
         return;
       }
       const tip = this.block;
