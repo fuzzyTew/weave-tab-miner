@@ -91,14 +91,19 @@ class MainnetFollowTest {
 
   /**
    * The newest VDF difficulty retarget height's next_vdf_difficulty, worked out from its
-   * parent and the parent's block-time history. Whether the difficulty actually moved there
-   * depends on the previous change having taken effect, which the detail says.
+   * parent and the parent's block-time history: the start block's, less the entries of the
+   * blocks after the parent (a history lists the newest block first). Whether the
+   * difficulty actually moved there depends on the previous change having taken effect,
+   * which the detail says.
    */
   checkVdfRetarget() {
     const file = `${this.fixturesDirectory}/vdf_retarget.json`;
-    if (!existsSync(file)) return console.log('SKIP  VDF retarget: no block-time history was served for one');
-    const { parent, blockTimeHistory, child } = JSON.parse(readFileSync(file, 'utf8'));
-    const computed = VdfInfo.nextVdfDifficulty(parent, BlockTimeHistory.fromBinary(Bytes.fromBase64Url(blockTimeHistory)));
+    if (!existsSync(file)) return console.log('SKIP  VDF retarget: none was captured');
+    const start = JSON.parse(readFileSync(`${this.fixturesDirectory}/start.json`, 'utf8'));
+    const startHistory = BlockTimeHistory.fromBinary(Bytes.fromBase64Url(start.blockTimeHistory));
+    const { parent, historyOffset, child } = JSON.parse(readFileSync(file, 'utf8'));
+    const parentHistory = new BlockTimeHistory(startHistory.entries.slice(historyOffset));
+    const computed = VdfInfo.nextVdfDifficulty(parent, parentHistory);
     const info = parent.nonce_limiter_info;
     const moved = String(info.vdf_difficulty) === String(info.next_vdf_difficulty);
     this.report(`block ${child.height}'s next VDF difficulty, from its parent's block-time history`, String(computed) === String(child.nonce_limiter_info.next_vdf_difficulty),

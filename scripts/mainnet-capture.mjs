@@ -83,25 +83,18 @@ class MainnetCapture {
   static VDF_DIFFICULTY_RETARGET = 720;
 
   /**
-   * The newest block at a VDF difficulty retarget height (a multiple of 720), with its
-   * parent and the parent's block-time history, so VdfInfo.nextVdfDifficulty can be
-   * checked offline; null, with the reason logged, if no source serves the history (nodes
-   * may keep it only for recent blocks).
+   * The newest block at a VDF difficulty retarget height (a multiple of 720) at or before
+   * `start`, with its parent, so VdfInfo.nextVdfDifficulty can be checked offline. Nodes
+   * serve block-time history only for recent blocks, but a block's history lists the
+   * newest block first, so the parent's is the start block's (saved in start.json) less
+   * its newest `historyOffset` entries.
    */
-  async vdfRetarget(tip, sources) {
-    const height = Math.floor(tip / MainnetCapture.VDF_DIFFICULTY_RETARGET) * MainnetCapture.VDF_DIFFICULTY_RETARGET;
+  async vdfRetarget(start, sources) {
+    const height = Math.floor(Number(start.height) / MainnetCapture.VDF_DIFFICULTY_RETARGET) * MainnetCapture.VDF_DIFFICULTY_RETARGET;
     const child = await this.get(`/block/height/${height}`, 'json', sources);
     const parent = await this.get(`/block/height/${height - 1}`, 'json', sources);
-    for (const url of sources.filter((source) => source.startsWith('http://'))) {
-      try {
-        const blockTimeHistory = await new NodeClient(url, { timeoutMs: MainnetCapture.REQUEST_TIMEOUT_MS }).blockTimeHistory(parent.indep_hash);
-        console.log(`VDF retarget block ${height} with its parent's block-time history from ${url}`);
-        return { parent, blockTimeHistory: Bytes.toBase64Url(blockTimeHistory), child: { height: child.height, nonce_limiter_info: child.nonce_limiter_info } };
-      } catch (error) {
-        console.log(`${url}: no block-time history for block ${height - 1} (${(error.cause?.message ?? error.message).slice(0, 200)})`);
-      }
-    }
-    return null;
+    console.log(`VDF retarget block ${height}, ${Number(start.height) - (height - 1)} blocks before the start`);
+    return { parent, historyOffset: Number(start.height) - (height - 1), child: { height: child.height, nonce_limiter_info: child.nonce_limiter_info } };
   }
   static PENDING_ATTEMPTS = 3;
 
@@ -160,8 +153,7 @@ class MainnetCapture {
       tip = newTip;
     }
     writeFileSync(`${this.outputDirectory}/pending.json.gz`, gzipSync(JSON.stringify(pending)));
-    const retarget = await this.vdfRetarget(tip, sources);
-    if (retarget) writeFileSync(`${this.outputDirectory}/vdf_retarget.json`, JSON.stringify(retarget));
+    writeFileSync(`${this.outputDirectory}/vdf_retarget.json`, JSON.stringify(await this.vdfRetarget(start, sources)));
     writeFileSync(`${this.outputDirectory}/blocks.json.gz`, gzipSync(JSON.stringify(blocks)));
     console.log(`captured blocks ${startHeight}–${tip} in ${Math.round((Date.now() - this.startedAt) / 1000)} s`);
   }
