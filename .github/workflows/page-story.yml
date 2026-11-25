@@ -1,0 +1,48 @@
+# Drives the built page as a newcomer would on the mainnet: presses the one-button start in
+# headless Chrome and screenshots each stage at desktop and phone widths
+# (scripts/page-story.mjs), then keeps the set on the page-story branch for review against
+# the user stories in docs/ARCHITECTURE.md. Manual only: it runs for several minutes.
+name: Page story
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Minutes to follow the page after pressing the button
+        default: '4'
+
+permissions:
+  contents: write
+
+jobs:
+  story:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build the page
+        run: |
+          npm ci --ignore-scripts
+          node scripts/build-single-file.mjs
+
+      - name: Follow the page from the one-button start
+        env:
+          PLAYWRIGHT_CHANNEL: chrome
+        run: node scripts/page-story.mjs page-story "${{ inputs.minutes }}"
+
+      - name: Keep the screenshots on the page-story branch
+        if: always()
+        run: |
+          test -d page-story || exit 0
+          git config user.name "page story workflow"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout --orphan page-story
+          git rm -rq --cached .
+          git add -f page-story
+          git commit -qm "Page story, $(date -u +%Y-%m-%d) from $(git rev-parse --short HEAD@{1} 2>/dev/null || echo main)"
+          git push -f origin page-story
