@@ -5,7 +5,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Task | State |
 |---|---|
 | Turn a solution into a block | 6 of 7 steps done, and most of mainnet's rules; a real solution left |
-| Check what peers and gateways say | not started; the page trusts the first answer |
+| Check what peers and gateways say | started: followed blocks' ids and signatures are checked |
 | Reach networks that block Arweave | partly: gathered sources, seeds, a source test |
 | Hold more data | mostly done; storage, not memory, is the limit |
 | Host the page on Arweave | not started |
@@ -95,7 +95,8 @@ To continue in a new conversation with Claude, a prompt like this works:
 A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps, a false balance or price, or a peer list of other malicious nodes. Each item says what to check and against what.
 
 #### Blocks
-- [ ] Recompute a fetched block's `indep_hash` from its fields and check its signature.
+- [x] Recompute a fetched block's `indep_hash` from its fields and check its signature
+      (`BlockVerifier`, RSA and secp256k1); `ChainFollower` refuses a block that fails.
 - [ ] Check its proof of work: H0 from its VDF output, the recall bytes, H1/H2 from its
       packed sub-chunks, and that the solution passes its difficulty (the library already
       does all of this for block 2,040,257).
