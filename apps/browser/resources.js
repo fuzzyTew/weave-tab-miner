@@ -30,6 +30,25 @@ export class BundledResources {
     return JSON.parse(BundledResources.embeddedText('publicKeyData'));
   }
 
+  /**
+   * The commit the page was built from ({ commit, date, modified }), or nulls for a copy
+   * built outside git or run from source unbuilt.
+   */
+  static revision() {
+    try {
+      return JSON.parse(BundledResources.embeddedText('revisionData'));
+    } catch {
+      return { commit: null, date: null, modified: false };
+    }
+  }
+
+  /** The revision as a person reads it, e.g. "build 1a2b3c4d5e of 2026-11-25". */
+  static revisionText() {
+    const { commit, date, modified } = BundledResources.revision();
+    if (!commit) return 'build from source (no revision recorded)';
+    return `build ${commit} of ${date}${modified ? ', with uncommitted changes' : ''}`;
+  }
+
   static sampleBlock() {
     return JSON.parse(BundledResources.embeddedText('sampleBlockData'));
   }

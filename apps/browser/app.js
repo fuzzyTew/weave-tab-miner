@@ -229,6 +229,8 @@ class BrowserNodeApp {
     this.loadSampleBlock();
     await this.useSharedKey();
     InstalledApp.register((message, tone) => this.view.log(message, tone));
+    this.view.setText('revisionNote', BundledResources.revisionText());
+    this.view.log(`this page is ${BundledResources.revisionText()}`);
     if (!this.network.isMainnet) {
       this.view.log(`on a ${this.network.name} at ${this.network.nodeUrls.join(', ')}, not the mainnet: its rules take any held chunk and any hash, and VDF steps are computed here`, 'warn');
     }

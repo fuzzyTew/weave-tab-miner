@@ -1,6 +1,7 @@
 // scripts/build-single-file.mjs — joins the page, its library modules, the VDF worker and the sample
 // block into one HTML file that opens by double-click, with no web server.
 // Run: node scripts/build-single-file.mjs   (writes dist/weave-tab-miner.html)
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,7 +68,23 @@ class SingleFileBuilder {
     return this.dependencyOrder(entries).map((name) => `// ---- ${name} ----\n${SingleFileBuilder.withoutModuleSyntax(this.read(name))}`).join('\n');
   }
 
+  /**
+   * Which commit the page is built from, shown on the page so a person can tell which
+   * version they have: the short hash, its date, and whether files differed from it.
+   * Outside a git checkout (a downloaded source archive) it says so instead of failing.
+   */
+  revision() {
+    const git = (...args) => execFileSync('git', args, { cwd: this.rootDirectory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    try {
+      return { commit: git('rev-parse', '--short=10', 'HEAD'), date: git('log', '-1', '--format=%cs'), modified: git('status', '--porcelain', '--untracked-files=no') !== '' };
+    } catch (error) {
+      console.log(`no git revision for the page: ${error.message.split('\n')[0]}`);
+      return { commit: null, date: null, modified: false };
+    }
+  }
+
   build() {
+    const revision = SingleFileBuilder.safeForScriptElement(JSON.stringify(this.revision()));
     const pageScript = SingleFileBuilder.safeForScriptElement(this.inlinedModules([SingleFileBuilder.PAGE_SCRIPT]));
     const workerScript = SingleFileBuilder.safeForScriptElement(this.inlinedModules([SingleFileBuilder.VDF_WORKER]));
     // The RandomX worker: the bundle (a classic script defining RandomxArweave), then the
@@ -86,6 +103,7 @@ class SingleFileBuilder {
         `<script type="application/json" id="permawebData">${permaweb}</script>`,
         `<script type="application/json" id="sourcesData">${sources}</script>`,
         `<script type="application/json" id="publicKeyData">${publicKey}</script>`,
+        `<script type="application/json" id="revisionData">${revision}</script>`,
         `<script type="text/plain" id="vdfWorkerSource">${workerScript}</script>`,
         `<script type="text/plain" id="randomxWorkerSource">${randomxWorkerScript}</script>`,
         `<script type="module">\n${pageScript}\n</script>`,
