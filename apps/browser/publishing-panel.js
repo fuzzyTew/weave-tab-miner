@@ -259,12 +259,19 @@ export class PublishingPanel {
       this.view.log(`solution not published: ${blocker}`, 'warn');
       return;
     }
-    this.setPublishStatus(`Building the block for the solution at step ${report.stepNumber.toLocaleString()}…`);
     const parent = this.follower.state.block;
+    const signer = this.blockSigner();
+    const earlier = signer.guard.signedChildOf(this.identity.address, parent.cumulative_diff);
+    if (earlier) {
+      // A second block on this parent would be a double signature; only a newer tip helps.
+      this.setPublishStatus(`Waiting for the chain to pass height ${earlier.height}: this key already signed a block there (signed hash ${earlier.blockHash.slice(0, 12)}…), so the solution at step ${report.stepNumber.toLocaleString()} is skipped.`);
+      return;
+    }
+    this.setPublishStatus(`Building the block for the solution at step ${report.stepNumber.toLocaleString()}…`);
     const parentStep = Number(parent.nonce_limiter_info.global_step_number);
     await this.vdfPool?.fillSince(parentStep, report.stepNumber);
     const publisher = new BlockPublisher({
-      follower: this.follower, signer: this.blockSigner(), fetchChunkJson: (offset) => this.gateway.chunkJson(offset),
+      follower: this.follower, signer, fetchChunkJson: (offset) => this.gateway.chunkJson(offset),
       nodes: this.publishNodes, h0Hasher: this.h0Hasher, entropySource: this.entropySource, log: (message) => this.view.log(message),
     });
     try {

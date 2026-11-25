@@ -74,6 +74,15 @@ export class DoubleSigningGuard {
     return this.records(address).find((record) => record.blockHash !== candidate.blockHash && DoubleSigningGuard.conflicts(record, candidate)) ?? null;
   }
 
+  /**
+   * The record of a block this key signed on a parent with `parentCumulativeDiff`, or null.
+   * Any other child of that parent would conflict with it (siblings share a cumulative
+   * difficulty), so a caller can skip building one at all.
+   */
+  signedChildOf(address, parentCumulativeDiff) {
+    return this.records(address).find((record) => record.previousCumulativeDiff === BigInt(parentCumulativeDiff)) ?? null;
+  }
+
   /** Remembers a signature. Call only after conflictFor returned null. */
   record(address, { height, cumulativeDiff, previousCumulativeDiff, blockHash }) {
     const kept = [...this.records(address), { height, cumulativeDiff, previousCumulativeDiff, blockHash }].slice(-this.keepRecords);

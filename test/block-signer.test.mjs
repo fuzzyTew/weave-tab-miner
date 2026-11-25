@@ -45,6 +45,10 @@ class BlockSignerTest {
     const next = { ...child, height: child.height + 1, previous_cumulative_diff: child.cumulative_diff, cumulative_diff: (BigInt(child.cumulative_diff) + 1n).toString() };
     const onTop = await signer.sign(next).then(() => 'signed', (error) => error.message);
     this.report('the next block, built on it, is allowed', onTop === 'signed', onTop);
+    const guard = signer.guard;
+    this.report('the guard names the block signed on a parent, so a sibling need not be built',
+      guard.signedChildOf(wallet.address, BigInt(signed.previous_cumulative_diff))?.height === signed.height
+      && guard.signedChildOf(wallet.address, BigInt(signed.previous_cumulative_diff) + 12345n) === null);
     process.exitCode = this.failures ? 1 : 0;
   }
 }
