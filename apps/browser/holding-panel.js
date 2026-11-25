@@ -271,8 +271,28 @@ export class HoldingPanel {
   static STORAGE_STEP_BYTES = 64 * 2 ** 20;
 
   /** The slider's setting in bytes: how much this tab aims to hold for its address. */
+  /**
+   * Bytes to fill: "max" is the usable share of the allowance; a set amount is kept as set,
+   * except where the browser's figure is a real limit (Firefox's), which caps it. Chrome's
+   * figure floats above what is used, so an amount past it is honoured.
+   */
   get storageTargetBytes() {
-    return Number(this.view.elements.storageTargetInput.value);
+    const usable = this.usableStorageBytes() ?? Number(this.view.elements.storageTargetInput.max);
+    const setting = this.storageTargetSetting ?? 'max';
+    if (setting === 'max') return usable;
+    return this.storageQuotaFloats ? setting : Math.min(setting, usable);
+  }
+
+  /** Remembers the storage setting ("max" or bytes) and fills toward it. */
+  setStorageTarget(setting) {
+    this.storageTargetSetting = setting;
+    try {
+      localStorage.setItem(HoldingPanel.STORAGE_TARGET_KEY, String(setting));
+    } catch {
+      // Not remembered; applies to this visit.
+    }
+    this.refreshStorageSlider();
+    this.fillStorageInBackground();
   }
 
   /**
@@ -294,14 +314,15 @@ export class HoldingPanel {
       // The track spans the whole allowance; the knob stops where the usable share ends.
       const usable = this.usableStorageBytes();
       if (usable && Number(slider.value) > usable) slider.value = String(usable);
-      this.storageTargetSetting = usable && Number(slider.value) >= usable ? 'max' : Number(slider.value);
-      try {
-        localStorage.setItem(HoldingPanel.STORAGE_TARGET_KEY, String(this.storageTargetSetting));
-      } catch {
-        // Not remembered; applies to this visit.
-      }
-      this.refreshStorageSlider();
-      this.fillStorageInBackground();
+      this.setStorageTarget(usable && Number(slider.value) >= usable ? 'max' : Number(slider.value));
+    });
+    // A typed amount, in GiB: the only way past Chrome's floating figure before it grows.
+    const amount = this.view.elements.storageAmountInput;
+    amount.addEventListener('change', () => {
+      const gibibytes = Number(amount.value);
+      if (!(gibibytes > 0)) return;
+      const step = HoldingPanel.STORAGE_STEP_BYTES;
+      this.setStorageTarget(Math.max(step, Math.round(gibibytes * 2 ** 30 / step) * step));
     });
     this.refreshStorageSlider();
   }
@@ -340,13 +361,15 @@ export class HoldingPanel {
     const { storageTargetInput: slider, storageFillMeter: meter } = this.view.elements;
     const step = HoldingPanel.STORAGE_STEP_BYTES;
     if (this.storageQuotaBytes) slider.max = String(Math.max(step, Math.floor(this.storageQuotaBytes / step) * step));
-    const usable = this.usableStorageBytes() ?? Number(slider.max);
-    const setting = this.storageTargetSetting ?? 'max';
-    slider.value = String(setting === 'max' ? usable : Math.min(setting, usable));
     const target = this.storageTargetBytes;
+    slider.value = String(Math.min(target, this.usableStorageBytes() ?? Number(slider.max)));
+    const amount = this.view.elements.storageAmountInput;
+    if (document.activeElement !== amount) amount.value = (target / 2 ** 30).toFixed(1);
     const held = this.storage.byteCount;
     meter.value = target ? Math.min(1, held / target) : 0;
-    const allowed = this.storageQuotaBytes ? ` of about ${PageView.formatBytes(this.storageQuotaBytes)} this browser allows (the last tenth is left free)` : '';
+    const allowed = !this.storageQuotaBytes ? ''
+      : this.storageQuotaFloats ? `; Chrome now reports ${PageView.formatBytes(this.storageQuotaBytes)}, a figure that grows as chunks are saved`
+        : ` of about ${PageView.formatBytes(this.storageQuotaBytes)} this browser allows (the last tenth is left free)`;
     const over = held > target ? ' — more than set, so nothing more is fetched' : '';
     this.view.setText('storageTargetText', `${PageView.formatBytes(target)}${allowed}; ${PageView.formatBytes(held)} held (${target ? Math.round(held / target * 100) : 0}%)${over}`);
   }
@@ -377,9 +400,10 @@ export class HoldingPanel {
     this.view.elements.keepStorageButton.hidden = this.storageKept !== false;
     const estimate = await PackedChunkStore.estimate();
     this.storageQuotaBytes = estimate?.quota ?? null;
+    this.storageQuotaFloats = Boolean(estimate && HoldingPanel.isFloatingQuota(estimate));
     this.refreshStorageSlider();
     const kept = { true: ' The browser keeps it when space runs low.', false: ' The browser may clear it when space runs low, and may allow more once it agrees to keep it ("Keep this site\'s data" below).', null: '' }[String(this.storageKept ?? null)];
-    const floating = estimate && HoldingPanel.isFloatingQuota(estimate)
+    const floating = this.storageQuotaFloats
       ? ' Chrome reports 10 GiB more than this site uses rather than its real limit (about 60% of the disk), so the allowance grows as chunks are saved, and filling goes on with it.'
       : '';
     this.view.setText('storageNote', estimate

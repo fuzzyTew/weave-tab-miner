@@ -278,6 +278,7 @@
       <label for="storageTargetInput">Storage to use: <span id="storageTargetText">—</span>
         <input id="storageTargetInput" type="range" min="0" max="2147483648" step="67108864" value="2147483648">
       </label>
+      <label for="storageAmountInput">or type an amount: <input id="storageAmountInput" type="number" min="0.1" step="0.5" inputmode="decimal" style="width:6em"> GiB</label>
       <meter id="storageFillMeter" min="0" max="1" value="0" title="How much of the storage set aside is filled"></meter>
       <div class="row"><button id="holdButton" type="button">Fetch and pack</button><button id="stopHoldButton" type="button" hidden>Stop early</button></div>
       <progress id="holdProgress" max="1" value="0" hidden></progress>
