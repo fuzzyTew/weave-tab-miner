@@ -99,6 +99,9 @@ export class MiningPanel {
   }
 
   static TIP_POLL_MS = 20_000; // blocks come about every 2 minutes; a new tip changes the seed H0 uses
+  // After posting a block, how often and how long to look for nodes to make it the tip.
+  static OWN_TIP_POLL_MS = 2_000;
+  static OWN_TIP_WAIT_MS = 30_000;
 
   /**
    * Fetches the current block every TIP_POLL_MS while mining, so the difficulty and the
@@ -128,15 +131,21 @@ export class MiningPanel {
       this.view.log(`could not check for a new block: ${error.message.split('\n')[0]}`, 'warn');
     }
     this.followingTip = false;
-    if (this.running) this.tipTimer = setTimeout(() => this.followTip(), this.tipCheckWanted ? 0 : MiningPanel.TIP_POLL_MS);
+    // While a block this tab posted is not yet the tip (nodes take a few seconds to check
+    // it), look again soon rather than at the next regular check.
+    const awaiting = this.awaitedTip && this.awaitedTip.hash !== this.block.indep_hash && Date.now() < this.awaitedTip.until;
+    if (!awaiting) this.awaitedTip = null;
+    const delay = this.tipCheckWanted ? 0 : awaiting ? MiningPanel.OWN_TIP_POLL_MS : MiningPanel.TIP_POLL_MS;
+    if (this.running) this.tipTimer = setTimeout(() => this.followTip(), delay);
   }
 
   /**
    * Checks for a new tip now instead of at the next TIP_POLL_MS, keeping one polling loop:
    * after a node takes this tab's block, mining moves onto it at once.
    */
-  checkTipNow() {
+  checkTipNow({ awaitedHash = null } = {}) {
     if (!this.running) return;
+    if (awaitedHash) this.awaitedTip = { hash: awaitedHash, until: Date.now() + MiningPanel.OWN_TIP_WAIT_MS };
     clearTimeout(this.tipTimer);
     this.followTip();
   }
