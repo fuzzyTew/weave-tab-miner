@@ -231,6 +231,20 @@ export class PublishingPanel {
     }
   }
 
+  /**
+   * The VDF facts a node checks first (ar_block_pre_validator, the global step number check):
+   * a node takes a posted block only if its step is past its parent's, it lists exactly the
+   * steps between, and its prev_output is the parent's output. A 200 reply only means the
+   * block arrived, so these say why one might still be dropped.
+   */
+  static vdfSummary(block, parent) {
+    const info = block.nonce_limiter_info;
+    const parentInfo = parent.nonce_limiter_info;
+    const stepsBetween = Number(info.global_step_number) - Number(parentInfo.global_step_number);
+    return `block ${block.height} VDF: step ${info.global_step_number} after parent step ${parentInfo.global_step_number} (${stepsBetween} between), `
+      + `${info.steps?.length ?? 'no'} steps listed, prev_output ${info.prev_output === parentInfo.output ? 'is' : 'is NOT'} the parent's output`;
+  }
+
   blockSigner() {
     if (!this.blockSignerFor || this.blockSignerFor.wallet !== this.identity.wallet) {
       this.blockSignerFor = new BlockSigner({ wallet: this.identity.wallet, guard: new DoubleSigningGuard({ storage: MemoryStorage.browserOrMemory() }) });
@@ -246,7 +260,8 @@ export class PublishingPanel {
       return;
     }
     this.setPublishStatus(`Building the block for the solution at step ${report.stepNumber.toLocaleString()}…`);
-    const parentStep = Number(this.follower.state.block.nonce_limiter_info.global_step_number);
+    const parent = this.follower.state.block;
+    const parentStep = Number(parent.nonce_limiter_info.global_step_number);
     await this.vdfPool?.fillSince(parentStep, report.stepNumber);
     const publisher = new BlockPublisher({
       follower: this.follower, signer: this.blockSigner(), fetchChunkJson: (offset) => this.gateway.chunkJson(offset),
@@ -257,6 +272,7 @@ export class PublishingPanel {
         report, transactions: await this.transactionsToCarry(), stepSource: new RecordedVdfSteps(this.vdfSteps.outputsByStep, new ComputedVdfSteps(), this.vdfSteps.checkpointsByStep),
       });
       const taken = replies.filter((reply) => reply.status === 200 || reply.status === 208);
+      this.view.log(PublishingPanel.vdfSummary(block, parent));
       const summary = replies.map((reply) => `${reply.node} ${reply.status || 'unreachable'}${reply.text ? ` ${reply.text.slice(0, 60)}` : ''}`).join('; ');
       this.setPublishStatus(`Posted block ${block.height} (${block.indep_hash.slice(0, 12)}…): ${taken.length} of ${replies.length} nodes took it. ${summary}`);
       this.view.log(`posted block ${block.height}: ${summary}`, taken.length ? 'good' : 'warn');
