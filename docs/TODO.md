@@ -10,7 +10,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Hold more data | mostly done; storage, not memory, is the limit |
 | Host the page on Arweave | not started |
 | Install it like an app | a PWA (manifest, offline copy); F-Droid not started |
-| Be a light client | follows the chain, publishes real solutions; pending transactions left |
+| Be a light client | follows the chain, keeps its state between visits, publishes real solutions with pending transactions; a phone's first read left |
 | A simple page | started: storage slider, notes folded; user-story review with screenshots next |
 | VDF access and troubleshooting | servers merged; no help yet when none answer |
 | Mining together over p2p | planned, after the above are stable: threshold signing, shared polling |
@@ -110,14 +110,16 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
       the chunk to its transaction's `data_root`, and from that to the block's `tx_root`.
       Today a fake chunk would only waste packing time, since solutions from it fail
       validation, but it would also make the expected-wait figures wrong.
-- [ ] Use the chunk's real end offset from its proof instead of the bucket of the byte
-      asked for (the approximation noted in `apps/browser/app.js`).
+- [x] Use the chunk's real end offset (GET /chunk's `absolute_end_offset`) where it
+      differs from the bucket's, below the strict data split threshold
+      (`Replica29Layout.storedEndOffset`).
 
 #### VDF servers
 - [ ] Check that each step from a VDF server follows from the previous one, at least by
       sampling: recompute one checkpoint per step in a worker and drop the server on a mismatch.
 - [ ] Check the update's seed and upper bound against the current block.
-- [ ] Use more than one server when several answer, and compare their steps.
+- [x] Use more than one server when several answer (`VdfServerPool` merges their steps);
+      comparing their steps is left.
 
 #### Peers
 - [ ] Ask several gateways for peer lists, not one.
@@ -199,6 +201,9 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
       mainnet, hashed and checked against the block's root), then each new block's
       transactions (secp256k1 senders recovered from their signatures, as nodes do) and
       released reward, each checked against the block's root, on live mainnet blocks.
+- [x] Carry pending transactions (`PendingTransactionPool`, `TransactionPicker`): the page
+      keeps a node's pending list fresh and carries what it is sure of; the daily capture
+      picks from real pending transactions on the followed state.
 - [x] Publish real solutions from the page (`BlockPublisher`, `apps/browser/publishing-panel.js`):
       built on the followed state, signed through the guard, posted to up to 8 nodes as
       text/plain (the only form a browser may send to /block2). Checked by publishing the
