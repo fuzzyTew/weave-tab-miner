@@ -13,7 +13,8 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Be a light client | follows the chain, keeps its state between visits, publishes real solutions with pending transactions; a phone's first read left |
 | A simple page | started: storage slider, notes folded; user-story review with screenshots next |
 | VDF access and troubleshooting | servers merged; no help yet when none answer |
-| Mining together over p2p | planned, after the above are stable: threshold signing, shared polling |
+| Organize for maintenance | review in docs/ARCHITECTURE.md: panels sharing state, app logic to move into the library, packing starving mining |
+| Mining together over p2p | planned (docs/ARCHITECTURE.md): secp256k1 block signing, then `src/threshold/` with threshold ECDSA |
 | Mine for a pool | not started |
 | Network-agnostic design | tried and reverted; plan below |
 

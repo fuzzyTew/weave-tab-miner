@@ -42,6 +42,9 @@ Arweave) replays its own solution with "Verify against the sample".
 
 ## Layout
 
+The rules the code keeps, a review of it, and where it is headed (threshold signing, a storage
+library for several networks and languages) are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 The library (`src/`) has no runtime dependencies and runs in a page or in Node. It is
 grouped by area; each file holds one concern and opens with a line saying what it is.
 
