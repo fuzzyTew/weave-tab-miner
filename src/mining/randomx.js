@@ -45,27 +45,52 @@ export class RandomxWorkerHost {
     this.worker = createWorker();
     this.pending = new Map();
     this.nextId = 1;
+    // One request runs in the worker at a time; waiting ones queue here, H0 before
+    // entropy, so a step's H0 waits for at most one entropy (about a second) rather than
+    // behind a whole packing batch. The worker itself answers in the order it is sent.
+    this.waiting = { urgent: [], background: [] };
+    this.running = null;
     this.worker.onmessage = ({ data }) => {
       const request = this.pending.get(data.id);
       if (!request) return;
       this.pending.delete(data.id);
+      this.running = null;
       if (data.error) request.reject(new Error(data.error));
       else request.resolve(data.result);
+      this.sendNext();
     };
     this.worker.onerror = (event) => {
       const error = new Error(`RandomX worker failed: ${event.message || 'no reason given'}`);
       for (const request of this.pending.values()) request.reject(error);
+      for (const queued of [...this.waiting.urgent, ...this.waiting.background]) queued.reject(error);
       this.pending.clear();
+      this.waiting = { urgent: [], background: [] };
+      this.running = null;
     };
-    this.readyPromise = this.call('init');
+    this.readyPromise = this.call('init', undefined, { urgent: true });
   }
 
-  call(kind, payload) {
-    const id = this.nextId++;
+  /** Queues one request; `urgent` ones (H0, and starting up) go before the rest. */
+  call(kind, payload, { urgent = false } = {}) {
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, kind, payload });
+      this.waiting[urgent ? 'urgent' : 'background'].push({ kind, payload, resolve, reject });
+      this.sendNext();
     });
+  }
+
+  sendNext() {
+    if (this.running) return;
+    const next = this.waiting.urgent.shift() ?? this.waiting.background.shift();
+    if (!next) return;
+    const id = this.nextId++;
+    this.running = id;
+    this.pending.set(id, next);
+    this.worker.postMessage({ id, kind: next.kind, payload: next.payload });
+  }
+
+  /** Requests waiting or running: for a page that wants to say packing is slowing mining. */
+  get queuedCount() {
+    return this.waiting.urgent.length + this.waiting.background.length + (this.running ? 1 : 0);
   }
 
   ready() {
@@ -74,7 +99,7 @@ export class RandomxWorkerHost {
 
   async h0(preimage) {
     await this.readyPromise;
-    return this.call('h0', preimage);
+    return this.call('h0', preimage, { urgent: true });
   }
 
   async entropy(entropyKey) {

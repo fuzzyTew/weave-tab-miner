@@ -89,10 +89,11 @@ branch).
    go on becomes a fill policy beside `ChunkFetcher`. From `mining-panel.js`: the three
    VDF step sources (server pool, a worker computing steps, replay) become one
    `StepSource` interface the mining loop takes, so the loop is testable without a page.
-3. **Packing starves mining.** In the page-story run the tab mined 122 of about 240
+3. **Packing starved mining.** In the page-story run the tab mined 122 of about 240
    steps in four minutes, because background packing and each step's H0 share one
-   RandomX worker. H0 should go first (a priority queue in the worker host, or a second
-   worker where memory allows), and the page should say when packing is slowing mining.
+   RandomX worker, which answered in order. `RandomxWorkerHost` now keeps one request in
+   the worker and sends H0 before waiting entropies; still to do, the page saying when
+   packing slows mining (`queuedCount` gives what it needs).
 
 ## User stories
 
