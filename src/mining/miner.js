@@ -17,7 +17,9 @@ export class Miner {
    *
    * testMode exists only to exercise the H1/H2 path, which real data reaches about
    * never: aimRange1AtHeldData moves range 1 onto held data, and difficultyEase
-   * multiplies the pass probability. Results found with it are not solutions.
+   * multiplies the pass probability (infinity: every hash passes). Results found with it
+   * are not solutions on the mainnet, but are on a network whose rules allow the same
+   * (NetworkRules.minerAllowance, as on a localnet).
    */
   constructor({ identity, partitionNumber, storage, h0Hasher, testMode = { aimRange1AtHeldData: false, difficultyEase: 1 } }) {
     Object.assign(this, { identity, partitionNumber, storage, h0Hasher, testMode });
@@ -25,6 +27,8 @@ export class Miner {
 
   easedPasses(hash, isOneChunkSolution, networkDiff) {
     if (this.testMode.difficultyEase === 1) return Difficulty.passes(hash, isOneChunkSolution, networkDiff);
+    // Every hash passes (a network that does not check the difficulty, as a localnet).
+    if (this.testMode.difficultyEase === Number.POSITIVE_INFINITY) return true;
     const probability = Math.min(1, Difficulty.passProbability(networkDiff, isOneChunkSolution) * this.testMode.difficultyEase);
     const hashFraction = Number(Bytes.toBigInt(hash.subarray(0, 8))) / 2 ** 64;
     return hashFraction > 1 - probability;
