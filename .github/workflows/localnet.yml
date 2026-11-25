@@ -112,14 +112,21 @@ jobs:
           fi
           nohup erl $ERL_LOCALNET_OPTS -name "$LOCALNET_NODE" -setcookie localnet -noshell \
             -eval "$START" -eval "timer:sleep(infinity)." > .tmp/localnet.log 2>&1 &
+          node_pid=$!
           shown=0
+          last_growth=$(date +%s)
+          # Gives up at once if the node exits, or after 60 s without a new log line: a
+          # healthy start logs each stage as it goes (a cold start took about 3 minutes).
           for tick in $(seq 1 1200); do
+            if ! kill -0 "$node_pid" 2>/dev/null; then echo "the node exited during startup; its log:"; tail -200 .tmp/localnet.log; exit 1; fi
             # Each new log line, marked with the seconds since this step began.
             total=$(wc -l < .tmp/localnet.log)
             if [ "$total" -gt "$shown" ]; then
               tail -n +$((shown + 1)) .tmp/localnet.log | head -n $((total - shown)) | sed "s/^/$(( $(date +%s) - started )) s: /"
               shown=$total
+              last_growth=$(date +%s)
             fi
+            if [ $(( $(date +%s) - last_growth )) -gt 60 ]; then echo "no new log line for 60 s; the node's log:"; tail -200 .tmp/localnet.log; exit 1; fi
             info=$(curl -fsS --max-time 1 -H 'x-network: arweave.localnet' http://127.0.0.1:1984/info 2>/dev/null || true)
             if echo "$info" | grep -q '"height":[0-9]'; then echo "$(( $(date +%s) - started )) s: ready: $info"; exit 0; fi
             sleep 0.5
