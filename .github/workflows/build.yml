@@ -190,6 +190,8 @@ jobs:
         run: |
           mkdir -p site
           cp dist/weave-tab-miner.html site/index.html
+          # The manifest, service worker and icons that let the page install as an app.
+          cp apps/browser/pwa/* site/
 
       - name: Upload the GitHub Pages site
         if: github.ref == 'refs/heads/main'

@@ -27,6 +27,7 @@ import { RecordsPanel } from './records-panel.js';
 import { QuickStartPanel } from './quick-start-panel.js';
 import { PublishingPanel } from './publishing-panel.js';
 import { VdfStepRecord } from '../../src/network/vdf-client.js';
+import { InstalledApp } from './installed-app.js';
 
 class BrowserNodeApp {
   /**
@@ -227,6 +228,7 @@ class BrowserNodeApp {
     // switches to the sample's own miner to replay its solution.
     this.loadSampleBlock();
     await this.useSharedKey();
+    InstalledApp.register((message, tone) => this.view.log(message, tone));
     if (!this.network.isMainnet) {
       this.view.log(`on a ${this.network.name} at ${this.network.nodeUrls.join(', ')}, not the mainnet: its rules take any held chunk and any hash, and VDF steps are computed here`, 'warn');
     }

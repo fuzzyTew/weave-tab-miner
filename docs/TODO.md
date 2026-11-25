@@ -9,7 +9,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Reach networks that block Arweave | partly: gathered sources, seeds, a source test |
 | Hold more data | mostly done; storage, not memory, is the limit |
 | Host the page on Arweave | not started |
-| Install it like an app | not started: a PWA, then F-Droid |
+| Install it like an app | a PWA (manifest, offline copy); F-Droid not started |
 | Be a light client | follows the chain, publishes real solutions; pending transactions left |
 | A simple page | started: storage slider, notes folded; user-story review with screenshots next |
 | VDF access and troubleshooting | servers merged; no help yet when none answer |
@@ -278,9 +278,11 @@ A malicious node could feed the page a fake block, wrong chunks, wrong VDF steps
 <details>
 <summary><b>Install it like an app</b> — a PWA, then an F-Droid package</summary>
 
-- [ ] Progressive web app: a manifest and a service worker that caches the page, so it
-      installs from the browser, opens offline and keeps mining from a home-screen icon.
-      Storage stays per origin, so an installed copy shares the site's held chunks.
+- [x] Progressive web app: `apps/browser/pwa/` holds a manifest, icons
+      (`scripts/pwa_icons.py`) and a service worker that keeps a copy of the page, network
+      first, for opening offline; the Pages site carries them and the page registers the
+      worker when served over http(s). Storage stays per origin, so an installed copy
+      shares the site's held chunks. Not yet tried on a phone's home screen.
 - [ ] F-Droid: a small Android app (a WebView around the single-file page, or a
       Trusted Web Activity) built from source with no proprietary libraries, so F-Droid
       can build and sign it. Helps old phones with free storage hold data.
