@@ -4,6 +4,7 @@ Larger tasks, each opening to its steps. In order of what matters next:
 
 | Task | State |
 |---|---|
+| Chunks "not found" everywhere | reported: in the downloaded page (file://), chunk requests sometimes got "not found" from every source, though earlier versions filled from nodes. Check the byte position sent (`chunkJson(weaveByte + 1n)`, `storedEndOffset`), partition 9, and how a file:// page's requests are treated |
 | Turn a solution into a block | 6 of 7 steps done, and most of mainnet's rules; a real solution left |
 | Check what peers and gateways say | started: followed blocks' ids and signatures, and VDF servers' steps by sampling |
 | Reach networks that block Arweave | partly: gathered sources, seeds, a source test |
