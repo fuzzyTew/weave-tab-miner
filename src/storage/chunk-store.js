@@ -108,14 +108,6 @@ export class PackedChunkStore extends BrowserObjectStore {
   }
 
   /** Ask the browser not to clear this site's data under disk pressure. Returns whether granted. */
-  static async requestPersistence() {
-    try {
-      return Boolean(await navigator.storage?.persist?.());
-    } catch {
-      return false;
-    }
-  }
-
   /**
    * Asks the browser to keep this site's storage (navigator.storage.persist), so it is not
    * cleared when the disk runs low; Firefox also raises the site's limit from 10 GiB to up

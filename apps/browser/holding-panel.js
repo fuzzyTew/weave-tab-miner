@@ -256,10 +256,10 @@ export class HoldingPanel {
 
   async saveChunks(entries) {
     if (!this.usingRealRandomx) return;
-    if (await this.store.save(this.identity.address, entries)) {
+    this.lastSaveFailed = !(await this.store.save(this.identity.address, entries));
+    if (!this.lastSaveFailed) {
       this.storage.markReloadable(entries.map(([offset]) => offset));
-      const persistent = await PackedChunkStore.requestPersistence();
-      this.view.log(`saved ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} to browser storage${persistent ? '' : ' (the browser may clear it if disk runs low)'}`);
+      this.view.log(`saved ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} to browser storage${this.storageKept === false ? ' (the browser may clear it if disk runs low)' : ''}`);
     }
     await this.refreshStorageNote();
   }
@@ -379,8 +379,11 @@ export class HoldingPanel {
     this.storageQuotaBytes = estimate?.quota ?? null;
     this.refreshStorageSlider();
     const kept = { true: ' The browser keeps it when space runs low.', false: ' The browser may clear it when space runs low, and may allow more once it agrees to keep it ("Keep this site\'s data" below).', null: '' }[String(this.storageKept ?? null)];
+    const floating = estimate && HoldingPanel.isFloatingQuota(estimate)
+      ? ' Chrome reports 10 GiB more than this site uses rather than its real limit (about 60% of the disk), so the allowance grows as chunks are saved, and filling goes on with it.'
+      : '';
     this.view.setText('storageNote', estimate
-      ? `This site uses ${PageView.formatBytes(estimate.usage ?? 0)} of browser storage, of ${PageView.formatBytes(estimate.quota ?? 0)} allowed (the browser sets this from the disk's free space).${kept}`
+      ? `This site uses ${PageView.formatBytes(estimate.usage ?? 0)} of browser storage, of ${PageView.formatBytes(estimate.quota ?? 0)} allowed.${floating}${kept}`
       : 'This browser does not report its storage limits.');
     await this.refreshSavedAddresses();
     this.refreshSummary();
@@ -453,10 +456,35 @@ export class HoldingPanel {
         this.view.setText('holdStatus', `Already holding ${PageView.formatBytes(this.storage.byteCount)}, at or over the ${PageView.formatBytes(this.storageTargetBytes)} set in "Storage to use". Move it up to hold more${this.storageTargetSetting === 'max' ? '; it is at the most this browser allows (a browser setting, or more free disk, raises that)' : ''}.`);
         return;
       }
+      this.holdStoppedByPerson = false;
+      const heldBefore = this.storage.packedChunks.size;
       await this.holdLiveChunks(wanted);
+      if (this.storage.packedChunks.size > heldBefore) this.continueFillingIfAllowedMore(chunkCount);
     }
     this.refreshStorageSlider();
     this.refreshSummary();
+  }
+
+  /**
+   * Chrome reports a site's quota as what it uses plus 10 GiB (hiding private browsing),
+   * not its real limit (about 60% of the disk), so the figure rises as chunks are saved.
+   * With the slider at its end, a fill toward it goes on while the figure keeps rising,
+   * and stops when the person stops it, a save fails (the real limit), it no longer grows,
+   * or a fill adds nothing (the caller checks that, so this cannot loop on an empty fill).
+   */
+  continueFillingIfAllowedMore(chunkCount) {
+    if (chunkCount !== null || this.storageTargetSetting !== 'max' || this.holdStoppedByPerson || this.lastSaveFailed) return;
+    if (!this.chunksToReachTarget()) return;
+    this.view.log(`the browser now allows about ${PageView.formatBytes(this.storageQuotaBytes)}; filling on toward it`);
+    setTimeout(() => this.fillStorageInBackground(), 0);
+  }
+
+  /** Bytes Chrome adds to a site's usage to report its quota (its "predictable" figure). */
+  static CHROME_REPORTED_HEADROOM = 10 * 2 ** 30;
+
+  /** Whether `estimate` is Chrome's usage-plus-10-GiB figure rather than a real limit. */
+  static isFloatingQuota(estimate) {
+    return Math.abs(estimate.quota - (estimate.usage ?? 0) - HoldingPanel.CHROME_REPORTED_HEADROOM) < 2 ** 20;
   }
 
   /**
@@ -549,6 +577,7 @@ export class HoldingPanel {
   }
 
   stopHolding() {
+    this.holdStoppedByPerson = true;
     this.holdStopper?.abort();
     this.view.setText('holdStatus', 'Stopping: requests already sent will finish, then what arrived is packed and saved.');
   }
