@@ -66,12 +66,17 @@ jobs:
           git lfs pull --include "localnet_snapshot/**"
           du -sh localnet_snapshot
 
+      # _build links to the native libraries (RandomX, VDF, secp256k1) compiled into
+      # apps/arweave/priv, so both are kept; without priv, a skipped compile leaves the node
+      # unable to load them.
       - name: Reuse an earlier build
         id: arweave-build
         uses: actions/cache@v4
         with:
-          path: arweave/_build
-          key: arweave-localnet-${{ env.ARWEAVE_COMMIT }}
+          path: |
+            arweave/_build
+            arweave/apps/arweave/priv
+          key: arweave-localnet-with-native-${{ env.ARWEAVE_COMMIT }}
 
       # A build cached for the pinned commit needs neither the tools nor compiling again
       # (together about 2 minutes).
