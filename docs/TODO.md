@@ -69,8 +69,9 @@ height 2,069,866 with their parents' state, captured).
        - A browser tab, from its one button: the workflow's `page` mode opens the built
          page in headless Chrome at `?localnet=` (a `NetworkTarget`, through
          `scripts/localnet-proxy.mjs`) and waits for the node to take its blocks. The node
-         took the tab's first block (2,069,866, from its own accounts, packing, VDF steps
-         and signature); its second was dropped at the node's step-number check, under study.
+         took the tab's blocks 2,069,866 and 2,069,867 (its own accounts, packing, VDF steps
+         and signatures) in 107 s from pressing the button. One earlier run had its second
+         block dropped at the node's step-number check; each post now logs its VDF facts.
        Left: the VDF difficulty retarget (every 720 heights; written, not yet met by a
        test), secp256k1 signing (optional; RSA keys also mine), transactions in blocks
        (empty blocks only so far), and the true end: a real solution beating the real
