@@ -3,16 +3,18 @@
 // Folders, by area (README.md "Layout" describes each file):
 //   core/     bytes, SHA-256, SHA-384, secp256k1 key recovery, denominations, constants, formatting, source citations
 //   mining/   VDF, difficulty, packing, the per-step hashes, held storage, the miner, odds, RandomX
-//   blocks/   building and following blocks: account tree, rewards, history hashes, fields, adjustments, solution, VDF info, hash, signing, binary, publishing, transactions in blocks, picking pending ones, chain follower, network rules
-//   network/  gateways, nodes, peers and sources, VDF servers, fetching chunks
-//   storage/  packed chunks in the browser, and moving them between copies of the page
+//   blocks/   building and following blocks: account tree and its snapshots, rewards, history hashes, fields, adjustments, solution, VDF info, hash, signing, binary, publishing, transactions in blocks, picking pending ones, checking blocks' ids and signatures, chain follower, network rules
+//   network/  gateways, nodes, peers and sources, VDF servers and spot checks, fetching chunks, pending transactions, which network
+//   storage/  IndexedDB stores: packed chunks, the followed chain state; moving chunks between copies of the page
 //   wallet/   keys, transactions, ANS-104 data items for bundlers
 export * from './blocks/account-tree.js';
+export * from './blocks/account-tree-snapshot.js';
 export * from './blocks/adjustments.js';
 export * from './blocks/assembler.js';
 export * from './blocks/binary.js';
 export * from './blocks/block-publisher.js';
 export * from './blocks/block-transactions.js';
+export * from './blocks/block-verifier.js';
 export * from './blocks/chain-follower.js';
 export * from './blocks/fields.js';
 export * from './blocks/hash.js';
@@ -44,9 +46,14 @@ export * from './mining/vdf.js';
 export * from './network/chunk-fetcher.js';
 export * from './network/erlang-term.js';
 export * from './network/gateway.js';
+export * from './network/network-target.js';
 export * from './network/node-client.js';
 export * from './network/peers.js';
+export * from './network/pending-transactions.js';
 export * from './network/vdf-client.js';
+export * from './network/vdf-spot-check.js';
+export * from './storage/browser-object-store.js';
+export * from './storage/chain-state-store.js';
 export * from './storage/chunk-share.js';
 export * from './storage/chunk-store.js';
 export * from './wallet/bundle.js';
