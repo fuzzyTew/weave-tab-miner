@@ -47,6 +47,23 @@ class VdfInfoTest {
     this.report(`block ${child.height}: its step's first checkpoint, computed, matches the node's`, Bytes.toBase64Url(computed) === expected, `${Math.round(performance.now() - started)} ms`);
   }
 
+  /**
+   * A block built on a block this library built: one step past it lists one step, and its
+   * prev_output is that block's output (what a node checks first). Steps come from a stand-in
+   * source, since only the chaining is checked here.
+   */
+  async chainedOnOwnBlock(parent, blockTimeHistory) {
+    const stepSource = {
+      output: async ({ stepNumber }) => new Uint8Array(32).fill(stepNumber % 251),
+      checkpoints: async ({ stepNumber }) => Array.from({ length: 25 }, (_, index) => new Uint8Array(32).fill((stepNumber + index) % 251)),
+    };
+    const parentStep = Number(parent.nonce_limiter_info.global_step_number);
+    const own = { ...parent, height: Number(parent.height) + 1, nonce_limiter_info: await VdfInfo.afterParent({ parent, parentBlockTimeHistory: blockTimeHistory, stepNumber: parentStep + 3, stepSource }) };
+    const next = await VdfInfo.afterParent({ parent: own, parentBlockTimeHistory: blockTimeHistory, stepNumber: parentStep + 4, stepSource });
+    this.report('a block one step past one built here lists one step, after that block\'s output',
+      own.nonce_limiter_info.checkpoints.length === 3 && next.checkpoints.length === 1 && next.prev_output === own.nonce_limiter_info.output && next.global_step_number === parentStep + 4);
+  }
+
   async run() {
     this.resetPoints();
     if (!existsSync(this.fixturesDirectory)) {
@@ -54,8 +71,13 @@ class VdfInfoTest {
       return;
     }
     let checkpointChecked = false;
+    let chainChecked = false;
     for (const name of readdirSync(this.fixturesDirectory).filter((file) => file.startsWith('block_')).sort()) {
       const { parent, child } = JSON.parse(readFileSync(`${this.fixturesDirectory}/${name}`, 'utf8'));
+      if (!chainChecked) {
+        await this.chainedOnOwnBlock(parent.block, BlockTimeHistory.fromBinary(Bytes.fromBase64Url(parent.blockTimeHistory)));
+        chainChecked = true;
+      }
       const info = await VdfInfo.afterParent({
         parent: parent.block,
         parentBlockTimeHistory: BlockTimeHistory.fromBinary(Bytes.fromBase64Url(parent.blockTimeHistory)),
