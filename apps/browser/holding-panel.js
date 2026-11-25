@@ -291,7 +291,10 @@ export class HoldingPanel {
       // Storage refused: the default applies each visit.
     }
     slider.addEventListener('input', () => {
-      this.storageTargetSetting = slider.value === slider.max ? 'max' : Number(slider.value);
+      // The track spans the whole allowance; the knob stops where the usable share ends.
+      const usable = this.usableStorageBytes();
+      if (usable && Number(slider.value) > usable) slider.value = String(usable);
+      this.storageTargetSetting = usable && Number(slider.value) >= usable ? 'max' : Number(slider.value);
       try {
         localStorage.setItem(HoldingPanel.STORAGE_TARGET_KEY, String(this.storageTargetSetting));
       } catch {
@@ -316,19 +319,34 @@ export class HoldingPanel {
   }
 
   /**
-   * The slider's range (up to 90% of what the browser allows, in whole steps), its position
-   * from the setting, and its text and meter: the amount set, the allowance, how full.
+   * The share of the browser's allowance chunks may fill. The allowance is an estimate,
+   * writes close to it fail, and the saved chain state (tens of MB) and the page's other
+   * data need room too, so the last tenth is left free.
+   */
+  static USABLE_STORAGE_SHARE = 0.9;
+
+  /** The most the slider may be set to, in whole steps, or null before the allowance is known. */
+  usableStorageBytes() {
+    if (!this.storageQuotaBytes) return null;
+    const step = HoldingPanel.STORAGE_STEP_BYTES;
+    return Math.max(step, Math.floor(this.storageQuotaBytes * HoldingPanel.USABLE_STORAGE_SHARE / step) * step);
+  }
+
+  /**
+   * The slider's track (the whole allowance, so the knob's place shows the share used),
+   * its position from the setting (at most the usable share), and its text and meter.
    */
   refreshStorageSlider() {
     const { storageTargetInput: slider, storageFillMeter: meter } = this.view.elements;
     const step = HoldingPanel.STORAGE_STEP_BYTES;
-    if (this.storageQuotaBytes) slider.max = String(Math.max(step, Math.floor(this.storageQuotaBytes * 0.9 / step) * step));
+    if (this.storageQuotaBytes) slider.max = String(Math.max(step, Math.floor(this.storageQuotaBytes / step) * step));
+    const usable = this.usableStorageBytes() ?? Number(slider.max);
     const setting = this.storageTargetSetting ?? 'max';
-    slider.value = String(setting === 'max' ? Number(slider.max) : Math.min(setting, Number(slider.max)));
+    slider.value = String(setting === 'max' ? usable : Math.min(setting, usable));
     const target = this.storageTargetBytes;
     const held = this.storage.byteCount;
     meter.value = target ? Math.min(1, held / target) : 0;
-    const allowed = this.storageQuotaBytes ? ` of about ${PageView.formatBytes(this.storageQuotaBytes)} this browser allows` : '';
+    const allowed = this.storageQuotaBytes ? ` of about ${PageView.formatBytes(this.storageQuotaBytes)} this browser allows (the last tenth is left free)` : '';
     const over = held > target ? ' — more than set, so nothing more is fetched' : '';
     this.view.setText('storageTargetText', `${PageView.formatBytes(target)}${allowed}; ${PageView.formatBytes(held)} held (${target ? Math.round(held / target * 100) : 0}%)${over}`);
   }
