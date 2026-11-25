@@ -24,7 +24,7 @@ export class NetworkTarget {
   static LOCALNET_PARAMETER = 'localnet';
   // The localnet's snapshot seeds about 21 MiB at the start of the weave.
   static LOCALNET_SEEDED_BYTES = 21 * 1024 * 1024;
-  static LOCALNET_HELD_CHUNKS = 2;
+  static LOCALNET_HELD_CHUNKS = 1;
 
   /**
    * A localnet reached at `nodeUrl`. Its node wants an X-Network: arweave.localnet header
