@@ -112,14 +112,23 @@ export class PageView {
 
   /** The wait's factors, each as "× N name — why"; ones already at full speed are dimmed. */
   fillLimits(factors) {
-    const list = this.elements.limitList;
+    this.fillLabeledList('limitList', factors.map((factor) => ({
+      label: `× ${PrettyNumber.factor(factor.multiplier)} ${factor.name}`,
+      text: factor.explanation,
+      className: factor.multiplier <= 1.0001 ? 'limit-met' : '',
+    })));
+  }
+
+  /** Replaces a list's items with "<strong>label</strong> — text" for each entry. */
+  fillLabeledList(listName, entries) {
+    const list = this.elements[listName];
     list.replaceChildren();
-    for (const factor of factors) {
+    for (const { label, text, className = '' } of entries) {
       const item = document.createElement('li');
       const name = document.createElement('strong');
-      name.textContent = `× ${PrettyNumber.factor(factor.multiplier)} ${factor.name}`;
-      item.append(name, ` — ${factor.explanation}`);
-      if (factor.multiplier <= 1.0001) item.className = 'limit-met';
+      name.textContent = label;
+      item.append(name, ` — ${text}`);
+      if (className) item.className = className;
       list.append(item);
     }
   }

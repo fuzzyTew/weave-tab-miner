@@ -5,6 +5,7 @@ import { ConsensusConstants } from '../../src/core/constants.js';
 import { Miner } from '../../src/mining/miner.js';
 import { VdfSession } from '../../src/mining/vdf.js';
 import { SolutionOdds } from '../../src/mining/odds.js';
+import { StorageSizing } from '../../src/mining/storage-sizing.js';
 import { PeerAccess } from '../../src/network/peers.js';
 import { VdfServerClient, VdfServerPool } from '../../src/network/vdf-client.js';
 import { VdfSpotCheck } from '../../src/network/vdf-spot-check.js';
@@ -369,7 +370,30 @@ export class MiningPanel {
     this.view.setText('rangeHitNote', hitChance > 0
       ? `Range 1 touches a chunk this tab holds about once every ${PageView.formatDuration(1 / (hitChance * stepsPerSecond))} (${(hitChance * 100).toPrecision(2)}% of steps). Each held chunk in range gives ${ConsensusConstants.noncesPerRecallRange / (ConsensusConstants.recallRangeSize / ConsensusConstants.DATA_CHUNK_SIZE)} tries. Spreading chunks out makes touches more frequent but smaller, and holding them side by side makes them rarer but larger; the expected wait above is the same either way.`
       : `No chunks held in partition ${this.partitionNumber}, so no step can try anything.`);
+    this.refreshSizing();
     this.view.setText('waitNote', this.usingRealRandomx ? 'Real rules: a solution here would be a real one.' : 'Stand-in RandomX: solutions would not be real.');
+  }
+
+  /**
+   * How big a disk: what holding the whole partition would cost here, and the held sizes
+   * where this app's limits bind (StorageSizing), from rates measured in this tab where
+   * there are any.
+   */
+  refreshSizing() {
+    const timings = this.running ? this.pace.averageTimings() : null;
+    // Waiting time per chunk read while mining: reads overlap hashing, so this is a floor.
+    const readMsPerChunk = timings?.chunksRead >= 1 ? timings.loadMs / timings.chunksRead : null;
+    const measured = { readMsPerChunk, fillBytesPerSecond: this.fillMeter.perSecond };
+    const weaveBytes = Number(this.session.partitionUpperBound);
+    // Steps at the network's pace: reads must fit in that to keep up.
+    const full = new StorageSizing({ heldBytes: StorageSizing.partitionBytes, weaveBytes, measured, stepSeconds: 1 / SolutionOdds.NETWORK_STEPS_PER_SECOND });
+    const readSource = readMsPerChunk === null ? 'estimated for a fast disk, until mining reads some held chunks' : 'as measured while mining here';
+    const fill = full.fillSeconds === null ? 'filling it takes as long as fetching and packing allow (measured once a fill runs)'
+      : `filling it would take about ${PageView.formatDuration(full.fillSeconds)} at the ${PageView.formatBytes(full.measured.fillBytesPerSecond)}/s measured here`;
+    this.view.setText('sizingNote', `The wait shrinks in step with the share of partition ${this.partitionNumber} held (twice the data, half the wait), up to the whole partition, ${PageView.formatBytes(StorageSizing.partitionBytes)}. Holding all of it here would mean reading about ${full.chunksReadPerStep.toFixed(0)} chunks a step (${PageView.formatBytes(full.readBytesPerSecond)}/s; about ${Math.round(full.readMsPerStep)} ms of each step, ${readSource}), an index of ${PageView.formatBytes(full.indexMemoryBytes)} in memory, about ${PageView.formatDuration(full.startupSeconds)} listing chunks at each start; ${fill}. Chrome allows a site about ${Math.round(StorageSizing.CHROME_DISK_SHARE * 100)}% of its disk, so that needs a disk of about ${PageView.formatBytes(full.chromeDiskBytes)}. Where this app's limits bind first:`);
+    this.view.fillLabeledList('sizingLimits', full.limits()
+      .filter((limit) => Number.isFinite(limit.bytes))
+      .map((limit) => ({ label: `about ${PageView.formatBytes(limit.bytes)} held`, text: limit.explanation, className: this.storage.byteCount >= limit.bytes ? 'limit-reached' : '' })));
   }
 
   /** How the VDF server kept up: poll time, gaps between polls, and steps lost or skipped. */

@@ -62,6 +62,7 @@
   .limits { background: var(--panel); border: 1px solid var(--rule); padding: 14px; }
   .limits ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
   .limit-met { color: var(--muted); }
+  .limit-reached { color: var(--warn); }
   .explorer td.explorer-value { white-space: normal; overflow-wrap: anywhere; word-break: break-all; min-width: 16ch; }
   .explorer th[scope="row"] { font-family: var(--font-body); text-transform: none; letter-spacing: 0; font-size: 0.8rem; color: var(--ink); white-space: nowrap; }
   #stepRows tr { cursor: pointer; }
@@ -221,6 +222,10 @@
     <p id="limitHeadline">—</p>
     <ol id="limitList"></ol>
     <p id="rangeHitNote">—</p>
+    <h4>How big a disk</h4>
+    <p id="sizingNote">—</p>
+    <ul id="sizingLimits"></ul>
+    <p class="stage-note">Past these, a node program on a computer with a large disk does better than a tab (apps/node in this project, or the Arweave node itself). Two ways a tab can use an attached drive today: run a portable browser whose profile lives on a USB drive, so the data travels with you and the browser's allowance counts that drive; or, on a computer you keep, start the browser with its profile on a larger disk. A USB hard drive moves its head for each chunk (roughly 10 ms), so a solid-state drive suits mining better.</p>
     <p class="stage-note" id="waitNote"></p>
   </details>
 

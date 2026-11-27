@@ -76,6 +76,8 @@ jobs:
           node test/chunk-fetcher.test.mjs
           node test/gateway-order.test.mjs
           node test/storage-allowance.test.mjs
+          node test/throughput-meter.test.mjs
+          node --expose-gc test/storage-sizing.test.mjs
           node test/storage-archive.test.mjs
           node test/signing-guard-and-repack.test.mjs
 
