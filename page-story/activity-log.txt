@@ -1,0 +1,80 @@
+14:42:35 request failed — GET https://ario4.aoar.io.vn/chunk/244398323481406: TimeoutError: signal timed out
+14:42:29 request failed — GET https://polaris.weavegate.net/chunk/244243624966974: Error: HTTP 503 : <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>verified chunk retrieval failed: Upstream request timed out Upstream request: http://47.205.139.254:1984: Upstream request timed out Chunk offset: 244243624966974</pre> </body> </html>
+14:42:28 request failed — GET https://ario4.aoar.io.vn/chunk/244310426598206: TimeoutError: signal timed out
+14:42:25 request failed — GET https://ario4.aoar.io.vn/chunk/244243624966974: TimeoutError: signal timed out
+14:42:23 packed 128 chunks for pFgmLdTS…
+14:42:23 chunks served so far, by source (served of asked): ario4.aoar.io.vn 949 of 962, polaris.weavegate.net 11 of 13, arh.oohgroup.vn 0 of 1, arj.oohgroup.vn 0 of 1, 04.arweave.io.vn 0 of 1, turbo-gateway.com 0 of 1, arc.noddex.com 1 of 6
+14:42:23 saved 128 packed chunks to browser storage (the browser may clear it if disk runs low)
+14:41:57 packed 128 chunks for pFgmLdTS…
+14:41:57 chunks served so far, by source (served of asked): ario4.aoar.io.vn 820 of 833, polaris.weavegate.net 11 of 13, arh.oohgroup.vn 0 of 1, arj.oohgroup.vn 0 of 1, 04.arweave.io.vn 0 of 1, turbo-gateway.com 0 of 1, arc.noddex.com 1 of 6
+14:41:57 saved 128 packed chunks to browser storage (the browser may clear it if disk runs low)
+14:41:33 request failed — GET https://ario4.aoar.io.vn/chunk/243459584768830: TimeoutError: signal timed out
+14:41:31 request failed — GET https://ario4.aoar.io.vn/chunk/243431457766206: TimeoutError: signal timed out
+14:41:25 packed 128 chunks for pFgmLdTS…
+14:41:25 chunks served so far, by source (served of asked): ario4.aoar.io.vn 695 of 706, polaris.weavegate.net 9 of 11, arh.oohgroup.vn 0 of 1, arj.oohgroup.vn 0 of 1, 04.arweave.io.vn 0 of 1, turbo-gateway.com 0 of 1, arc.noddex.com 1 of 6
+14:41:25 saved 128 packed chunks to browser storage (the browser may clear it if disk runs low)
+14:41:21 request failed — GET https://ario4.aoar.io.vn/chunk/243325981506366: TimeoutError: signal timed out
+14:41:07 request failed — GET https://ario4.aoar.io.vn/chunk/243192378243902: TimeoutError: signal timed out
+14:41:04 request failed — GET https://ario4.aoar.io.vn/chunk/243150187739966: TimeoutError: signal timed out
+14:40:42 skipping the chunk at byte 242717735074621: no source had it (GET https://ario4.aoar.io.vn/chunk/242717735074622: TimeoutError: signal timed out)
+14:40:42 request failed — GET https://turbo-gateway.com/chunk/242717735074622: Error: HTTP 404 : Not Found
+14:40:41 request failed — GET https://04.arweave.io.vn/chunk/242717735074622: TimeoutError: signal timed out
+14:40:40 packed 128 chunks for pFgmLdTS…
+14:40:40 chunks served so far, by source (served of asked): ario4.aoar.io.vn 569 of 577, polaris.weavegate.net 6 of 8, arh.oohgroup.vn 0 of 1, arj.oohgroup.vn 0 of 1, arc.noddex.com 1 of 6
+14:40:40 saved 128 packed chunks to browser storage (the browser may clear it if disk runs low)
+14:40:31 request failed — GET https://polaris.weavegate.net/chunk/242717735074622: TimeoutError: signal timed out
+14:40:28 following the chain: now on block 2051011
+14:40:21 request failed — GET https://ario4.aoar.io.vn/chunk/242717735074622: TimeoutError: signal timed out
+14:39:58 packed 128 chunks for pFgmLdTS…
+14:39:58 chunks served so far, by source (served of asked): ario4.aoar.io.vn 441 of 448, polaris.weavegate.net 6 of 7, arh.oohgroup.vn 0 of 1, arj.oohgroup.vn 0 of 1, arc.noddex.com 1 of 6
+14:39:58 saved 128 packed chunks to browser storage (the browser may clear it if disk runs low)
+14:39:50 request failed — GET https://ario4.aoar.io.vn/chunk/242373179292478: TimeoutError: signal timed out
+14:39:50 request failed — GET https://ario4.aoar.io.vn/chunk/242369663417150: TimeoutError: signal timed out
+14:39:41 request failed — GET https://ario4.aoar.io.vn/chunk/242299345910590: TimeoutError: signal timed out
+14:39:41 request failed — GET https://ario4.aoar.io.vn/chunk/242295830035262: TimeoutError: signal timed out
+14:39:18 packed 128 chunks for pFgmLdTS…
+14:39:18 chunks served so far, by source (served of asked): ario4.aoar.io.vn 318 of 321, polaris.weavegate.net 2 of 3, arh.oohgroup.vn 0 of 1, arj.oohgroup.vn 0 of 1, arc.noddex.com 1 of 6
+14:39:18 saved 128 packed chunks to browser storage (the browser may clear it if disk runs low)
+14:39:14 packed 128 chunks for pFgmLdTS…
+14:39:14 chunks served so far, by source (served of asked): ario4.aoar.io.vn 303 of 306, polaris.weavegate.net 2 of 3, arh.oohgroup.vn 0 of 1, arj.oohgroup.vn 0 of 1, arc.noddex.com 1 of 6
+14:39:14 saved 128 packed chunks to browser storage (the browser may clear it if disk runs low)
+14:39:09 request failed — GET https://ario4.aoar.io.vn/chunk/241863377369918: TimeoutError: signal timed out
+14:38:59 saved the chain state at block 2051010 for next time
+14:38:58 ready to publish: chain state at block 2051010 from http://139.64.164.124:1984
+14:38:07 no VDF from https://vdf-server-4.arweave.xyz: no answer within 5 s
+14:38:07 no VDF from https://vdf-server-3.arweave.xyz: no answer within 5 s
+14:38:02 no VDF from https://ar7.hoanminh.site: HTTP 404: <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /vdf<
+14:38:02 no VDF from https://turbo-gateway.com: answered with text/html; charset=utf-8, not a VDF update
+14:38:02 no VDF from https://are.noddex.com: HTTP 404: <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /vdf<
+14:38:02 no VDF from https://04.arweave.io.vn: HTTP 404: <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /vdf<
+14:38:02 no VDF from https://arh.noddex.com: HTTP 404: <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /vdf<
+14:38:02 no VDF from https://polaris.weavegate.net: HTTP 404: <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /vdf<
+14:38:02 no VDF from https://arweave.net: HTTP 404: <html> <head> <meta charset="utf-8" /> <meta name="viewport" content="width=device-width, initial-sc
+14:38:02 no VDF from https://arh.oohgroup.vn: HTTP 404: <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /vdf<
+14:38:02 no VDF from https://ario4.aoar.io.vn: HTTP 404: <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /vdf<
+14:38:02 no VDF from https://arj.oohgroup.vn: HTTP 404: <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /vdf<
+14:38:02 no VDF from https://arc.noddex.com: HTTP 404: <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /vdf<
+14:38:02 filling storage toward 9.0 GiB in the background
+14:38:02 packed 64 chunks for pFgmLdTS…
+14:38:02 chunks served so far, by source (served of asked): ario4.aoar.io.vn 62 of 64, polaris.weavegate.net 1 of 2, arh.oohgroup.vn 0 of 1, arj.oohgroup.vn 0 of 1, arc.noddex.com 1 of 6
+14:38:02 saved 64 packed chunks to browser storage (the browser may clear it if disk runs low)
+14:37:33 skipping the chunk at byte 241317489151490: no source had it (GET https://ario4.aoar.io.vn/chunk/241317489151491: TimeoutError: signal timed out)
+14:37:33 request failed — GET https://arj.oohgroup.vn/chunk/241317489151491: TimeoutError: signal timed out
+14:37:23 request failed — GET https://arh.oohgroup.vn/chunk/241317489151491: TimeoutError: signal timed out
+14:37:13 request failed — GET https://polaris.weavegate.net/chunk/241317489151491: TimeoutError: signal timed out
+14:37:03 request failed — GET https://ario4.aoar.io.vn/chunk/241317489151491: TimeoutError: signal timed out
+14:36:52 request failed — GET https://ario4.aoar.io.vn/chunk/241208497016323: TimeoutError: signal timed out
+14:36:49 request failed — GET https://arc.noddex.com/chunk/241219044642307: TimeoutError: signal timed out
+14:36:49 request failed — GET https://arc.noddex.com/chunk/241204981140995: TimeoutError: signal timed out
+14:36:43 request failed — GET https://arc.noddex.com/chunk/241201465265667: Error: HTTP 404 : Not Found
+14:36:42 request failed — GET https://arc.noddex.com/chunk/241215528766979: Error: HTTP 404 : Not Found
+14:36:42 request failed — GET https://arc.noddex.com/chunk/241208497016323: Error: HTTP 404 : Not Found
+14:36:39 the browser did not agree to keep this site's storage; it may clear it when space runs low, and may keep its limit low
+14:36:39 using live block at height 2051010
+14:36:37 source test: 11 of 11 answered, 0 served the VDF
+14:36:35 RandomX ready: H0 and packing are real
+14:36:34 ready: the shared key and the sample block. "Verify against the sample" replays a real solution; load the live block to mine.
+14:36:34 this page is build f84194203f of 2026-11-27, with uncommitted changes
+14:36:34 identity set: pFgmLdTSvnNplpTQDalbOpxWv9Wntk-swLLJK0U684M
+14:36:34 using sample block at height 2040257
+14:36:34 partition 67 picked for this browser, out of 110, so tabs sharing a key hold different data
