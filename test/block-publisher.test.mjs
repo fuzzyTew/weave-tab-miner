@@ -72,7 +72,7 @@ class BlockPublisherTest extends TestCase {
           return { chunk: poa.unpacked_chunk, data_path: poa.data_path, tx_path: poa.tx_path };
         },
         signer: {
-          wallet: { addressBytes: Bytes.fromBase64Url(child.reward_addr), address: child.reward_addr, ownerBytes: Bytes.fromBase64Url(child.reward_key) },
+          key: { addressBytes: Bytes.fromBase64Url(child.reward_addr), address: child.reward_addr, ownerBytes: Bytes.fromBase64Url(child.reward_key) },
           sign: async (block) => {
             const signed = { ...block, signature: child.signature };
             return { ...signed, indep_hash: Bytes.toBase64Url(await BlockHash.indepHash(signed)) };

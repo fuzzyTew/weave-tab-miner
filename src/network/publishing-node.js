@@ -239,9 +239,9 @@ export class PublishingNode {
 
   // ---- publishing ----
 
-  /** The signer for `wallet`, kept while the wallet stays the same (its guard remembers heights). */
-  signerFor(wallet) {
-    if (this.signer?.wallet !== wallet) this.signer = new BlockSigner({ wallet, guard: new DoubleSigningGuard({ storage: this.signingGuardStorage }) });
+  /** The signer for a block key (BlockSigner), kept while the key stays the same. */
+  signerFor(key) {
+    if (this.signer?.key !== key) this.signer = new BlockSigner({ key, guard: new DoubleSigningGuard({ storage: this.signingGuardStorage }) });
     return this.signer;
   }
 
@@ -260,19 +260,20 @@ export class PublishingNode {
   }
 
   /**
-   * Builds, signs and posts the block for a real solution (Miner.mineStep's report).
+   * Builds, signs and posts the block for a real solution (Miner.mineStep's report), signed
+   * with `key` (a block key: see BlockSigner).
    * `stepSource` gives the VDF steps since the parent; `h0Hasher` and `entropySource` are
    * the miner's. Resolves { block, taken, replies } once posted, or null when it was not
    * (no state yet, the key already signed at this height, or a failure, all reported
    * through onStatus and log).
    */
-  async publish(report, { wallet, address, stepSource, h0Hasher, entropySource }) {
+  async publish(report, { key, address, stepSource, h0Hasher, entropySource }) {
     if (!this.follower) {
       this.log('solution not published: the chain state is not ready yet (see the status line).', 'warn');
       return null;
     }
     const parent = this.follower.state.block;
-    const signer = this.signerFor(wallet);
+    const signer = this.signerFor(key);
     const earlier = signer.guard.signedChildOf(address, parent.cumulative_diff);
     if (earlier) {
       // A second block on this parent would be a double signature; only a newer tip helps.

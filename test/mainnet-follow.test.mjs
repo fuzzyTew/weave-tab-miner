@@ -51,7 +51,7 @@ class MainnetFollowTest extends TestCase {
     const publisher = new BlockPublisher({
       follower, ...randomx, fetchChunkJson: async (offset) => chunks[String(offset)],
       signer: {
-        wallet: { addressBytes: Bytes.fromBase64Url(block.reward_addr), address: block.reward_addr, ownerBytes: Bytes.fromBase64Url(block.reward_key) },
+        key: { addressBytes: Bytes.fromBase64Url(block.reward_addr), address: block.reward_addr, ownerBytes: Bytes.fromBase64Url(block.reward_key) },
         sign: async (built) => {
           const signed = { ...built, signature: block.signature };
           return { ...signed, indep_hash: Bytes.toBase64Url(await BlockHash.indepHash(signed)) };

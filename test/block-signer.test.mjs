@@ -26,7 +26,7 @@ class BlockSignerTest extends TestCase {
     const name = readdirSync(this.fixturesDirectory).filter((file) => file.startsWith('block_')).sort()[0];
     const { child } = JSON.parse(readFileSync(`${this.fixturesDirectory}/${name}`, 'utf8'));
     const wallet = await ArweaveWallet.generate();
-    const signer = new BlockSigner({ wallet, guard: new DoubleSigningGuard({ storage: new MemoryStorage() }) });
+    const signer = new BlockSigner({ key: wallet, guard: new DoubleSigningGuard({ storage: new MemoryStorage() }) });
 
     const signed = await signer.sign(child);
     const publicKey = await crypto.subtle.importKey('jwk', { kty: 'RSA', e: 'AQAB', n: signed.reward_key }, { name: 'RSA-PSS', hash: 'SHA-256' }, false, ['verify']);

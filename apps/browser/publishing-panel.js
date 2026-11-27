@@ -84,7 +84,7 @@ export class PublishingPanel {
     const parentStep = Number(this.publishing.parentBlock.nonce_limiter_info.global_step_number);
     await this.vdfPool?.fillSince(parentStep, report.stepNumber);
     const published = await this.publishing.publish(report, {
-      wallet: this.identity.wallet, address: this.identity.address,
+      key: this.identity.wallet, address: this.identity.address,
       stepSource: new RecordedVdfSteps(this.vdfSteps.outputsByStep, new ComputedVdfSteps(), this.vdfSteps.checkpointsByStep),
       h0Hasher: this.h0Hasher, entropySource: this.entropySource,
     });

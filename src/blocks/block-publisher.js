@@ -54,14 +54,14 @@ export class BlockPublisher {
     const chunkFor = async (recallByte) => this.fetchChunkJson(recallByte + 1n).catch((error) => { throw new BlockPublishError('chunk', `the chunk at ${recallByte} could not be fetched again: ${error.message}`); });
     const twoChunks = solution.recallByte2 !== undefined;
     const fields = await BlockSolution.build({
-      addressBytes: this.signer.wallet.addressBytes, vdfInfo, seed, nonce: solution.nonce,
+      addressBytes: this.signer.key.addressBytes, vdfInfo, seed, nonce: solution.nonce,
       recallByte: solution.recallByte1, chunkJson: await chunkFor(solution.recallByte1),
       ...(twoChunks ? { recallByte2: solution.recallByte2, chunk2Json: await chunkFor(solution.recallByte2) } : {}),
       h0Hasher: this.h0Hasher, entropySource: this.entropySource,
     });
     if (fields.hash !== Bytes.toBase64Url(solution.hash)) throw new BlockPublishError('solution', 'rebuilding the solution from the fetched chunks gave a different hash than the miner found');
 
-    const block = await BlockAssembler.assemble({ state, solution: fields, rewardAddress: this.signer.wallet.address, rewardKey: Bytes.toBase64Url(this.signer.wallet.ownerBytes), timestamp: Math.max(timestamp, Number(parent.timestamp)), transactions });
+    const block = await BlockAssembler.assemble({ state, solution: fields, rewardAddress: this.signer.key.address, rewardKey: Bytes.toBase64Url(this.signer.key.ownerBytes), timestamp: Math.max(timestamp, Number(parent.timestamp)), transactions });
     // At a retarget height the block's own difficulty can be higher than the one mined against.
     if (state.rules.difficultyChecked && !Difficulty.passes(solution.hash, !twoChunks, BigInt(block.diff))) throw new BlockPublishError('difficulty', `the solution does not pass block ${block.height}'s difficulty`);
 

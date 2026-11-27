@@ -141,8 +141,11 @@ of devices to sign, so only one block per height can get a signature.
   `cggmp21` crate, audited by Kudelski, which leaves networking to the caller as a
   stream of incoming messages and a sink for outgoing ones). Both are Rust, so in the
   page they would run as WebAssembly, as RandomX does now.
-- **Prerequisite.** `BlockSigner` signs with RSA keys only; it first needs secp256k1
-  block signing (the verifier already checks such blocks, from the localnet).
+- **Prerequisite.** `BlockSigner` now takes a block key (address, addressBytes,
+  ownerBytes, sign) rather than a wallet, so any signer fits. Still needed: a secp256k1
+  key that signs (the verifier already checks such blocks, from the localnet). Signing
+  must be constant-time, so it should come from an audited library (noble-secp256k1, say,
+  vendored as RandomX is) rather than `src/core/secp256k1.js`, which only recovers keys.
 - **Where it goes.** `src/threshold/`, with no Arweave imports: a `ThresholdSigner`
   interface (key generation among parties, signing a message) and a transport interface
   (messages in, messages out). First implementation: one party holding the whole key,

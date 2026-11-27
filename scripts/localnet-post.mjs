@@ -122,7 +122,7 @@ class LocalnetBlockPoster {
 
   async run() {
     const wallet = await ArweaveWallet.generate();
-    const signer = new BlockSigner({ wallet, guard: new DoubleSigningGuard({ storage: new MemoryStorage() }) });
+    const signer = new BlockSigner({ key: wallet, guard: new DoubleSigningGuard({ storage: new MemoryStorage() }) });
     console.log(`mining as ${wallet.address}`);
     const state = await this.chainState();
     const { h0Hasher, entropySource } = this.randomx();
