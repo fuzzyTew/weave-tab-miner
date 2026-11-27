@@ -9,6 +9,7 @@ import { ChunkFetcher } from '../../src/network/chunk-fetcher.js';
 import { ChunkShareBridge } from '../../src/storage/chunk-share.js';
 import { PackedChunkStore, PackedChunkArchive } from '../../src/storage/chunk-store.js';
 import { StorageAllowance } from '../../src/storage/storage-allowance.js';
+import { ThroughputMeter } from '../../src/core/throughput-meter.js';
 import { PageView } from './page-view.js';
 
 export class HoldingPanel {
@@ -260,6 +261,7 @@ export class HoldingPanel {
     this.lastSaveFailed = !(await this.store.save(this.identity.address, entries));
     if (!this.lastSaveFailed) {
       this.storage.markReloadable(entries.map(([offset]) => offset));
+      this.fillMeter.note(entries.length * ConsensusConstants.DATA_CHUNK_SIZE);
       this.view.log(`saved ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} to browser storage${this.storageKept === false ? ' (the browser may clear it if disk runs low)' : ''}`);
       const sources = this.gateway.chunkSources.summary();
       if (sources) this.view.log(`chunks served so far, by source (served of asked): ${sources}`);
@@ -286,6 +288,12 @@ export class HoldingPanel {
   /** Bytes to fill toward; the slider's own range stands in before the allowance is known. */
   get storageTargetBytes() {
     return this.storageAllowance.targetBytes ?? Number(this.view.elements.storageTargetInput.max);
+  }
+
+  /** Bytes a second fetched, packed and saved, over the recent fill (StorageSizing uses it). */
+  get fillMeter() {
+    this.fillMeterState ??= new ThroughputMeter();
+    return this.fillMeterState;
   }
 
   /** Remembers the storage setting ("max" or bytes) and fills toward it. */
@@ -470,7 +478,10 @@ export class HoldingPanel {
       }
       this.holdStoppedByPerson = false;
       const heldBefore = this.storage.packedChunks.size;
+      this.fillMeter.start();
       await this.holdLiveChunks(wanted);
+      // Time between fills (stopped, or waiting for a larger allowance) is not fill time.
+      if (!this.chunksToReachTarget() || this.holdStoppedByPerson) this.fillMeter.restart();
       if (this.storage.packedChunks.size > heldBefore) this.continueFillingIfAllowedMore(chunkCount);
     }
     this.refreshStorageSlider();
