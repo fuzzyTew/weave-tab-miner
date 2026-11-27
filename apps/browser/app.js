@@ -77,7 +77,6 @@ class BrowserNodeApp {
     this.vdfWorker = null;
     this.peerUrls = [];
     this.vdfSteps = new VdfStepRecord(); // steps a published block lists since its parent
-    this.follower = null; // the light client's chain state, once ready (PublishingPanel)
   }
 
   // ---- RandomX ----

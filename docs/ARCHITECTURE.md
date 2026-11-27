@@ -83,6 +83,12 @@ branch).
    small context: the view, the network target, the gateway, the identity) and reports
    changes through events. One panel at a time, publishing first (most self-contained),
    each step with the page check and a localnet page run passing.
+   - Publishing: done. Its state and logic moved to `src/blocks/publishing-node.js`
+     (PublishingNode: chain state, nodes, pending transactions, signer), owned by one
+     field, `publishing`; the panel keeps only what is the page's (when publishing is
+     allowed, which nodes, the status line). The same pattern suits the others: what a
+     node program would also need goes to the library, and the panel adapts it.
+   - Storage rules went the same way (StorageAllowance, StorageSizing).
 2. **Move app logic the library should own.** From `holding-panel.js` (620 lines, the
    largest file): reading the browser's allowance, including Chrome's floating figure,
    becomes `src/storage/storage-allowance.js`; deciding how much to fetch and when to

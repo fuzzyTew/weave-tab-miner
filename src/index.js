@@ -13,6 +13,7 @@ export * from './blocks/adjustments.js';
 export * from './blocks/assembler.js';
 export * from './blocks/binary.js';
 export * from './blocks/block-publisher.js';
+export * from './blocks/publishing-node.js';
 export * from './blocks/block-transactions.js';
 export * from './blocks/block-verifier.js';
 export * from './blocks/chain-follower.js';

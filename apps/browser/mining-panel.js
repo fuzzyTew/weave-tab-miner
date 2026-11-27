@@ -96,7 +96,7 @@ export class MiningPanel {
     else if (this.view.elements.vdfModeServer.checked) this.runVdfServer();
     else this.runReplay();
     if (this.blockOrigin === 'live') this.followTip();
-    if (!this.follower) this.prepareToPublish();
+    if (!this.publishing.ready) this.prepareToPublish();
     this.fillStorageInBackground();
   }
 
