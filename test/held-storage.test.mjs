@@ -30,7 +30,7 @@ class HeldStorageTest {
       disk.set(endOffset(index).toString(), chunkFor(index));
       storage.add(endOffset(index), chunkFor(index), { reloadable: true });
     }
-    report('only residentLimit saved chunks stay in memory', storage.residentCount === 2, `${storage.residentCount} of ${storage.packedChunks.size} in memory`);
+    report('only residentLimit saved chunks stay in memory', storage.residentCount === 2, `${storage.residentCount} of ${storage.chunkCount} in memory`);
     report('all of them still count as held', storage.byteCount === 5 * chunkSize);
 
     const byteInFirst = endOffset(0) - 1n;

@@ -43,8 +43,8 @@ export class Miner {
     if (this.testMode.aimRange1AtHeldData) {
       // The held chunk's last byte: inside it whatever its size (a small chunk below the
       // strict data split threshold starts later than one chunk size before its end).
-      const firstHeld = this.storage.packedChunks.keys().next().value;
-      if (firstHeld) range1Start = BigInt(firstHeld) - 1n;
+      const firstHeld = this.storage.firstHeldEnd();
+      if (firstHeld !== null) range1Start = firstHeld - 1n;
     }
 
     const trace = {

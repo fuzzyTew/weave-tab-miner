@@ -82,7 +82,7 @@ export class SolutionOdds {
     const window = String(session.partitionUpperBound);
     const reusable = cached && cached.partitionNumber === partitionNumber && cached.window === window
       && (cached.changeCount === storage.changeCount
-        || (storage.packedChunks.size > SolutionOdds.HIT_CHANCE_MANY_CHUNKS && performance.now() - cached.at < SolutionOdds.HIT_CHANCE_REUSE_MS));
+        || (storage.chunkCount > SolutionOdds.HIT_CHANCE_MANY_CHUNKS && performance.now() - cached.at < SolutionOdds.HIT_CHANCE_REUSE_MS));
     if (reusable) return cached.chance;
     const chance = SolutionOdds.walkHeldRangeHitChance({ storage, partitionNumber, session });
     SolutionOdds.hitChanceCache.set(storage, { partitionNumber, window, changeCount: storage.changeCount, at: performance.now(), chance });
@@ -98,9 +98,7 @@ export class SolutionOdds {
     const partitionStart = BigInt(partitionNumber) * ConsensusConstants.PARTITION_SIZE;
     const window = Number(session.partitionUpperBound < ConsensusConstants.PARTITION_SIZE ? session.partitionUpperBound : ConsensusConstants.PARTITION_SIZE);
     const reach = ConsensusConstants.DATA_CHUNK_SIZE + ConsensusConstants.recallRangeSize;
-    const ends = [...storage.packedChunks.keys()].map(BigInt)
-      .filter((end) => (end - 1n) / ConsensusConstants.PARTITION_SIZE === BigInt(partitionNumber))
-      .map((end) => Number(end - partitionStart)).sort((left, right) => left - right);
+    const ends = [...storage.heldEndsInPartition(partitionNumber)].map((end) => Number(end - partitionStart));
     let covered = 0;
     let runStart = null;
     let runEnd = null;

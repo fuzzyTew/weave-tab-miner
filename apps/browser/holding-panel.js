@@ -38,15 +38,11 @@ export class HoldingPanel {
   /** Mining tries one partition; pick the one holding the most chunks, if the current holds none. */
   choosePartitionWithMostHeld() {
     if (this.storage.bytesInPartition(this.partitionNumber) > 0) return;
-    const counts = new Map();
-    for (const key of this.storage.packedChunks.keys()) {
-      const partition = Number((BigInt(key) - 1n) / ConsensusConstants.PARTITION_SIZE);
-      counts.set(partition, (counts.get(partition) ?? 0) + 1);
-    }
-    const [best] = [...counts].sort((left, right) => right[1] - left[1]);
+    const [best] = this.storage.partitionsHeld().sort((left, right) => right[1] - left[1]);
     if (!best) return;
+    const chunkCount = best[1] / ConsensusConstants.DATA_CHUNK_SIZE;
     this.view.elements.partitionInput.value = best[0];
-    this.view.log(`partition set to ${best[0]}, where ${best[1]} held chunk${best[1] === 1 ? ' is' : 's are'}`);
+    this.view.log(`partition set to ${best[0]}, where ${chunkCount} held chunk${chunkCount === 1 ? ' is' : 's are'}`);
   }
 
   /** Lists every address with chunks saved here, each with a button to mine for it. */
@@ -373,7 +369,7 @@ export class HoldingPanel {
   chunksToReachTarget() {
     return this.storageAllowance.chunksToReach({
       heldBytes: this.storage.byteCount,
-      heldChunkCount: this.storage.packedChunks.size,
+      heldChunkCount: this.storage.chunkCount,
       chunkLimit: this.network.heldChunkLimit,
       targetBytes: this.storageTargetBytes,
     });
@@ -477,12 +473,12 @@ export class HoldingPanel {
         return;
       }
       this.holdStoppedByPerson = false;
-      const heldBefore = this.storage.packedChunks.size;
+      const heldBefore = this.storage.chunkCount;
       this.fillMeter.start();
       await this.holdLiveChunks(wanted);
       // Time between fills (stopped, or waiting for a larger allowance) is not fill time.
       if (!this.chunksToReachTarget() || this.holdStoppedByPerson) this.fillMeter.restart();
-      if (this.storage.packedChunks.size > heldBefore) this.continueFillingIfAllowedMore(chunkCount);
+      if (this.storage.chunkCount > heldBefore) this.continueFillingIfAllowedMore(chunkCount);
     }
     this.refreshStorageSlider();
     this.refreshSummary();

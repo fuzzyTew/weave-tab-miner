@@ -4,6 +4,7 @@
 import { StorageSizing } from '../src/mining/storage-sizing.js';
 import { HeldStorage } from '../src/mining/held-storage.js';
 import { PrettyNumber } from '../src/core/pretty-number.js';
+import { ConsensusConstants } from '../src/core/constants.js';
 import { TestCase } from './test-case.mjs';
 
 class StorageSizingTest extends TestCase {
@@ -16,7 +17,7 @@ class StorageSizingTest extends TestCase {
     this.report('a full partition reads ten chunks of range 1 a step, plus its share of range 2',
       Math.abs(full.chunksReadPerStep - 10 * (1 + 3.6e12 / WEAVE_BYTES)) < 1e-9, full.chunksReadPerStep.toFixed(2));
     this.report('which is about 2.6 MB a second', Math.abs(full.readBytesPerSecond - full.chunksReadPerStep * 262144) < 1);
-    this.report('a full partition indexes 1.1 GB in memory', Math.abs(full.indexMemoryBytes - 13_732_910 * 82) < 82 * 2, String(full.indexMemoryBytes));
+    this.report('a full partition indexes 1.7 MB in memory', Math.abs(full.indexMemoryBytes - 13_732_910 / 8) < 1, String(full.indexMemoryBytes));
     this.report('Chrome needs a disk of 6.7 TB for it', Math.abs(full.chromeDiskBytes - 3.6e12 / 0.54) < 1e6);
     this.report('fill time is unknown until measured', full.fillSeconds === null);
 
@@ -36,17 +37,19 @@ class StorageSizingTest extends TestCase {
   /** Measures HeldStorage's memory per chunk known on disk against the documented figure. */
   checkIndexCost() {
     if (!globalThis.gc) return console.log('SKIP  index cost (run with --expose-gc)');
-    const chunkCount = 200_000;
+    const chunkCount = 2 ** 20; // a page's worth: fewer would charge a partly used page to each
     globalThis.gc();
-    const before = process.memoryUsage().heapUsed;
+    const before = process.memoryUsage().heapUsed + process.memoryUsage().arrayBuffers;
     const storage = new HeldStorage({ loadChunk: async () => null });
-    let end = 180_000_000_000_000n;
+    // Bucket ends well above the strict data split threshold, as mainnet chunks are now.
+    let end = ConsensusConstants.STRICT_DATA_SPLIT_THRESHOLD + 262144n * 500_000_000n;
     for (let index = 0; index < chunkCount; index++, end += 262144n) storage.addOnDisk(end);
     globalThis.gc();
-    const perChunk = (process.memoryUsage().heapUsed - before) / chunkCount;
+    const perChunk = (process.memoryUsage().heapUsed + process.memoryUsage().arrayBuffers - before) / chunkCount;
     // Use the storage after measuring, so it is not collected before the measurement.
-    if (storage.packedChunks.size !== chunkCount) throw new Error('index lost chunks');
-    this.report('HeldStorage costs within 25% of the documented bytes per chunk', Math.abs(perChunk / StorageSizing.MEASURED.indexBytesPerChunk - 1) < 0.25, `${perChunk.toFixed(0)} bytes`);
+    if (storage.chunkCount !== chunkCount) throw new Error('index lost chunks');
+    // One bit each when pages fill; a few chunks spread over a page cost more each.
+    this.report('HeldStorage costs at most a byte per chunk', perChunk <= 1, `${perChunk.toFixed(3)} bytes`);
   }
 }
 

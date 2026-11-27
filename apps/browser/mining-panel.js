@@ -333,7 +333,7 @@ export class MiningPanel {
 
   refreshSummary() {
     this.view.setText('heldBytes', PageView.formatBytes(this.storage.byteCount));
-    this.view.setText('heldChunks', `${this.storage.packedChunks.size} chunk${this.storage.packedChunks.size === 1 ? '' : 's'}`);
+    this.view.setText('heldChunks', `${this.storage.chunkCount} chunk${this.storage.chunkCount === 1 ? '' : 's'}`);
     if (!this.session) return;
     const stepsPerSecond = this.running ? this.pace.stepsPerSecond(SolutionOdds.NETWORK_STEPS_PER_SECOND) : SolutionOdds.NETWORK_STEPS_PER_SECOND;
     const odds = { storage: this.storage, partitionNumber: this.partitionNumber, session: this.session, stepsPerSecond };

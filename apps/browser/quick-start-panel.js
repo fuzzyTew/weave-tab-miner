@@ -79,7 +79,7 @@ export class QuickStartPanel {
         this.quickStartStage(`Fetching and packing ${chunkCount} chunks (${PageView.formatBytes(chunkCount * ConsensusConstants.DATA_CHUNK_SIZE)}) to start with…`);
         await this.holdChunks({ chunkCount });
       }
-      const heldChunks = this.storage.packedChunks.size;
+      const heldChunks = this.storage.chunkCount;
       if (savedElsewhere.length) this.quickStartStage(`Chunks saved for ${savedElsewhere.length} other address${savedElsewhere.length === 1 ? '' : 'es'} will be repacked for this one first`, 'note');
       if (!heldChunks && !savedElsewhere.length) {
         this.quickStartStage('No chunks could be fetched. Network has a source test; Hold data can try again.', 'failed');

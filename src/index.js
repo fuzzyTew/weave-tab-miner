@@ -38,6 +38,7 @@ export * from './core/sha256.js';
 export * from './core/sha384.js';
 export * from './mining/difficulty.js';
 export * from './mining/held-storage.js';
+export * from './mining/bucket-set.js';
 export * from './mining/identity.js';
 export * from './mining/miner.js';
 export * from './mining/mining-math.js';

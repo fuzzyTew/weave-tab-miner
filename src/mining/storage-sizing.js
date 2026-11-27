@@ -18,8 +18,8 @@ export class StorageSizing {
    */
   static MEASURED = {
     readMsPerChunk: 1.5, // cold read of one 256 KiB chunk through IndexedDB
-    indexBytesPerChunk: 82, // HeldStorage's offset text in a Map and a Set
-    startupMicrosecondsPerChunk: 22, // the key scan at startup plus indexing each key
+    indexBytesPerChunk: 0.125, // HeldStorage's index: one bit per bucket (BucketSet), pages filled
+    startupMicrosecondsPerChunk: 20, // the key scan at startup (IndexedDB), plus a bit set per key
     fillBytesPerSecond: null, // fetch and pack: depends on the network and CPU; unknown until measured
   };
 
