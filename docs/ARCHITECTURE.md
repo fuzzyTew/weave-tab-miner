@@ -101,8 +101,9 @@ branch).
 3. **Packing starved mining.** In the page-story run the tab mined 122 of about 240
    steps in four minutes, because background packing and each step's H0 share one
    RandomX worker, which answered in order. `RandomxWorkerHost` now keeps one request in
-   the worker and sends H0 before waiting entropies; still to do, the page saying when
-   packing slows mining (`queuedCount` gives what it needs).
+   the worker and sends H0 before waiting entropies, and the pace note says how much
+   packing slowed H0 (StepPace.packingEffect, in `src/mining/step-pace.js`). Done; a
+   later page-story run mined 279 steps in its first 5 minutes while filling.
 
 ## User stories
 
