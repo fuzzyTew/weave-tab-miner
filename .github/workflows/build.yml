@@ -54,8 +54,8 @@ jobs:
       - name: Check real RandomX H0 and packing against block 2,040,257
         run: node test/randomx-against-block.test.mjs && node test/randomx-host.test.mjs
 
-      - name: Check the library exports every module
-        run: node test/library-index.test.mjs
+      - name: Check the library exports every module, and its layers
+        run: node test/library-index.test.mjs && node test/library-layers.test.mjs
 
       - name: Check the VDF server reply parser
         run: node test/vdf-update.test.mjs && node test/vdf-spot-check.test.mjs

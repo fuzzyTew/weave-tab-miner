@@ -1,20 +1,20 @@
-// src/blocks/publishing-node.js — the publishing half of a light node: keeps the chain state at
+// src/network/publishing-node.js — the publishing half of a light node: keeps the chain state at
 // the tip (every account once, from a node, then each new block applied and checked) and
 // turns a real solution into a block posted to nodes. No page or DOM: a browser page, a
 // node program or a test drives it, and hears back through `log` and `onStatus`.
 
 import { Bytes } from '../core/bytes.js';
-import { AccountTree } from './account-tree.js';
-import { ChainState } from './assembler.js';
-import { BlockPublisher } from './block-publisher.js';
-import { ChainFollower } from './chain-follower.js';
-import { BlockTimeHistory } from './history.js';
-import { RewardHistory } from './rewards.js';
-import { BlockSigner } from './signer.js';
-import { DoubleSigningGuard, MemoryStorage } from './signing-guard.js';
-import { TransactionPicker } from './transaction-picker.js';
-import { NodeClient } from '../network/node-client.js';
-import { PendingTransactionPool } from '../network/pending-transactions.js';
+import { AccountTree } from '../blocks/account-tree.js';
+import { ChainState } from '../blocks/assembler.js';
+import { BlockPublisher } from '../blocks/block-publisher.js';
+import { ChainFollower } from '../blocks/chain-follower.js';
+import { BlockTimeHistory } from '../blocks/history.js';
+import { RewardHistory } from '../blocks/rewards.js';
+import { BlockSigner } from '../blocks/signer.js';
+import { DoubleSigningGuard, MemoryStorage } from '../blocks/signing-guard.js';
+import { TransactionPicker } from '../blocks/transaction-picker.js';
+import { NodeClient } from './node-client.js';
+import { PendingTransactionPool } from './pending-transactions.js';
 
 export class PublishingNode {
   /**

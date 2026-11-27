@@ -51,8 +51,8 @@ src/core       bytes, SHA-256/384, secp256k1, constants, citations
 
 Measured on 2026-11-25: imports only point down this list (`network` also uses
 `mining`'s VDF and packing layout, and `blocks`' network rules); there are no import
-cycles; `src/index.js` exports every module, which `test/library-index.test.mjs` keeps
-true. All of `src/` except `core/` and `storage/` is Arweave-specific.
+cycles (`test/library-layers.test.mjs` keeps both true); `src/index.js` exports every
+module, which `test/library-index.test.mjs` keeps true. All of `src/` except `core/` and `storage/` is Arweave-specific.
 
 ## Findings
 
@@ -83,7 +83,7 @@ branch).
    small context: the view, the network target, the gateway, the identity) and reports
    changes through events. One panel at a time, publishing first (most self-contained),
    each step with the page check and a localnet page run passing.
-   - Publishing: done. Its state and logic moved to `src/blocks/publishing-node.js`
+   - Publishing: done. Its state and logic moved to `src/network/publishing-node.js`
      (PublishingNode: chain state, nodes, pending transactions, signer), owned by one
      field, `publishing`; the panel keeps only what is the page's (when publishing is
      allowed, which nodes, the status line). The same pattern suits the others: what a

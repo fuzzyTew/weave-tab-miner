@@ -1,8 +1,8 @@
 // apps/browser/publishing-panel.js — the page's side of publishing: when this tab may publish,
 // which nodes it uses, and the status line. The chain state and the block building itself
-// are PublishingNode's (src/blocks/publishing-node.js), owned as `this.publishing`.
+// are PublishingNode's (src/network/publishing-node.js), owned as `this.publishing`.
 // Its methods are mixed into BrowserNodeApp (see app.js), so `this` is the app.
-import { PublishingNode } from '../../src/blocks/publishing-node.js';
+import { PublishingNode } from '../../src/network/publishing-node.js';
 import { ComputedVdfSteps, RecordedVdfSteps } from '../../src/blocks/vdf-info.js';
 import { PeerAccess } from '../../src/network/peers.js';
 import { BundledResources } from './resources.js';

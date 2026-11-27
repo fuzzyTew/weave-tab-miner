@@ -2,7 +2,7 @@
 // resuming a saved state, refusing one too far behind, losing the chain on a block that
 // does not follow, and declining to publish before it is ready. The block building itself
 // is tested by block-publisher's tests. Run: node test/publishing-node.test.mjs
-import { PublishingNode } from '../src/blocks/publishing-node.js';
+import { PublishingNode } from '../src/network/publishing-node.js';
 import { MemoryStorage } from '../src/blocks/signing-guard.js';
 import { TestCase } from './test-case.mjs';
 
