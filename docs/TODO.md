@@ -8,6 +8,8 @@ Larger tasks, each opening to its steps. In order of what matters next:
 | Turn a solution into a block | 6 of 7 steps done, and most of mainnet's rules; a real solution left |
 | Check what peers and gateways say | started: followed blocks' ids and signatures, and VDF servers' steps by sampling |
 | Fetch chunks from nodes that hold them | started: chunk requests rank sources, nodes and gateways alike, by what each has served (SourceRecord). Next, read nodes' `/data_sync_record`, ask the nodes covering each chunk, and keep gateways as the last fallback, so the page does not depend on them |
+| Hold a full partition in a tab | measured (scripts/storage-bench.mjs, StorageSizing): the startup key scan passes 60 s near 666 GiB and the in-memory index passes 1 GiB near 3.1 TiB. A compact index (a bitmap of held buckets per partition: about 1.7 MB for a full one, saved as one record) would remove both. Chrome keeps each chunk as its own file (about 14 million for a partition), so storing chunks in larger records (say 64 per record) would also cut per-read overhead |
+| Store chunks on an attached drive | not started: Chrome's File System Access API (showDirectoryPicker) can keep chunks as plain files in a folder the person picks, on a USB drive say, outside the browser's allowance and readable by apps/node too; Firefox and Safari would keep using IndexedDB. Meanwhile, a portable browser with its profile on the drive works |
 | Reach networks that block Arweave | partly: gathered sources, seeds, a source test |
 | Hold more data | mostly done; storage, not memory, is the limit |
 | Host the page on Arweave | not started |
