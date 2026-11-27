@@ -89,6 +89,7 @@ jobs:
           node test/storage-archive.test.mjs
           node test/signing-guard-and-repack.test.mjs
           node test/publishing-node.test.mjs
+          node test/step-sources.test.mjs
 
       - name: Check the wait estimate's arithmetic
         run: node test/odds.test.mjs

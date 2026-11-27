@@ -8,6 +8,7 @@ import { SolutionOdds } from '../../src/mining/odds.js';
 import { StorageSizing } from '../../src/mining/storage-sizing.js';
 import { PeerAccess } from '../../src/network/peers.js';
 import { VdfServerClient, VdfServerPool } from '../../src/network/vdf-client.js';
+import { ReplayStepSource, ServerStepSource, ComputedStepSource, StepMiningLoop } from '../../src/mining/step-sources.js';
 import { VdfSpotCheck } from '../../src/network/vdf-spot-check.js';
 import { BundledResources } from './resources.js';
 import { PageView } from './page-view.js';
@@ -92,9 +93,7 @@ export class MiningPanel {
     this.view.elements.solutionBanner.hidden = true;
     this.view.elements.startButton.disabled = true;
     this.view.elements.stopButton.disabled = false;
-    if (this.view.elements.vdfModeLocal.checked) this.runLocalVdf();
-    else if (this.view.elements.vdfModeServer.checked) this.runVdfServer();
-    else this.runReplay();
+    this.mineFromChosenSource();
     if (this.blockOrigin === 'live') this.followTip();
     if (!this.publishing.ready) this.prepareToPublish();
     this.fillStorageInBackground();
@@ -174,8 +173,7 @@ export class MiningPanel {
   stop() {
     this.wakeLock?.release();
     this.running = false;
-    clearTimeout(this.replayTimer);
-    clearTimeout(this.serverTimer);
+    this.stepLoop?.stop();
     clearTimeout(this.tipTimer);
     this.view.elements.startButton.disabled = false;
     this.view.elements.stopButton.disabled = true;
@@ -184,68 +182,51 @@ export class MiningPanel {
   /** The block's last REPLAY_STEP_COUNT steps, ending on the step it was mined at, one a second. */
   static REPLAY_STEP_COUNT = 15;
 
-  runReplay() {
-    const steps = this.session.steps().slice(-MiningPanel.REPLAY_STEP_COUNT);
-    let index = 0;
-    const next = async () => {
-      if (!this.running) return;
-      if (index >= steps.length) {
-        this.view.log('replayed every step in this block; choose another VDF source to keep going', 'warn');
-        this.stop();
-        return;
-      }
-      const [stepNumber, output] = steps[index++];
-      await this.mineOne(stepNumber, output, 'block');
-      if (this.running) this.replayTimer = setTimeout(next, MiningPanel.REPLAY_STEP_INTERVAL_MS);
-    };
-    next();
+  /**
+   * Mines the steps of the VDF source chosen in the page (a StepSource from
+   * src/mining/step-sources.js) until it ends or mining stops; says why it ended.
+   */
+  async mineFromChosenSource() {
+    const source = this.view.elements.vdfModeLocal.checked ? this.computedStepSource()
+      : this.view.elements.vdfModeServer.checked ? await this.serverStepSource()
+        : new ReplayStepSource({ steps: this.session.steps().slice(-MiningPanel.REPLAY_STEP_COUNT), intervalMs: MiningPanel.REPLAY_STEP_INTERVAL_MS });
+    if (!source || !this.running) return;
+    this.stepLoop = new StepMiningLoop({ source, mineStep: (stepNumber, output, label) => this.mineOne(stepNumber, output, label) });
+    const { ended, error } = await this.stepLoop.run();
+    if (ended === 'finished') this.view.log('replayed every step in this block; choose another VDF source to keep going', 'warn');
+    if (ended === 'failed') this.view.log(`VDF steps stopped: ${error.message}`, 'error');
+    if (ended !== 'stopped') this.stop();
   }
 
   /**
-   * Steps from a public VDF server: the only way to keep the network's pace without
-   * computing the VDF here. Falls back to telling the person when none answers.
-   */
-  /**
    * Steps from public VDF servers (a VdfServerPool): the only way to keep the network's
-   * pace without computing the VDF here. Falls back to telling the person when none answers.
+   * pace without computing the VDF here. Resolves null, with what to try, when none answers.
    */
-  async runVdfServer() {
+  async serverStepSource() {
     const candidates = this.vdfServerCandidates();
     this.view.setText('vdfStatus', `Looking for VDF servers among ${candidates.length} candidates…`);
     const { pool, failures } = await VdfServerPool.connect(candidates, { record: this.vdfSteps, log: (message) => this.view.log(message, 'warn') });
     if (!pool) {
       this.showVdfTroubleshooting(failures);
       this.stop();
-      return;
+      return null;
     }
     this.view.setText('vdfStatus', `Getting VDF steps from ${pool.clients.length} server${pool.clients.length === 1 ? '' : 's'}: ${pool.serverUrls.join(', ')}.`);
     this.vdfPool = pool;
-    const poll = async () => {
-      if (!this.running) return;
-      try {
-        const pollStarted = performance.now();
-        const { newest, newestFrom, fresh, gapFilled, missing } = await pool.poll(this.lastMinedStep);
-        this.pollMs.push(performance.now() - pollStarted);
+    return new ServerStepSource({
+      pool, lastMinedStep: () => this.lastMinedStep, pollIntervalMs: VdfServerClient.POLL_INTERVAL_MS, maxBacklog: MiningPanel.MAX_STEP_BACKLOG,
+      onPoll: ({ newest, newestFrom, gapFilled, missing, skipped, pollMs }) => {
+        this.pollMs.push(pollMs);
         if (this.pollMs.length > 20) this.pollMs.shift();
         this.latestVdfUpdate = newest;
         this.session = this.session.withVdfUpdate(newest);
         this.spotCheckVdf(pool, newest, newestFrom);
         if (gapFilled) this.gapsFilled++;
         this.stepsMissed += missing;
-        // Steps well behind the newest are stale, so only the newest few are mined: at the
-        // start, and whenever mining falls behind; the skipped ones are counted.
-        const kept = fresh.slice(-MiningPanel.MAX_STEP_BACKLOG);
-        if (this.lastMinedStep >= 0) this.stepsSkipped += fresh.length - kept.length;
-        for (const [stepNumber, output] of kept) {
-          if (!this.running) return;
-          await this.mineOne(stepNumber, output, 'VDF server');
-        }
-      } catch (error) {
-        this.view.log(`VDF servers: ${error.message}`, 'warn');
-      }
-      if (this.running) this.serverTimer = setTimeout(poll, VdfServerClient.POLL_INTERVAL_MS);
-    };
-    poll();
+        this.stepsSkipped += skipped;
+      },
+      onError: (error) => this.view.log(`VDF servers: ${error.message}`, 'warn'),
+    });
   }
 
   /** When no VDF server answers: each one tried and why, and what to try next, in order. */
@@ -273,40 +254,36 @@ export class MiningPanel {
     status.replaceChildren(`No VDF server answered. Tried:`, list, 'What to try:', what);
   }
 
-  runLocalVdf() {
+  /** Steps computed in a worker here, carrying on from the last computed step after a restart. */
+  computedStepSource() {
     if (!this.vdfWorker) {
       this.vdfWorker = BundledResources.worker('vdfWorkerSource');
-      this.vdfWorker.onerror = (event) => {
-        this.view.log(`VDF worker could not run: ${event.message || 'the browser gave no reason'}`, 'error');
-        this.stop();
+      this.vdfWorker.onerror = (event) => this.vdfWorkerRequest?.reject(new Error(`the VDF worker could not run: ${event.message || 'the browser gave no reason'}`));
+      this.vdfWorker.onmessage = ({ data }) => {
+        const request = this.vdfWorkerRequest;
+        this.vdfWorkerRequest = null;
+        if (data.error) request?.reject(new Error(`the VDF worker failed: ${data.error}`));
+        else request?.resolve(data);
       };
     }
-    let stepNumber = this.localStepNumber ?? this.session.latestStepNumber;
-    let previousOutput = this.localOutput ?? this.session.stepOutputsNewestFirst[0];
-    let lastStepSeconds = null;
-    const requestNext = () => {
-      if (!this.running) return;
-      const pace = lastStepSeconds === null ? '' : ` The last took ${lastStepSeconds.toFixed(1)} s here; the network does one per second.`;
-      this.view.setText('vdfStatus', `Computing step ${(stepNumber + 1).toLocaleString()}…${pace}`);
+    return new ComputedStepSource({
+      start: { stepNumber: this.localStepNumber ?? this.session.latestStepNumber, output: this.localOutput ?? this.session.stepOutputsNewestFirst[0] },
+      // One request at a time: the source asks for the next only after the last arrived.
       // Assumption: on reset steps the session's next_seed is mixed in (ar_nonce_limiter:maybe_add_entropy).
-      this.vdfWorker.postMessage({ stepNumber: stepNumber + 1, previousOutput, iterationsPerCheckpoint: this.session.vdfDifficulty, resetSeed: this.session.nextSeed });
-    };
-    this.vdfWorker.onmessage = async ({ data }) => {
-      if (data.error) {
-        this.view.log(`VDF worker failed: ${data.error}`, 'error');
-        this.stop();
-        return;
-      }
-      stepNumber = data.stepNumber;
-      previousOutput = data.output;
-      this.vdfSteps.addComputedStep(stepNumber, data.checkpoints);
-      this.localStepNumber = stepNumber;
-      this.localOutput = previousOutput;
-      lastStepSeconds = data.seconds;
-      requestNext(); // start the next step while this one is mined
-      if (this.running) await this.mineOne(stepNumber, previousOutput, 'this tab');
-    };
-    requestNext();
+      computeStep: ({ stepNumber, previousOutput }) => new Promise((resolve, reject) => {
+        this.vdfWorkerRequest = { resolve, reject };
+        this.vdfWorker.postMessage({ stepNumber, previousOutput, iterationsPerCheckpoint: this.session.vdfDifficulty, resetSeed: this.session.nextSeed });
+      }),
+      onRequest: (stepNumber, lastSeconds) => {
+        const pace = lastSeconds === null ? '' : ` The last took ${lastSeconds.toFixed(1)} s here; the network does one per second.`;
+        this.view.setText('vdfStatus', `Computing step ${stepNumber.toLocaleString()}…${pace}`);
+      },
+      onComputed: ({ stepNumber, output, checkpoints }) => {
+        this.vdfSteps.addComputedStep(stepNumber, checkpoints);
+        this.localStepNumber = stepNumber;
+        this.localOutput = output;
+      },
+    });
   }
 
   /**

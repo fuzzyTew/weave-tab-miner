@@ -89,6 +89,9 @@ branch).
      allowed, which nodes, the status line). The same pattern suits the others: what a
      node program would also need goes to the library, and the panel adapts it.
    - Storage rules went the same way (StorageAllowance, StorageSizing).
+   - VDF steps: done. `src/mining/step-sources.js` has the three sources (replay, servers,
+     computed) behind one shape and the loop that mines them (StepMiningLoop), tested
+     with stand-ins; the panel supplies the pool, the worker and the status text.
 2. **Move app logic the library should own.** From `holding-panel.js` (620 lines, the
    largest file): reading the browser's allowance, including Chrome's floating figure,
    becomes `src/storage/storage-allowance.js`; deciding how much to fetch and when to
