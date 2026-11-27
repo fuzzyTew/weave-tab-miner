@@ -19,7 +19,8 @@ import { PackedChunkStore } from '../../src/storage/chunk-store.js';
 import { ChainStateStore } from '../../src/storage/chain-state-store.js';
 import { BundledResources, RunYourself } from './resources.js';
 import { PageView } from './page-view.js';
-import { StepExplorer, StepPace } from './step-explorer.js';
+import { StepExplorer } from './step-explorer.js';
+import { StepPace } from '../../src/mining/step-pace.js';
 import { HoldingPanel } from './holding-panel.js';
 import { SourcesPanel } from './sources-panel.js';
 import { MiningPanel } from './mining-panel.js';
@@ -86,6 +87,7 @@ class BrowserNodeApp {
     try {
       const host = new RandomxWorkerHost(() => BundledResources.worker('randomxWorkerSource'));
       await host.ready();
+      this.randomxHost = host;
       this.h0Hasher = new RandomxH0Hasher(host);
       // 32 entropies (8 MiB each, 256 MiB) cover one chunk's sub-chunks, so batches of chunks
       // sharing a bucket position reuse them instead of recomputing per batch.

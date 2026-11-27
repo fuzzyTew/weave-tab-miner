@@ -44,6 +44,7 @@ export * from './mining/mining-math.js';
 export * from './mining/odds.js';
 export * from './mining/packing.js';
 export * from './mining/randomx.js';
+export * from './mining/step-pace.js';
 export * from './mining/step-sources.js';
 export * from './mining/storage-sizing.js';
 export * from './mining/vdf.js';

@@ -35,9 +35,11 @@ export class MiningPanel {
   }
 
   async mineOne(stepNumber, output, source) {
+    // Packing work queued in the RandomX worker as the step begins: its H0 may wait for it.
+    const packingBusy = (this.randomxHost?.queuedCount ?? 0) > 0;
     const report = await this.makeMiner().mineStep(this.session, stepNumber, output);
     this.stepsMined++;
-    this.pace.record(report.timings);
+    this.pace.record(report.timings, { packingBusy });
     this.lastMinedStep = Math.max(this.lastMinedStep, stepNumber);
     this.view.setText('stepsMined', this.stepsMined.toLocaleString());
     this.view.addStepRow(report, source, () => this.explorer.show(report));
