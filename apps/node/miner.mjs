@@ -10,8 +10,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Bytes } from '../../src/core/bytes.js';
-import { ConsensusConstants } from '../../src/core/constants.js';
-import { Replica29Layout, ChunkPacker, StubEntropySource } from '../../src/mining/packing.js';
+import { Replica29Layout, StubEntropySource } from '../../src/mining/packing.js';
 import { MiningIdentity } from '../../src/mining/identity.js';
 import { StubH0Hasher } from '../../src/mining/mining-math.js';
 import { HeldStorage } from '../../src/mining/held-storage.js';
@@ -20,6 +19,8 @@ import { VdfSession, VdfChain } from '../../src/mining/vdf.js';
 import { SolutionOdds } from '../../src/mining/odds.js';
 import { ArweaveGateway } from '../../src/network/gateway.js';
 import { VdfServerClient, VdfServerPool } from '../../src/network/vdf-client.js';
+import { ChunkFiller } from '../../src/network/chunk-filler.js';
+import { ReplayStepSource, ServerStepSource, ComputedStepSource, StepMiningLoop } from '../../src/mining/step-sources.js';
 import { RandomxBundle, RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../../src/mining/randomx.js';
 
 class CommandLineOptions {
@@ -80,31 +81,21 @@ class ServerMiner {
   }
 
   async holdChunks() {
-    const packer = new ChunkPacker(this.identity, this.entropySource);
-    const progress = (done, total) => process.stdout.write(`\rpacking: entropy ${done}/${total}`);
-    const fetched = [];
+    const filler = new ChunkFiller({
+      gateway: this.gateway, identity: this.identity, entropySource: this.entropySource, storage: this.storage,
+      onPackProgress: (done, total) => process.stdout.write(`\rpacking: entropy ${done}/${total}`),
+      onSkip: (weaveByte, error) => console.error(`chunk at ${weaveByte} failed: ${error.message}`),
+      onBatchHeld: ({ count, seconds }) => console.log(`\npacked and held ${count} chunks in ${seconds.toFixed(0)} s`),
+    });
     if (this.options.sample) {
-      for (const [proof, byteField] of [['poa', 'recall_byte'], ['poa2', 'recall_byte2']]) {
-        fetched.push({ bytes: Bytes.fromBase64Url(this.block[proof].unpacked_chunk), endOffset: Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField])) });
-      }
-    } else {
-      // Chunks at one bucket position across sectors share entropies: 32 entropies for all of them.
-      const partitionStart = BigInt(this.partitionNumber) * ConsensusConstants.PARTITION_SIZE;
-      const firstByte = partitionStart + BigInt(Math.floor(Math.random() * Number(ConsensusConstants.entropySectorSize)));
-      for (const weaveByte of Replica29Layout.entropySharingBytes(firstByte, Number(this.options.chunks), this.session.partitionUpperBound)) {
-        try {
-          const reply = await this.gateway.chunkJson(weaveByte + 1n);
-          const chunk = Bytes.fromBase64Url(reply.chunk);
-          fetched.push({ bytes: chunk, endOffset: Replica29Layout.storedEndOffset(reply, weaveByte) });
-          console.log(`fetched ${chunk.length} bytes at weave byte ${weaveByte}`);
-        } catch (error) {
-          console.error(`chunk at ${weaveByte} failed: ${error.message}`);
-        }
-      }
+      // The saved block's two chunks, from its own proofs.
+      await filler.packAndHold(['poa', 'poa2'].map((proof, index) => ({
+        bytes: Bytes.fromBase64Url(this.block[proof].unpacked_chunk),
+        endOffset: Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[['recall_byte', 'recall_byte2'][index]])),
+      })));
+      return;
     }
-    const packed = await packer.packChunks(fetched, progress);
-    process.stdout.write('\n');
-    packed.forEach((packedChunk, index) => this.storage.add(fetched[index].endOffset, packedChunk));
+    await filler.fill({ partitionNumber: this.partitionNumber, partitionUpperBound: this.session.partitionUpperBound, wanted: Number(this.options.chunks) });
   }
 
   makeMiner() {
@@ -114,7 +105,7 @@ class ServerMiner {
     });
   }
 
-  /** Returns true when a solution was found. */
+  /** Mines one step; returns true when a solution was found. */
   async mineStep(stepNumber, output) {
     const report = await this.makeMiner().mineStep(this.session, stepNumber, output);
     this.lastMinedStep = Math.max(this.lastMinedStep, stepNumber);
@@ -127,35 +118,30 @@ class ServerMiner {
     return true;
   }
 
-  /** Steps from a public VDF server, if any peer or gateway answers GET /vdf. */
-  async mineFromVdfServer() {
+  /** The step source --vdf names (the same ones the page uses: src/mining/step-sources.js). */
+  async stepSource() {
+    if (this.options.vdf === 'replay' || this.options.sample) return new ReplayStepSource({ steps: this.session.steps(), intervalMs: 0 });
+    if (this.options.vdf === 'local') {
+      const chain = new VdfChain({ iterationsPerCheckpoint: this.session.vdfDifficulty });
+      return new ComputedStepSource({
+        start: { stepNumber: this.session.latestStepNumber, output: this.session.stepOutputsNewestFirst[0] },
+        // Assumption: reset steps mix in the session's next_seed (ar_nonce_limiter:maybe_add_entropy).
+        computeStep: async ({ stepNumber, previousOutput }) => {
+          const started = performance.now();
+          const checkpoints = chain.computeStep(stepNumber, previousOutput, this.session.nextSeed);
+          return { stepNumber, output: checkpoints.at(-1), checkpoints, seconds: (performance.now() - started) / 1000 };
+        },
+      });
+    }
+    // Steps from a public VDF server, if any peer or gateway answers GET /vdf.
     const { pool, failures } = await VdfServerPool.connect([...VdfServerClient.PUBLIC_SERVER_URLS, ...ArweaveGateway.DEFAULT_GATEWAY_URLS], { log: (message) => console.error(`warn: ${message}`) });
     if (!pool) throw new Error(`no VDF server answered (${failures.map((failure) => `${failure.url}: ${failure.reason}`).join('; ')}); use --vdf local (slower) instead`);
     console.log(`VDF steps from ${pool.serverUrls.join(', ')}`);
-    for (;;) {
-      try {
-        const { newest, fresh } = await pool.poll(this.lastMinedStep);
-        this.session = this.session.withVdfUpdate(newest);
-        for (const [stepNumber, output] of fresh.slice(-8)) {
-          if (await this.mineStep(stepNumber, output)) return;
-        }
-      } catch (error) {
-        console.error(`VDF servers: ${error.message}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, VdfServerClient.POLL_INTERVAL_MS));
-    }
-  }
-
-  async mineLocalVdf() {
-    const chain = new VdfChain({ iterationsPerCheckpoint: this.session.vdfDifficulty });
-    let stepNumber = this.session.latestStepNumber;
-    let output = this.session.stepOutputsNewestFirst[0];
-    for (;;) {
-      stepNumber += 1;
-      // Assumption: reset steps mix in the session's next_seed (ar_nonce_limiter:maybe_add_entropy).
-      output = chain.computeStep(stepNumber, output, this.session.nextSeed).at(-1);
-      if (await this.mineStep(stepNumber, output)) return;
-    }
+    return new ServerStepSource({
+      pool, lastMinedStep: () => this.lastMinedStep, pollIntervalMs: VdfServerClient.POLL_INTERVAL_MS,
+      onPoll: ({ newest }) => { this.session = this.session.withVdfUpdate(newest); },
+      onError: (error) => console.error(`VDF servers: ${error.message}`),
+    });
   }
 
   async run() {
@@ -163,10 +149,15 @@ class ServerMiner {
     await this.holdChunks();
     const seconds = SolutionOdds.expectedSecondsPerSolution({ storage: this.storage, partitionNumber: this.partitionNumber, session: this.session });
     console.log(`block ${this.session.height}; holding ${this.storage.byteCount} bytes for ${this.identity.address}; expected wait ${(seconds / 31_557_600).toExponential(2)} years`);
-    if (this.options.vdf === 'local') await this.mineLocalVdf();
-    else if (this.options.vdf === 'replay' || this.options.sample) {
-      for (const [stepNumber, output] of this.session.steps()) if (await this.mineStep(stepNumber, output)) return;
-    } else await this.mineFromVdfServer();
+    // Mines until a solution (then stops), or until a replayed source runs out.
+    const loop = new StepMiningLoop({
+      source: await this.stepSource(),
+      mineStep: async (stepNumber, output) => {
+        if (await this.mineStep(stepNumber, output)) loop.stop();
+      },
+    });
+    const { ended, error } = await loop.run();
+    if (ended === 'failed') throw error;
   }
 }
 
