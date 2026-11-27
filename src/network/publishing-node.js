@@ -185,7 +185,10 @@ export class PublishingNode {
       await this.advance(this.follower, tip);
       if (this.blocksSinceSave >= this.saveEveryBlocks) this.saveState();
       this.onStatus(`Ready to publish: following the chain at block ${this.follower.state.block.height}.`);
-      this.refreshPendingTransactions();
+      // In the background: the status gains the pending count when it arrives.
+      this.refreshPendingTransactions().then(() => {
+        if (this.follower) this.onStatus(`Ready to publish: following the chain at block ${this.follower.state.block.height}; ${this.pendingSummary}.`);
+      });
       return true;
     } catch (error) {
       this.log(`lost track of the chain (${error.message}); reading it again`, 'warn');
