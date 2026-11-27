@@ -74,6 +74,27 @@ export class SolutionOdds {
    * depends on where the chunks are, not only how many.
    */
   static heldRangeHitChance({ storage, partitionNumber, session }) {
+    // The walk below sorts every held offset: seconds at millions of chunks. So the answer
+    // is kept per storage and reused until chunks are added, and with many chunks held, for
+    // at least HIT_CHANCE_REUSE_MS after that too (it moves slowly once much is held).
+    // Updating the covered length as each chunk arrives would make it O(1) per chunk.
+    const cached = SolutionOdds.hitChanceCache.get(storage);
+    const window = String(session.partitionUpperBound);
+    const reusable = cached && cached.partitionNumber === partitionNumber && cached.window === window
+      && (cached.changeCount === storage.changeCount
+        || (storage.packedChunks.size > SolutionOdds.HIT_CHANCE_MANY_CHUNKS && performance.now() - cached.at < SolutionOdds.HIT_CHANCE_REUSE_MS));
+    if (reusable) return cached.chance;
+    const chance = SolutionOdds.walkHeldRangeHitChance({ storage, partitionNumber, session });
+    SolutionOdds.hitChanceCache.set(storage, { partitionNumber, window, changeCount: storage.changeCount, at: performance.now(), chance });
+    return chance;
+  }
+
+  static hitChanceCache = new WeakMap();
+  static HIT_CHANCE_MANY_CHUNKS = 100_000;
+  static HIT_CHANCE_REUSE_MS = 60_000;
+
+  /** heldRangeHitChance's walk over every held offset, uncached. */
+  static walkHeldRangeHitChance({ storage, partitionNumber, session }) {
     const partitionStart = BigInt(partitionNumber) * ConsensusConstants.PARTITION_SIZE;
     const window = Number(session.partitionUpperBound < ConsensusConstants.PARTITION_SIZE ? session.partitionUpperBound : ConsensusConstants.PARTITION_SIZE);
     const reach = ConsensusConstants.DATA_CHUNK_SIZE + ConsensusConstants.recallRangeSize;

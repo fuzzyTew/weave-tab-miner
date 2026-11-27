@@ -23,6 +23,18 @@ export class HeldStorage {
     this.residentLimit = residentLimit;
     this.resident = new Set(); // offsets in memory, least recently used first
     this.unalignedEnds = []; // held end offsets below the threshold, ascending (BigInt)
+    // Kept as chunks arrive, so counts cost O(1) however much is held (millions of chunks
+    // for a full partition), rather than a walk over every key.
+    this.bytesByPartition = new Map(); // partition number -> bytes held in it
+    this.changeCount = 0; // grows whenever a chunk is added; caches compare it
+  }
+
+  /** Counts a key not held before (call before setting it in packedChunks). */
+  countNewKey(key) {
+    if (this.packedChunks.has(key)) return;
+    const partitionNumber = Number((BigInt(key) - 1n) / ConsensusConstants.PARTITION_SIZE);
+    this.bytesByPartition.set(partitionNumber, (this.bytesByPartition.get(partitionNumber) ?? 0) + ConsensusConstants.DATA_CHUNK_SIZE);
+    this.changeCount++;
   }
 
   /** Notes an end offset below the threshold, where finding a byte's chunk needs a search. */
@@ -60,6 +72,7 @@ export class HeldStorage {
   add(endOffset, packedChunk, { reloadable = false } = {}) {
     const key = endOffset.toString();
     this.noteEnd(key);
+    this.countNewKey(key);
     this.packedChunks.set(key, packedChunk);
     if (reloadable) this.reloadable.add(key);
     this.touch(key);
@@ -70,6 +83,7 @@ export class HeldStorage {
     const key = endOffset.toString();
     if (this.packedChunks.get(key)) return;
     this.noteEnd(key);
+    this.countNewKey(key);
     this.packedChunks.set(key, null);
     this.reloadable.add(key);
   }
@@ -141,11 +155,6 @@ export class HeldStorage {
   }
 
   bytesInPartition(partitionNumber) {
-    const partitionSize = ConsensusConstants.PARTITION_SIZE;
-    let count = 0;
-    for (const key of this.packedChunks.keys()) {
-      if ((BigInt(key) - 1n) / partitionSize === BigInt(partitionNumber)) count += ConsensusConstants.DATA_CHUNK_SIZE;
-    }
-    return count;
+    return this.bytesByPartition.get(Number(partitionNumber)) ?? 0;
   }
 }
