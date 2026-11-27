@@ -1,7 +1,8 @@
-// test/vdf-spot-check.test.mjs — VdfSpotCheck on the bundled sample block's VDF steps, as a
-// server would send them: one real checkpoint matches (computed at mainnet difficulty,
-// about a second), a server's altered checkpoint does not (with a stand-in computation),
-// and checks are spaced. Run: node test/vdf-spot-check.test.mjs
+// test/vdf-spot-check.test.mjs — VdfSpotCheck on VDF steps as a server would send them: a
+// step computed here at low difficulty is recomputed by the check and matches (the VDF at
+// mainnet difficulty is checked in test/against-block.test.mjs, a second per checkpoint),
+// the sample block's step with one checkpoint altered does not, and checks are spaced.
+// Run: node test/vdf-spot-check.test.mjs
 import { readFileSync } from 'node:fs';
 import { Bytes } from '../src/core/bytes.js';
 import { VdfChain } from '../src/mining/vdf.js';
@@ -25,14 +26,22 @@ class VdfSpotCheckTest extends TestCase {
     const update = VdfSpotCheckTest.updateFromBlock(block);
     const difficulty = Number(block.nonce_limiter_info.vdf_difficulty);
 
+    // A real chain at low difficulty: the check must pick the same salt and input to match.
+    const iterations = 1000;
+    const stepNumber = Number(block.nonce_limiter_info.global_step_number);
+    const previousOutput = update.stepsNewestFirst[1];
+    const computed = new VdfChain({ iterationsPerCheckpoint: iterations }).computeStep(stepNumber, previousOutput);
+    const lowDifficultyUpdate = { stepNumber, stepsNewestFirst: [computed.at(-1), previousOutput], checkpoints: computed.slice().reverse() };
     const real = new VdfSpotCheck({
       computeCheckpoint: async ({ saltNumber, input, iterationsPerCheckpoint }) => new VdfChain({ iterationsPerCheckpoint }).computeCheckpoint(saltNumber, input),
       pickIndex: () => 7,
     });
-    const started = performance.now();
-    const result = await real.check(update, [difficulty], 0);
-    this.report('a real server step\'s checkpoint, computed here, matches', result.checked && result.matches,
-      `step ${result.stepNumber}, checkpoint ${result.index}, ${Math.round(performance.now() - started)} ms`);
+    const result = await real.check(lowDifficultyUpdate, [iterations], 0);
+    const firstResult = await new VdfSpotCheck({ computeCheckpoint: real.computeCheckpoint, pickIndex: () => 0 }).check(lowDifficultyUpdate, [iterations], 0);
+    this.report('a step\'s checkpoint, recomputed here from the right salt and input, matches', result.checked && result.matches && firstResult.matches,
+      `step ${result.stepNumber}, checkpoints ${result.index} and ${firstResult.index}`);
+    const wrongDifficulty = await new VdfSpotCheck({ computeCheckpoint: real.computeCheckpoint, pickIndex: () => 7 }).check(lowDifficultyUpdate, [iterations + 1], 0);
+    this.report('under the wrong difficulty it does not match', wrongDifficulty.checked && !wrongDifficulty.matches);
     this.report('the next check waits its interval', !real.due(1000) && real.due(real.intervalMs));
 
     // A server altering one checkpoint: the stand-in returns what the real chain would have.
