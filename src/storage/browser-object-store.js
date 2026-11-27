@@ -57,6 +57,13 @@ export class BrowserObjectStore {
     });
   }
 
+  /** Closes the connection, if open (deleting the database waits until every one is closed). */
+  async close() {
+    const database = await this.databasePromise?.catch(() => null);
+    database?.close();
+    this.databasePromise = null;
+  }
+
   /** Stores `value` under `key`; resolves whether it was saved. */
   async put(key, value) {
     return (await this.transaction('readwrite', (store) => {

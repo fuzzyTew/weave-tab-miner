@@ -26,7 +26,7 @@ class StorageSizingTest extends TestCase {
 
     const limits = full.limits();
     this.report('limits come smallest first', limits.every((limit, index) => index === 0 || limits[index - 1].bytes <= limit.bytes), limits.map((limit) => limit.name).join());
-    this.report('on a fast disk reads never bind within a partition', limits.find((limit) => limit.name === 'reads').bytes === Infinity);
+    this.report('on a fast disk only the partition binds', limits.map((limit) => limit.name).join() === 'partition', limits.map((limit) => limit.name).join());
     const slowDisk = new StorageSizing({ heldBytes: 0, weaveBytes: WEAVE_BYTES, measured: { readMsPerChunk: 60 } });
     const readLimit = slowDisk.limits().find((limit) => limit.name === 'reads').bytes;
     this.report('a disk at 60 ms a chunk binds reads below a partition', readLimit < StorageSizing.partitionBytes && Math.abs(new StorageSizing({ heldBytes: readLimit, weaveBytes: WEAVE_BYTES, measured: { readMsPerChunk: 60 } }).readShareOfStep - 0.5) < 1e-6, PrettyNumber.bytes(readLimit));

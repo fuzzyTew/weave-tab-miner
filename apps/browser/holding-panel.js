@@ -24,12 +24,13 @@ export class HoldingPanel {
 
   async restoreStoredChunks() {
     // Stand-in packing is never saved, so anything stored is real packing.
-    // Only the offsets: the chunks themselves are read from storage when a step needs them.
-    const entries = await this.store.offsets(this.identity.address);
-    for (const bucketEndOffset of entries) this.storage.addOnDisk(bucketEndOffset);
-    if (entries.length) {
-      this.view.log(`restored ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} from browser storage`, 'good');
-      this.view.setText('holdStatus', `Holding ${entries.length} packed chunk${entries.length === 1 ? '' : 's'} saved in this browser earlier.`);
+    // Only which chunks are saved (the saved index): the chunks themselves are read from
+    // storage when a step needs them.
+    this.storage.addSavedIndex(await this.store.savedIndex(this.identity.address));
+    const restored = this.storage.chunkCount;
+    if (restored) {
+      this.view.log(`restored ${restored} packed chunk${restored === 1 ? '' : 's'} from browser storage`, 'good');
+      this.view.setText('holdStatus', `Holding ${restored} packed chunk${restored === 1 ? '' : 's'} saved in this browser earlier.`);
       this.choosePartitionWithMostHeld();
     }
     await this.refreshStorageNote();

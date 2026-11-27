@@ -2,18 +2,71 @@
 // 30 seconds per batch of entropies) survives closing and reopening the browser.
 
 import { BrowserObjectStore } from './browser-object-store.js';
+import { SavedChunkIndex } from './saved-chunk-index.js';
+import { HeldStorage } from '../mining/held-storage.js';
 
 export class PackedChunkStore extends BrowserObjectStore {
   /**
    * One IndexedDB object store of packed chunks, keyed by "<mining address>:<bucket end
    * offset>". Packing is bound to the address, so each address has its own set.
    * Storage failures are soft (see BrowserObjectStore): the miner keeps working from memory.
+   *
+   * Which chunks are saved is also kept as an index (SavedChunkIndex), so listing them
+   * (offsets, addresses, savedIndex) reads a few records rather than every key.
    */
   static DATABASE_NAME = 'weave-tab-miner';
   static STORE_NAME = 'packed-chunks';
 
   constructor({ log = () => {} } = {}) {
     super({ databaseName: PackedChunkStore.DATABASE_NAME, storeName: PackedChunkStore.STORE_NAME, log });
+    this.index = new SavedChunkIndex({ log });
+    this.indexesPromise = null;
+  }
+
+  /**
+   * Every address's saved-chunk index (Map address → { buckets, unalignedEnds }), loaded
+   * once and kept current by save and deleteAddress. Chunks saved before the index existed
+   * are listed once, the slow way, to build it.
+   */
+  indexes() {
+    this.indexesPromise ??= this.loadOrBuildIndexes();
+    return this.indexesPromise;
+  }
+
+  async loadOrBuildIndexes() {
+    const loaded = await this.index.loadAll();
+    if (loaded) return loaded;
+    const entries = new Map();
+    const listed = await this.listAllKeys();
+    if (listed === undefined) return entries; // storage unavailable: nothing to index
+    for (const key of listed) {
+      const separator = key.indexOf(':');
+      const address = key.slice(0, separator);
+      if (!entries.has(address)) entries.set(address, SavedChunkIndex.emptyEntry());
+      SavedChunkIndex.addEnd(entries.get(address), BigInt(key.slice(separator + 1)));
+    }
+    if (await this.index.writeAll(entries) && listed.length) this.log(`indexed ${listed.length} saved chunks, so later visits start without listing them`);
+    return entries;
+  }
+
+  /** Every chunk key, the slow way (for building the index): [text], or undefined if storage failed. */
+  async listAllKeys() {
+    return this.transaction('readonly', (store) => {
+      const result = { value: [] };
+      const cursorRequest = store.openKeyCursor();
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return;
+        result.value.push(String(cursor.key));
+        cursor.continue();
+      };
+      return result;
+    });
+  }
+
+  /** One address's saved-chunk index ({ buckets, unalignedEnds }), empty when none are saved. */
+  async savedIndex(address) {
+    return (await this.indexes()).get(address) ?? SavedChunkIndex.emptyEntry();
   }
 
   static key(address, bucketEndOffset) {
@@ -26,7 +79,14 @@ export class PackedChunkStore extends BrowserObjectStore {
       for (const [bucketEndOffset, packedChunk] of entries) store.put(packedChunk, PackedChunkStore.key(address, bucketEndOffset));
       return { value: true };
     });
-    return saved === true;
+    if (saved !== true) return false;
+    // Indexed after saving, so the index never names a chunk that is not there.
+    const indexes = await this.indexes();
+    if (!indexes.has(address)) indexes.set(address, SavedChunkIndex.emptyEntry());
+    const entry = indexes.get(address);
+    const touched = new Set(entries.map(([end]) => SavedChunkIndex.addEnd(entry, BigInt(end))).filter((page) => page !== null));
+    if (touched.size) await this.index.write(address, entry, touched);
+    return true;
   }
 
   /** Removes every chunk saved for an address. Returns true if removed. */
@@ -35,23 +95,16 @@ export class PackedChunkStore extends BrowserObjectStore {
       store.delete(IDBKeyRange.bound(`${address}:`, `${address}:\uffff`));
       return { value: true };
     });
+    (await this.indexes()).delete(address);
+    await this.index.deleteAddress(address);
     return removed === true;
   }
 
-  /** The offsets saved for an address, without their bytes: [BigInt], ascending as text. */
+  /** The offsets saved for an address, without their bytes: [BigInt], ascending (from the index). */
   async offsets(address) {
-    const offsets = await this.transaction('readonly', (store) => {
-      const result = { value: [] };
-      const cursorRequest = store.openKeyCursor(IDBKeyRange.bound(`${address}:`, `${address}:\uffff`));
-      cursorRequest.onsuccess = () => {
-        const cursor = cursorRequest.result;
-        if (!cursor) return;
-        result.value.push(BigInt(String(cursor.key).slice(address.length + 1)));
-        cursor.continue();
-      };
-      return result;
-    });
-    return offsets ?? [];
+    const { buckets, unalignedEnds } = await this.savedIndex(address);
+    const unaligned = [...unalignedEnds].map(BigInt).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+    return [...unaligned, ...[...buckets.ascending()].map((bucketNumber) => HeldStorage.bucketEnd(bucketNumber))];
   }
 
   /** Some of an address's chunks: [[offset, Uint8Array]] for the offsets found. */
@@ -90,24 +143,14 @@ export class PackedChunkStore extends BrowserObjectStore {
     return entries ?? [];
   }
 
-  /** Every address with saved chunks, and how many: [{ address, chunkCount }], by address. */
+  /** Every address with saved chunks, and how many: [{ address, chunkCount }], by address (from the index). */
   async addresses() {
-    const counts = await this.transaction('readonly', (store) => {
-      const result = { value: new Map() };
-      const cursorRequest = store.openKeyCursor();
-      cursorRequest.onsuccess = () => {
-        const cursor = cursorRequest.result;
-        if (!cursor) return;
-        const address = String(cursor.key).split(':')[0];
-        result.value.set(address, (result.value.get(address) ?? 0) + 1);
-        cursor.continue();
-      };
-      return result;
-    });
-    return [...(counts ?? new Map())].map(([address, chunkCount]) => ({ address, chunkCount }));
+    return [...(await this.indexes())]
+      .map(([address, { buckets, unalignedEnds }]) => ({ address, chunkCount: buckets.size + unalignedEnds.size }))
+      .filter(({ chunkCount }) => chunkCount > 0)
+      .sort((left, right) => (left.address < right.address ? -1 : 1));
   }
 
-  /** Ask the browser not to clear this site's data under disk pressure. Returns whether granted. */
   /**
    * Asks the browser to keep this site's storage (navigator.storage.persist), so it is not
    * cleared when the disk runs low; Firefox also raises the site's limit from 10 GiB to up

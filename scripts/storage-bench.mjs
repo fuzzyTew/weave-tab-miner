@@ -84,9 +84,29 @@ class StorageBench {
     const writeSeconds = (performance.now() - started) / 1000;
 
     started = performance.now();
-    const offsets = await store.offsets(address);
-    if (offsets.length < chunkCount) throw new Error(`only ${offsets.length} of ${chunkCount} chunks are stored`);
+    const listed = await store.listAllKeys();
     const keyScanMs = performance.now() - started;
+
+    // Startup as the page does it: a fresh store reads the saved index, not every key.
+    started = performance.now();
+    const freshStore = new PackedChunkStore({ log: console.log });
+    const indexed = await freshStore.savedIndex(address);
+    const indexLoadMs = performance.now() - started;
+    const offsets = await store.offsets(address);
+    if (offsets.length < chunkCount || indexed.buckets.size + indexed.unalignedEnds.size < chunkCount || listed.length < chunkCount) {
+      throw new Error(`only ${offsets.length} of ${chunkCount} chunks are indexed (${listed.length} keys listed)`);
+    }
+
+    // Data saved before the index existed: with the index gone, a fresh store lists the keys once and indexes them.
+    await Promise.all([store.index.close(), freshStore.index.close()]);
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase('weave-tab-miner-index');
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error('deleting the index was blocked by an open connection'));
+    });
+    const rebuilt = await new PackedChunkStore({ log: console.log }).savedIndex(address);
+    if (rebuilt.buckets.size + rebuilt.unalignedEnds.size !== indexed.buckets.size + indexed.unalignedEnds.size) throw new Error('rebuilding the index lost chunks');
 
     // A step: 10 pairs, each pair read together, the next only after the last (as the miner does).
     const stepMs = [];
@@ -105,7 +125,8 @@ class StorageBench {
     return {
       chunkCount,
       writeMiBPerSecond: readOnly ? null : +(chunkCount * chunkBytes / 2 ** 20 / writeSeconds).toFixed(1),
-      keyScanMicrosecondsPerChunk: +(keyScanMs * 1000 / offsets.length).toFixed(2),
+      keyScanMicrosecondsPerChunk: +(keyScanMs * 1000 / listed.length).toFixed(2),
+      indexLoadMs: +indexLoadMs.toFixed(1),
       stepReadMsMedian: +stepMs[Math.floor(stepMs.length / 2)].toFixed(1),
       stepReadMsSlowest: +stepMs[stepMs.length - 1].toFixed(1),
     };

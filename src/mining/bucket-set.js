@@ -57,6 +57,36 @@ export class BucketSet {
     }
   }
 
+  /** Adds every member of `other` (page by page, a bitwise or). */
+  addAll(other) {
+    for (const [page, otherBits] of other.pages) {
+      let bits = this.pages.get(page);
+      if (!bits) this.pages.set(page, bits = new Uint8Array(BucketSet.PAGE_BITS / 8));
+      for (let byte = 0; byte < otherBits.length; byte++) {
+        if (!otherBits[byte]) continue;
+        this.size += BucketSet.bitCount(otherBits[byte] & ~bits[byte]);
+        bits[byte] |= otherBits[byte];
+      }
+    }
+  }
+
+  /** How many members lie from `low` up to but not including `high`. */
+  countBetween(low, high) {
+    let count = 0;
+    for (const [page, bits] of this.pages) {
+      const pageStart = page * BucketSet.PAGE_BITS;
+      const from = Math.max(low, pageStart) - pageStart;
+      const to = Math.min(high, pageStart + BucketSet.PAGE_BITS) - pageStart;
+      if (from >= to) continue;
+      // Whole bytes counted a byte at a time; the partial ones at either end bit by bit.
+      let bit = from;
+      for (; bit < to && (bit & 7); bit++) if (bits[bit >> 3] & (1 << (bit & 7))) count++;
+      for (; bit + 8 <= to; bit += 8) count += BucketSet.bitCount(bits[bit >> 3]);
+      for (; bit < to; bit++) if (bits[bit >> 3] & (1 << (bit & 7))) count++;
+    }
+    return count;
+  }
+
   /** The pages, for saving: [[page number, Uint8Array]]. */
   pagesForSaving() {
     return [...this.pages];

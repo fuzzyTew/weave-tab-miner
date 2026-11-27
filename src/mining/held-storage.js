@@ -105,6 +105,52 @@ export class HeldStorage {
     this.remember(key, packedChunk);
   }
 
+  /**
+   * Every chunk in a saved index ({ buckets: BucketSet, unalignedEnds: iterable of end
+   * offsets }, as SavedChunkIndex keeps them), known by offset only until needed: a whole
+   * partition is merged page by page, not chunk by chunk.
+   */
+  addSavedIndex({ buckets, unalignedEnds }) {
+    for (const end of unalignedEnds) this.noteHeld(String(end));
+    this.alignedBuckets.addAll(buckets);
+    this.recountPartitions();
+  }
+
+  /** Recomputes bytes held per partition from the index (after a merge). */
+  recountPartitions() {
+    const chunk = ConsensusConstants.DATA_CHUNK_SIZE;
+    const counts = new Map();
+    for (const end of this.unalignedEnds) {
+      const partitionNumber = Number((end - 1n) / ConsensusConstants.PARTITION_SIZE);
+      counts.set(partitionNumber, (counts.get(partitionNumber) ?? 0) + chunk);
+    }
+    const partitionNumbers = new Set();
+    for (const page of this.alignedBuckets.pages.keys()) {
+      const firstEnd = HeldStorage.bucketEnd(page * BucketSet.PAGE_BITS);
+      const lastEnd = HeldStorage.bucketEnd((page + 1) * BucketSet.PAGE_BITS - 1);
+      for (let partitionNumber = Number((firstEnd - 1n) / ConsensusConstants.PARTITION_SIZE); partitionNumber <= Number((lastEnd - 1n) / ConsensusConstants.PARTITION_SIZE); partitionNumber++) partitionNumbers.add(partitionNumber);
+    }
+    for (const partitionNumber of partitionNumbers) {
+      const [low, high] = HeldStorage.bucketRangeOfPartition(partitionNumber);
+      const bytes = this.alignedBuckets.countBetween(low, high) * chunk + (counts.get(partitionNumber) ?? 0);
+      if (bytes) counts.set(partitionNumber, bytes);
+    }
+    this.bytesByPartition = counts;
+    this.changeCount++;
+  }
+
+  /** Bucket numbers [low, high) whose chunks end in partition `partitionNumber` (empty below the threshold). */
+  static bucketRangeOfPartition(partitionNumber) {
+    const partitionStart = BigInt(partitionNumber) * ConsensusConstants.PARTITION_SIZE;
+    const partitionEnd = partitionStart + ConsensusConstants.PARTITION_SIZE;
+    const threshold = ConsensusConstants.STRICT_DATA_SPLIT_THRESHOLD;
+    if (partitionEnd <= threshold) return [0, 0];
+    const chunk = BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
+    // Bucket b ends at threshold + (b + 1) * chunk: the lowest b ending past partitionStart, up to the highest ending at partitionEnd.
+    const low = partitionStart <= threshold ? 0 : Number((partitionStart - threshold) / chunk);
+    return [low, Number((partitionEnd - threshold) / chunk)];
+  }
+
   /** A chunk saved where loadChunk can read it, known by offset only until needed. */
   addOnDisk(endOffset) {
     const key = endOffset.toString();
@@ -199,12 +245,7 @@ export class HeldStorage {
     for (const end of this.unalignedEnds) {
       if (end > partitionStart && end <= partitionEnd) yield end;
     }
-    const threshold = ConsensusConstants.STRICT_DATA_SPLIT_THRESHOLD;
-    if (partitionEnd <= threshold) return;
-    const chunk = BigInt(ConsensusConstants.DATA_CHUNK_SIZE);
-    // Bucket b ends at threshold + (b + 1) * chunk: the lowest b ending past partitionStart, up to the highest ending at partitionEnd.
-    const low = partitionStart <= threshold ? 0 : Number((partitionStart - threshold) / chunk);
-    const high = Number((partitionEnd - threshold) / chunk);
+    const [low, high] = HeldStorage.bucketRangeOfPartition(partitionNumber);
     for (const bucketNumber of this.alignedBuckets.ascending(low, high)) yield HeldStorage.bucketEnd(bucketNumber);
   }
 

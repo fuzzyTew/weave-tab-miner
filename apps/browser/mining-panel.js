@@ -368,9 +368,7 @@ export class MiningPanel {
     const fill = full.fillSeconds === null ? 'filling it takes as long as fetching and packing allow (measured once a fill runs)'
       : `filling it would take about ${PageView.formatDuration(full.fillSeconds)} at the ${PageView.formatBytes(full.measured.fillBytesPerSecond)}/s measured here`;
     this.view.setText('sizingNote', `The wait shrinks in step with the share of partition ${this.partitionNumber} held (twice the data, half the wait), up to the whole partition, ${PageView.formatBytes(StorageSizing.partitionBytes)}. Holding all of it here would mean reading about ${full.chunksReadPerStep.toFixed(0)} chunks a step (${PageView.formatBytes(full.readBytesPerSecond)}/s; about ${Math.round(full.readMsPerStep)} ms of each step, ${readSource}), an index of ${PageView.formatBytes(full.indexMemoryBytes)} in memory, about ${PageView.formatDuration(full.startupSeconds)} listing chunks at each start; ${fill}. Chrome allows a site about ${Math.round(StorageSizing.CHROME_DISK_SHARE * 100)}% of its disk, so that needs a disk of about ${PageView.formatBytes(full.chromeDiskBytes)}. Where this app's limits bind first:`);
-    this.view.fillLabeledList('sizingLimits', full.limits()
-      .filter((limit) => Number.isFinite(limit.bytes))
-      .map((limit) => ({ label: `about ${PageView.formatBytes(limit.bytes)} held`, text: limit.explanation, className: this.storage.byteCount >= limit.bytes ? 'limit-reached' : '' })));
+    this.view.fillLabeledList('sizingLimits', full.limits().map((limit) => ({ label: `about ${PageView.formatBytes(limit.bytes)} held`, text: limit.explanation, className: this.storage.byteCount >= limit.bytes ? 'limit-reached' : '' })));
   }
 
   /** How the VDF server kept up: poll time, gaps between polls, and steps lost or skipped. */

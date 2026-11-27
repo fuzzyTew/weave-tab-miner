@@ -19,7 +19,9 @@ export class StorageSizing {
   static MEASURED = {
     readMsPerChunk: 1.5, // cold read of one 256 KiB chunk through IndexedDB
     indexBytesPerChunk: 0.125, // HeldStorage's index: one bit per bucket (BucketSet), pages filled
-    startupMicrosecondsPerChunk: 20, // the key scan at startup (IndexedDB), plus a bit set per key
+    // Startup reads the saved index (SavedChunkIndex): about 36 ms for a 128 KiB page of
+    // 2^20 chunks. (Listing every key instead took 10 to 20 µs a chunk: once, to build it.)
+    startupMicrosecondsPerChunk: 0.035,
     fillBytesPerSecond: null, // fetch and pack: depends on the network and CPU; unknown until measured
   };
 
@@ -98,9 +100,10 @@ export class StorageSizing {
   }
 
   /**
-   * The held size at which each limit binds, smallest first: [{ name, bytes, explanation }].
-   * Past the partition, held data adds nothing to range 1 (one partition per address here);
-   * the others are soft: past them the tab still works, with the cost named.
+   * The held sizes at which limits bind, smallest first: [{ name, bytes, explanation }]:
+   * the partition, and any other limit reached before it. Past the partition, held data
+   * adds nothing to range 1 (one partition per address here); the others are soft: past
+   * them the tab still works, with the cost named.
    */
   limits() {
     const chunk = ConsensusConstants.DATA_CHUNK_SIZE;
@@ -116,6 +119,6 @@ export class StorageSizing {
       { name: 'memory', bytes: StorageSizing.TAB_MEMORY_COMFORT_BYTES / indexBytesPerChunk * chunk, explanation: `the in-memory index of held chunks passes ${PrettyNumber.bytes(StorageSizing.TAB_MEMORY_COMFORT_BYTES)}` },
       { name: 'startup', bytes: StorageSizing.STARTUP_COMFORT_SECONDS * 1e6 / startupMicrosecondsPerChunk * chunk, explanation: `listing held chunks at each start takes over ${StorageSizing.STARTUP_COMFORT_SECONDS} s` },
       { name: 'reads', bytes: readLimitBytes, explanation: `reading takes over half of each step on this disk (${readMsPerChunk.toFixed(1)} ms a chunk), so mining falls behind the network` },
-    ].sort((left, right) => left.bytes - right.bytes);
+    ].filter((limit) => limit.bytes <= partition).sort((left, right) => left.bytes - right.bytes);
   }
 }
