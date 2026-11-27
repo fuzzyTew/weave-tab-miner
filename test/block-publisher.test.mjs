@@ -6,7 +6,6 @@
 // Fixtures as in test/account-tree.test.mjs.
 // Run: node test/block-publisher.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { runInThisContext } from 'node:vm';
 import { Bytes } from '../src/core/bytes.js';
 import { FixtureAccountTree } from './fixture-account-tree.mjs';
 import { RewardHistory } from '../src/blocks/rewards.js';
@@ -18,8 +17,8 @@ import { BlockPublisher } from '../src/blocks/block-publisher.js';
 import { BlockBinary } from '../src/blocks/binary.js';
 import { NetworkRules } from '../src/blocks/network-rules.js';
 import { RecordedVdfSteps } from '../src/blocks/vdf-info.js';
-import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 import { TestCase } from './test-case.mjs';
+import { StoredRandomx } from './file-result-store.mjs';
 
 class BlockPublisherTest extends TestCase {
   constructor(fixturesDirectory) {
@@ -57,8 +56,7 @@ class BlockPublisherTest extends TestCase {
       console.log(`SKIP  no localnet fixtures at ${this.fixturesDirectory}`);
       return;
     }
-    runInThisContext(readFileSync(new URL('../vendor/randomx-arweave/randomx-arweave.iife.js', import.meta.url), 'utf8') + '\nglobalThis.RandomxArweave = RandomxArweave;');
-    const host = new RandomxDirectHost(globalThis.RandomxArweave);
+    const { h0Hasher, entropySource } = StoredRandomx.create();
     const files = readdirSync(this.fixturesDirectory).sort();
     const state = await this.firstState(files);
     const follower = new ChainFollower({ state, fetchTransaction: null });
@@ -68,7 +66,7 @@ class BlockPublisherTest extends TestCase {
       const chunks = new Map([[String(BigInt(child.recall_byte) + 1n), child.poa], [String(BigInt(child.recall_byte2 ?? -2) + 1n), child.poa2]]);
       const posted = [];
       const publisher = new BlockPublisher({
-        follower, h0Hasher: new RandomxH0Hasher(host), entropySource: new RandomxSquaredEntropySource(host),
+        follower, h0Hasher, entropySource,
         fetchChunkJson: async (offset) => {
           const poa = chunks.get(String(offset));
           return { chunk: poa.unpacked_chunk, data_path: poa.data_path, tx_path: poa.tx_path };

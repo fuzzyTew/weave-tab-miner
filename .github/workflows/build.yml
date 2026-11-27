@@ -40,6 +40,14 @@ jobs:
       - name: Install test dependencies
         run: npm ci --ignore-scripts
 
+      # RandomX results the block replays need (test/file-result-store.mjs): keyed on the
+      # code that computes them, so a change there computes them afresh.
+      - name: Keep stored RandomX results between runs
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: randomx-results-${{ hashFiles('vendor/randomx-arweave/randomx-arweave.iife.js', 'src/mining/randomx.js') }}
+
       - name: Check SHA-256, VDF, difficulty and layout against block 2,040,257
         run: node test/against-block.test.mjs
 

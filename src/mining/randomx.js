@@ -113,7 +113,14 @@ export class RandomxDirectHost {
    * The same interface without a worker, for Node (server mode, tests). Blocks while it works.
    */
   constructor(RandomxArweave) {
-    this.engine = RandomxRequests.createEngine(RandomxArweave);
+    this.RandomxArweave = RandomxArweave;
+    this.engineState = null;
+  }
+
+  /** Made on first use: its 512 MiB cache takes seconds, wasted when stored results answer everything. */
+  get engine() {
+    this.engineState ??= RandomxRequests.createEngine(this.RandomxArweave);
+    return this.engineState;
   }
 
   async ready() {}
@@ -146,12 +153,20 @@ export class RandomxH0Hasher {
    */
   isStub = false;
 
-  constructor(host) {
+  /** `store` (optional): get(keyHex)/set(keyHex, hash) keeping hashes by their preimage's SHA-256, across runs. */
+  constructor(host, { store = null } = {}) {
     this.host = host;
+    this.store = store;
   }
 
   async hash(preimage) {
-    return this.host.h0(preimage);
+    if (!this.store) return this.host.h0(preimage);
+    const keyHex = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', preimage)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const stored = await this.store.get(keyHex);
+    if (stored) return stored;
+    const hash = await this.host.h0(preimage);
+    await this.store.set(keyHex, hash);
+    return hash;
   }
 }
 
@@ -160,19 +175,33 @@ export class RandomxSquaredEntropySource {
    * Real replica 2.9 entropy: 8 MiB per entropy key (ar_mine_randomx.erl
    * randomx_generate_replica_2_9_entropy). Holds the most recent entropies so chunks that
    * share one (the same position in different sectors) reuse it.
+   *
+   * `store` (optional) keeps entropies beyond that, across runs: `get(keyHex)` resolves
+   * the entropy or null, `set(keyHex, entropy)` keeps one. Each costs seconds of RandomX,
+   * so a store pays when the same ones come back (tests replaying blocks, repacking).
    */
   isStub = false;
 
-  constructor(host, { keepEntropies = 2 } = {}) {
+  constructor(host, { keepEntropies = 2, store = null } = {}) {
     this.host = host;
     this.keepEntropies = keepEntropies;
+    this.store = store;
     this.recent = new Map(); // key hex -> Promise<entropy>, in least-recently-used order
+  }
+
+  /** The entropy from the store if it has it, else computed (and given to the store). */
+  async storedOrComputed(entropyKey, keyHex) {
+    const stored = await this.store?.get(keyHex);
+    if (stored) return stored;
+    const entropy = await this.host.entropy(entropyKey);
+    await this.store?.set(keyHex, entropy);
+    return entropy;
   }
 
   async entropy(entropyKey) {
     const keyHex = Array.from(entropyKey, (byte) => byte.toString(16).padStart(2, '0')).join('');
     if (!this.recent.has(keyHex)) {
-      this.recent.set(keyHex, this.host.entropy(entropyKey));
+      this.recent.set(keyHex, this.storedOrComputed(entropyKey, keyHex));
       while (this.recent.size > this.keepEntropies) this.recent.delete(this.recent.keys().next().value);
     }
     const entropy = this.recent.get(keyHex);

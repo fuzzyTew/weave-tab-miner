@@ -5,11 +5,10 @@
 // Fixtures as in test/account-tree.test.mjs.
 // Run: node test/block-solution.test.mjs [fixtures directory]   (default: ./localnet_fixtures)
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { runInThisContext } from 'node:vm';
 import { BlockSolution } from '../src/blocks/solution.js';
-import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 import { Bytes } from '../src/core/bytes.js';
 import { MiningIdentity } from '../src/mining/identity.js';
+import { StoredRandomx } from './file-result-store.mjs';
 
 class BlockSolutionTest {
   static COMPARED_FIELDS = ['nonce', 'hash', 'recall_byte', 'partition_number', 'poa', 'chunk_hash', 'unpacked_chunk_hash', 'packing_difficulty', 'replica_format'];
@@ -25,11 +24,7 @@ class BlockSolutionTest {
       console.log(`SKIP  no localnet fixtures at ${this.fixturesDirectory}`);
       return;
     }
-    // The RandomX bundle is a classic script defining RandomxArweave; evaluate it as a page would.
-    runInThisContext(readFileSync(new URL('../vendor/randomx-arweave/randomx-arweave.iife.js', import.meta.url), 'utf8') + '\nglobalThis.RandomxArweave = RandomxArweave;');
-    const host = new RandomxDirectHost(globalThis.RandomxArweave);
-    const h0Hasher = new RandomxH0Hasher(host);
-    const entropySource = new RandomxSquaredEntropySource(host);
+    const { h0Hasher, entropySource } = StoredRandomx.create();
     for (const name of readdirSync(this.fixturesDirectory).filter((file) => file.startsWith('block_')).sort()) {
       const { parent, child } = JSON.parse(readFileSync(`${this.fixturesDirectory}/${name}`, 'utf8'));
       const twoChunks = child.recall_byte2 !== undefined && child.recall_byte2 !== null;

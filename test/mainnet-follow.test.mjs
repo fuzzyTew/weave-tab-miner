@@ -7,7 +7,6 @@
 // Run: node test/mainnet-follow.test.mjs [fixtures directory]   (default: ./mainnet_fixtures)
 import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { runInThisContext } from 'node:vm';
 import { Bytes } from '../src/core/bytes.js';
 import { FixtureAccountTree } from './fixture-account-tree.mjs';
 import { ChainState } from '../src/blocks/assembler.js';
@@ -18,8 +17,8 @@ import { BlockTimeHistory } from '../src/blocks/history.js';
 import { RewardHistory } from '../src/blocks/rewards.js';
 import { TransactionPicker } from '../src/blocks/transaction-picker.js';
 import { RecordedVdfSteps, VdfInfo } from '../src/blocks/vdf-info.js';
-import { RandomxDirectHost, RandomxH0Hasher, RandomxSquaredEntropySource } from '../src/mining/randomx.js';
 import { TestCase } from './test-case.mjs';
+import { StoredRandomx } from './file-result-store.mjs';
 
 class MainnetFollowTest extends TestCase {
   constructor(fixturesDirectory) {
@@ -41,9 +40,7 @@ class MainnetFollowTest extends TestCase {
   }
 
   randomx() {
-    runInThisContext(readFileSync(new URL('../vendor/randomx-arweave/randomx-arweave.iife.js', import.meta.url), 'utf8') + '\nglobalThis.RandomxArweave = RandomxArweave;');
-    const host = new RandomxDirectHost(globalThis.RandomxArweave);
-    return { h0Hasher: new RandomxH0Hasher(host), entropySource: new RandomxSquaredEntropySource(host) };
+    return StoredRandomx.create();
   }
 
   /** The block rebuilt by BlockPublisher from its solution, transactions and chunks; its signature stands in. */
