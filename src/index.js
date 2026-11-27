@@ -48,6 +48,7 @@ export * from './mining/step-pace.js';
 export * from './mining/step-sources.js';
 export * from './mining/storage-sizing.js';
 export * from './mining/vdf.js';
+export * from './network/chunk-filler.js';
 export * from './network/chunk-fetcher.js';
 export * from './network/erlang-term.js';
 export * from './network/gateway.js';

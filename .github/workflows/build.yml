@@ -83,6 +83,7 @@ jobs:
           node test/held-storage.test.mjs
           node test/bucket-set.test.mjs
           node test/chunk-fetcher.test.mjs
+          node test/chunk-filler.test.mjs
           node test/gateway-order.test.mjs
           node test/storage-allowance.test.mjs
           node test/throughput-meter.test.mjs

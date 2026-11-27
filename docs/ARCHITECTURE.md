@@ -92,6 +92,10 @@ branch).
    - VDF steps: done. `src/mining/step-sources.js` has the three sources (replay, servers,
      computed) behind one shape and the loop that mines them (StepMiningLoop), tested
      with stand-ins; the panel supplies the pool, the worker and the status text.
+   - Filling: done. `src/network/chunk-filler.js` (ChunkFiller) picks positions, fetches,
+     packs, holds and saves a batch at a time; the panel says how to save and what to
+     show. The node program now uses it and the step sources too, instead of its own
+     copies of those loops.
 2. **Move app logic the library should own.** From `holding-panel.js` (620 lines, the
    largest file): reading the browser's allowance, including Chrome's floating figure,
    becomes `src/storage/storage-allowance.js`; deciding how much to fetch and when to

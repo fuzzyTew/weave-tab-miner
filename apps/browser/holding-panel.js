@@ -5,7 +5,7 @@ import { ConsensusConstants } from '../../src/core/constants.js';
 import { Replica29Layout, ChunkPacker } from '../../src/mining/packing.js';
 import { MiningIdentity } from '../../src/mining/identity.js';
 import { HeldStorage } from '../../src/mining/held-storage.js';
-import { ChunkFetcher } from '../../src/network/chunk-fetcher.js';
+import { ChunkFiller } from '../../src/network/chunk-filler.js';
 import { ChunkShareBridge } from '../../src/storage/chunk-share.js';
 import { PackedChunkStore, PackedChunkArchive } from '../../src/storage/chunk-store.js';
 import { StorageAllowance } from '../../src/storage/storage-allowance.js';
@@ -89,8 +89,8 @@ export class HoldingPanel {
     const target = this.identity;
     let repackedCount = 0;
     // A batch at a time from storage, so a large set never sits in memory whole.
-    for (let start = 0; start < offsets.length; start += HoldingPanel.CHUNK_BATCH_SIZE) {
-      const batch = await this.store.loadSome(address, offsets.slice(start, start + HoldingPanel.CHUNK_BATCH_SIZE));
+    for (let start = 0; start < offsets.length; start += ChunkFiller.BATCH_SIZE) {
+      const batch = await this.store.loadSome(address, offsets.slice(start, start + ChunkFiller.BATCH_SIZE));
       const repacked = await ChunkPacker.repackChunks({
         entries: batch, fromIdentity: MiningIdentity.fromAddress(address), toIdentity: target, entropySource: this.entropySource,
         onEntropy: (done, total) => this.view.setText('holdStatus', `Repacking chunks ${start + 1}–${start + batch.length} of ${offsets.length}: entropy ${done} of ${total}…`),
@@ -253,8 +253,9 @@ export class HoldingPanel {
     this.refreshSummary();
   }
 
+  /** Saves packed chunks for this address; resolves whether they were saved (stand-in packing never is). */
   async saveChunks(entries) {
-    if (!this.usingRealRandomx) return;
+    if (!this.usingRealRandomx) return false;
     this.lastSaveFailed = !(await this.store.save(this.identity.address, entries));
     if (!this.lastSaveFailed) {
       this.storage.markReloadable(entries.map(([offset]) => offset));
@@ -264,6 +265,7 @@ export class HoldingPanel {
       if (sources) this.view.log(`chunks served so far, by source (served of asked): ${sources}`);
     }
     await this.refreshStorageNote();
+    return !this.lastSaveFailed;
   }
 
   // ---- how much storage to use ----
@@ -524,14 +526,10 @@ export class HoldingPanel {
       bytes: Bytes.fromBase64Url(this.block[proof].unpacked_chunk),
       endOffset: Replica29Layout.bucketEndOffsetForByte(BigInt(this.block[byteField])),
     }));
-    await this.packAndHold(chunks);
+    await this.chunkFiller().packAndHold(chunks);
   }
 
   static KEPT_ENTROPIES = 32;
-  // Requests at once: enough to hide each request's latency, few enough to be polite.
-  static CHUNK_FETCH_CONCURRENCY = 6;
-  // Chunks packed and saved together (32 MiB), so a long fetch never holds it all in memory.
-  static CHUNK_BATCH_SIZE = 128;
 
   showFetchProgress(progress, heldSoFar) {
     const { elements } = this.view;
@@ -542,6 +540,7 @@ export class HoldingPanel {
     this.view.setText('holdStatus', `Fetched ${progress.fetched} of ${progress.wanted} chunks (${PageView.formatBytes(progress.bytes)}) at ${PageView.formatBytes(progress.bytesPerSecond)}/s${left}${skipped}. Packed and saved: ${heldSoFar}.`);
   }
 
+  /** Fetches, packs, holds and saves up to `wanted` chunks of this partition (ChunkFiller), showing progress. */
   async holdLiveChunks(wanted) {
     const partitionStart = BigInt(this.partitionNumber) * ConsensusConstants.PARTITION_SIZE;
     if (partitionStart >= this.session.partitionUpperBound) {
@@ -551,58 +550,42 @@ export class HoldingPanel {
     if (this.network.isMainnet && this.partitionNumber < Replica29Layout.firstBucketAlignedPartition()) {
       this.view.log(`partition ${this.partitionNumber} holds the weave's oldest data, whose chunks do not fill whole 256 KiB buckets; they are held by their own ends, which has not yet been seen to make a mainnet block`, 'warn');
     }
-    // Chunks at one bucket position in successive sectors share all 32 entropies.
-    const firstByte = partitionStart + BigInt(Math.floor(Math.random() * Number(ConsensusConstants.entropySectorSize)));
     const stopper = new AbortController();
     this.holdStopper = stopper;
     this.view.elements.stopHoldButton.hidden = false;
-    const fetcher = new ChunkFetcher({ gateway: this.gateway, concurrency: HoldingPanel.CHUNK_FETCH_CONCURRENCY });
-    let held = 0;
-    let lastProgress = null;
+    let outcome = { held: 0, aborted: false, lastProgress: null };
     try {
-      const positions = this.network.chunkPositions(partitionStart, Replica29Layout.entropySharingPositions(firstByte, this.session.partitionUpperBound), ConsensusConstants.DATA_CHUNK_SIZE);
-      const batches = fetcher.batches(positions, {
-        wanted, batchSize: HoldingPanel.CHUNK_BATCH_SIZE, signal: stopper.signal,
-        onProgress: (progress) => { lastProgress = progress; this.showFetchProgress(progress, held); },
-        onSkip: (weaveByte, error) => this.view.log(`skipping the chunk at byte ${weaveByte}: no source had it (${error.message.split('\n')[1] ?? error.message})`, 'warn'),
-      });
-      // Pack each batch while the next one is fetched: packing runs in the RandomX worker,
-      // so the page stays free to keep requests going. One batch packs at a time.
-      let packing = Promise.resolve();
-      for await (const batch of batches) {
-        await packing;
-        packing = this.packAndHold(batch).then(() => {
-          held += batch.length;
-          if (lastProgress) this.showFetchProgress(lastProgress, held);
-        });
-      }
-      await packing;
+      outcome = await this.chunkFiller().fill({ partitionNumber: this.partitionNumber, partitionUpperBound: this.session.partitionUpperBound, wanted, signal: stopper.signal });
     } finally {
       this.view.elements.stopHoldButton.hidden = true;
       this.view.elements.holdProgress.hidden = true;
       this.holdStopper = null;
     }
+    const { held, aborted, lastProgress } = outcome;
     const speed = lastProgress ? ` at ${PageView.formatBytes(lastProgress.bytesPerSecond)}/s` : '';
     this.view.setText('holdStatus', held
-      ? `Holding ${held} new chunk${held === 1 ? '' : 's'}${stopper.signal.aborted ? ' (stopped early)' : ''}, fetched${speed}, packed and saved.`
+      ? `Holding ${held} new chunk${held === 1 ? '' : 's'}${aborted ? ' (stopped early)' : ''}, fetched${speed}, packed and saved.`
       : 'No chunks could be fetched.');
+  }
+
+  /** A ChunkFiller for this identity and storage, reporting to the page and saving to this browser. */
+  chunkFiller() {
+    return new ChunkFiller({
+      gateway: this.gateway, network: this.network, identity: this.identity, entropySource: this.entropySource, storage: this.storage,
+      save: (entries) => this.saveChunks(entries),
+      onProgress: (progress, heldSoFar) => this.showFetchProgress(progress, heldSoFar),
+      onSkip: (weaveByte, error) => this.view.log(`skipping the chunk at byte ${weaveByte}: no source had it (${error.message.split('\n')[1] ?? error.message})`, 'warn'),
+      onPackProgress: (done, total) => this.packingProgress(done, total),
+      onBatchHeld: ({ count, seconds }) => {
+        this.view.setText('packStatus', `Packed ${count} chunk${count === 1 ? '' : 's'} in ${seconds.toFixed(0)} s${this.usingRealRandomx ? '' : ' with stand-in packing, which is not saved'}.`);
+        this.view.log(`packed ${count} chunks for ${this.identity.address.slice(0, 8)}…`, 'good');
+      },
+    });
   }
 
   stopHolding() {
     this.holdStoppedByPerson = true;
     this.holdStopper?.abort();
     this.view.setText('holdStatus', 'Stopping: requests already sent will finish, then what arrived is packed and saved.');
-  }
-
-  async packAndHold(chunks) {
-    const started = performance.now();
-    const packer = new ChunkPacker(this.identity, this.entropySource);
-    const packed = await packer.packChunks(chunks, (done, total) => this.packingProgress(done, total));
-    const entries = packed.map((packedChunk, index) => [chunks[index].endOffset, packedChunk]);
-    for (const [endOffset, packedChunk] of entries) this.storage.add(endOffset, packedChunk);
-    const seconds = (performance.now() - started) / 1000;
-    this.view.setText('packStatus', `Packed ${chunks.length} chunk${chunks.length === 1 ? '' : 's'} in ${seconds.toFixed(0)} s${this.usingRealRandomx ? '' : ' with stand-in packing, which is not saved'}.`);
-    this.view.log(`packed ${chunks.length} chunks for ${this.identity.address.slice(0, 8)}…`, 'good');
-    await this.saveChunks(entries);
   }
 }
